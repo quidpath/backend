@@ -5,31 +5,69 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="bfe3fe51-f99e-4806-aeb1-0844d1d646cd" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/quidpath-backend.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/manage.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/asgi.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/settings.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/urls.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/wsgi.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/base_models/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/base_models/base.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/base_models/soft_delete.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/enums/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/enums/choices.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/enums/status_codes.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/exceptions/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/exceptions/custom_exceptions.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/middleware/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/middleware/organisation_middleware.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/mixins/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/mixins/timestamp_mixin.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/mixins/user_tracking_mixin.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/mixins/uuid_mixin.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/permissions/base_permissions.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/tests/test_utils.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/email.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/json_response.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/org_context.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/validators.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/requirements/base.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/requirements/dev.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/requirements/prod.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/settings/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/settings/base.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/settings/dev.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/settings/local.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/settings/prod.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/settings/test.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quidpath_backend/settings.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
+  <component name="DjangoConsoleOptions" custom-start-script="import sys; print('Python %s on %s' % (sys.version, sys.platform))&#10;import django; print('Django %s' % django.get_version())&#10;sys.path.extend([WORKING_DIR_AND_PYTHON_PATHS])&#10;if 'setup' in dir(django): django.setup()&#10;import django_manage_shell; django_manage_shell.run(PROJECT_ROOT)">
+    <option name="myCustomStartScript" value="import sys; print('Python %s on %s' % (sys.version, sys.platform))&#10;import django; print('Django %s' % django.get_version())&#10;sys.path.extend([WORKING_DIR_AND_PYTHON_PATHS])&#10;if 'setup' in dir(django): django.setup()&#10;import django_manage_shell; django_manage_shell.run(PROJECT_ROOT)" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="KubernetesApiPersistence"><![CDATA[{}]]></component>
+  <component name="KubernetesApiProvider"><![CDATA[{
+  "isMigrated": true
+}]]></component>
   <component name="ProjectColorInfo"><![CDATA[{
   "associatedIndex": 0
 }]]></component>
   <component name="ProjectId" id="2zrSgsXXu10tAE4SfruoeadigDn" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -41,14 +79,21 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "master",
+    "junie.onboarding.icon.badge.shown": "true",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="E:\quidpath-backend\quidpath_backend\core" />
+    </key>
+  </component>
   <component name="RunManager">
     <configuration name="quidpath-backend" type="Python.DjangoServer" factoryName="Django server">
       <module name="quidpath-backend" />
@@ -90,7 +135,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1752487813133</updated>
-      <workItem from="1752487814211" duration="491000" />
+      <workItem from="1752487814211" duration="15390000" />
     </task>
     <servers />
   </component>
