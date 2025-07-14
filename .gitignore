@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+
+# Django stuff
+*.log
+*.pot
+*.pyc
+*.sqlite3
+*.db
+db.sqlite3
+
+# Media and static files (optional if not managed in version control)
+media/
+staticfiles/
+static_root/
+static/
+
+# VSCode and IDE settings
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+
+# Migrations (optional: remove if you want to track them)
+**/migrations/*.pyc
+**/migrations/__pycache__/
+**/migrations/*.py
+!**/migrations/__init__.py
+
+# pytest cache
+.pytest_cache/
+.cache/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+
+# MyPy
+.mypy_cache/
+
+# Pipenv
+Pipfile.lock
+
+# Docker
+*.pid
+docker-compose.override.yml
+
+# Pyright
+pyrightconfig.json
+
+# Node (if using npm or yarn for frontend assets)
+node_modules/
