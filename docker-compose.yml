@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  backend:
+    container_name: django-backend
+    build:
+      context: .
+      dockerfile: Dockerfile.dev   # ✅ Uses the dev Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app    # ✅ Mount your local code for live reload
+    environment:
+      DJANGO_SETTINGS_MODULE: quidpath_backend.settings.dev
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"

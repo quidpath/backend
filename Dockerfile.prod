@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    libpq-dev gcc build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/ /app/requirements/
+
+RUN pip install --no-cache-dir -r requirements/prod.txt
+
+COPY . /app
+
+# ✅ Collect static files
+RUN DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod python manage.py collectstatic --noinput
+
+EXPOSE 8000
+
+CMD ["gunicorn", "quidpath_backend.wsgi:application", "--bind", "0.0.0.0:8000"]
