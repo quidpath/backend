@@ -4,65 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="bfe3fe51-f99e-4806-aeb1-0844d1d646cd" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/Authentication/Services/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/Services/auth_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/Services/user_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/Tasks/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/Tasks/send_welcome_email.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/constants.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/migrations/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/models/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/models/logbase.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/models/permisssions.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/models/role.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/models/user.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/permissions/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/permissions/rbac.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/signals/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/signals/user_created_signal.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/urls.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/views/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/views/auth.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/views/register.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Authentication/views/user.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Dockerfile.dev" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Dockerfile.prod" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docker-compose.dev.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/admin.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/Services/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/Services/notification_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/Services/organisation_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/Services/service_base.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/Services/state_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/Services/template_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/apps.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/Logbase.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/registry.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/request_parser.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/sms.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/base_models/base.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/base_models/base.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/base_models/soft_delete.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/base_models/soft_delete.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/middleware/organisation_middleware.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/middleware/organisation_middleware.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/mixins/timestamp_mixin.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/mixins/timestamp_mixin.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/mixins/user_tracking_mixin.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/mixins/user_tracking_mixin.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/mixins/uuid_mixin.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/mixins/uuid_mixin.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/permissions/base_permissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/permissions/base_permissions.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/tests/test_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/tests/test_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/utils/email.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/email.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/utils/validators.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/validators.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/requirements/base.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/base.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/requirements/dev.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/dev.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/requirements/prod.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/prod.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/settings/base.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/settings/base.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/settings/dev.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/settings/dev.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/settings/local.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/settings/local.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/settings/prod.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/settings/prod.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/settings/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/settings/test.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quidpath_backend/urls.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/urls.py" afterDir="false" />
-    </list>
+    <list default="true" id="bfe3fe51-f99e-4806-aeb1-0844d1d646cd" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -186,7 +128,7 @@
       <workItem from="1752581656096" duration="6037000" />
       <workItem from="1752746249923" duration="272000" />
       <workItem from="1752746695658" duration="21050000" />
-      <workItem from="1753069334357" duration="26468000" />
+      <workItem from="1753069334357" duration="26917000" />
     </task>
     <servers />
   </component>
