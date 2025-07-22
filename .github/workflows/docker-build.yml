@@ -3,7 +3,7 @@ name: Build & Push Django Backend
 on:
   push:
     branches:
-      - main  # trigger only on main branch
+      - master
 
 jobs:
   build-and-push:
