@@ -12,8 +12,12 @@ RUN pip install --no-cache-dir -r requirements/prod.txt
 
 COPY . /app
 
+# ✅ Set environment variables for Django
+ENV DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod \
+    SECRET_KEY=u$8e@()u=d*jy+nmle1t&9$#c7w(gxd&a7p&n$$pd&kw3w-oru
+
 # ✅ Collect static files
-RUN DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod python manage.py collectstatic --noinput
+RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
