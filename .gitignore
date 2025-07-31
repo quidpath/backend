@@ -19,6 +19,8 @@ env/
 *.sqlite3
 *.db
 db.sqlite3
+.idea/
+
 
 # Media and static files (optional if not managed in version control)
 media/
