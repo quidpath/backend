@@ -22,4 +22,5 @@ import Authentication
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('Authentication.urls')),
+    path('', include('OrgAuth.urls')),
 ]

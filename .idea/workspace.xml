@@ -5,8 +5,34 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="bfe3fe51-f99e-4806-aeb1-0844d1d646cd" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.github/workflows/docker-build.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/docker-build.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Authentication/models/forgotPassword.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Authentication/views/ForgotPassword.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Authentication/views/UserProfile.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Authentication/views/corpprofile.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/OrgAuth/core/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/OrgAuth/core/permissions.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/OrgAuth/core/signals.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/OrgAuth/templates/CorporateTempMgt.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/OrgAuth/templates/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/OrgAuth/urls.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/OrgAuth/views/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/OrgAuth/views/corporate_registration.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/OrgAuth/views/corporate_users.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/decorators.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/superserializer.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Authentication/admin.py" beforeDir="false" afterPath="$PROJECT_DIR$/Authentication/admin.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Authentication/models/logbase.py" beforeDir="false" afterPath="$PROJECT_DIR$/Authentication/models/logbase.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Authentication/urls.py" beforeDir="false" afterPath="$PROJECT_DIR$/Authentication/urls.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Authentication/views/auth.py" beforeDir="false" afterPath="$PROJECT_DIR$/Authentication/views/auth.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Authentication/views/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/Authentication/views/user.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/Services/organisation_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/Services/organisation_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/utils/email.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/email.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/utils/json_response.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/json_response.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quidpath_backend/core/utils/request_parser.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/core/utils/request_parser.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quidpath_backend/settings/base.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/settings/base.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quidpath_backend/urls.py" beforeDir="false" afterPath="$PROJECT_DIR$/quidpath_backend/urls.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -56,29 +82,29 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.OpenDjangoStructureViewOnStart": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "master",
-    "ignore.virus.scanning.warn.message": "true",
-    "junie.onboarding.icon.badge.shown": "true",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.OpenDjangoStructureViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;5-OrganisationAuthentication&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   },
-  "keyToStringList": {
-    "DatabaseDriversLRU": [
-      "postgresql"
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;postgresql&quot;
     ]
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="E:\quidpath-backend" />
@@ -131,7 +157,8 @@
       <workItem from="1752581656096" duration="6037000" />
       <workItem from="1752746249923" duration="272000" />
       <workItem from="1752746695658" duration="21050000" />
-      <workItem from="1753069334357" duration="29600000" />
+      <workItem from="1753069334357" duration="40380000" />
+      <workItem from="1753695827927" duration="97972000" />
     </task>
     <servers />
   </component>

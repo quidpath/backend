@@ -1,7 +1,10 @@
 # authentication/views/user.py
 # authentication/views/user.py
+import json
+
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
@@ -20,24 +23,24 @@ def user_profile(request):
         "last_login": user.last_login,
     })
 
-
+@csrf_exempt
 def refresh_token(request):
     """
-    Refresh JWT token using refresh token
+    Refresh JWT token using refresh token only — without trying to extract user from expired access token.
     """
-    data, metadata = get_clean_data(request)
-    refresh_token = data.get("refresh")
-    if not refresh_token:
-        return JsonResponse({"error": "refresh token required"}, status=400)
+    try:
+        body = json.loads(request.body)
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    refresh_token_str = body.get("refresh")
+    if not refresh_token_str:
+        return JsonResponse({"error": "Refresh token required"}, status=400)
 
     try:
-        token = RefreshToken(refresh_token)
-        new_access = str(token.access_token)
+        token = RefreshToken(refresh_token_str)
+        access_token = str(token.access_token)
 
-        # If authenticated, log it
-        if request.user.is_authenticated:
-            TransactionLogBase.log("TOKEN_REFRESH", user=request.user, message="Token refreshed")
-
-        return JsonResponse({"access": new_access})
-    except Exception:
-        return JsonResponse({"error": "invalid refresh token"}, status=401)
+        return JsonResponse({"access": access_token})
+    except Exception as e:
+        return JsonResponse({"error": "Invalid or expired refresh token"}, status=401)

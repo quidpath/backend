@@ -11,14 +11,14 @@ from django.conf import settings
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 
+from OrgAuth.templates.CorporateTempMgt import TemplateManagementEngine
 from quidpath_backend.core.Services.notification_service import NotificationTypeService, NotificationService
-from quidpath_backend.core.Services.organisation_service import OrganisationService
+from quidpath_backend.core.Services.organisation_service import CorporateService
 from quidpath_backend.core.Services.state_service import StateService
 
 log = logging.getLogger(__name__)
 
-
-class NotificationServiceHandler:
+class NotificationServiceHandler(TemplateManagementEngine):
     """
     Handles sending notifications (Email, future SMS, etc.)
     """
@@ -44,7 +44,7 @@ class NotificationServiceHandler:
                 notification_type = NotificationTypeService().get_or_create_type(notif_type_name)
 
                 # Get Organisation
-                organisation = OrganisationService().get_or_default(corporate_id)
+                organisation = CorporateService().get_or_default(corporate_id)
 
                 # Create notification record (state initially Completed)
                 notification_obj = NotificationService().create_notification(

@@ -1,6 +1,7 @@
 #register the models so that I can see them in the database
 from django.contrib import admin
 
+from .models.forgotPassword import ForgotPassword
 from .models.logbase import State, NotificationType, Notification, TransactionType, Transaction, Organisation
 from .models.permisssions import Permission
 from .models.role import Role
@@ -8,7 +9,7 @@ from .models.user import CustomUser
 
 @admin.register(CustomUser)
 class CustomUserAdmin(admin.ModelAdmin):
-    list_display = ('id', 'username', 'email','last_login', 'is_staff', 'is_active', 'date_joined','otp_code','last_otp_sent_at')
+    list_display = ('id', 'username', 'email','password','last_login', 'is_staff', 'is_active', 'date_joined','otp_code','last_otp_sent_at')
     search_fields = ('username', 'email')
     list_filter = ('is_staff', 'is_active')
 
@@ -32,9 +33,8 @@ class StateAdmin(admin.ModelAdmin):
 # ✅ NotificationType Admin
 @admin.register(NotificationType)
 class NotificationTypeAdmin(admin.ModelAdmin):
-    list_display = ("name", "description", "created_at", "updated_at")
+    list_display = ("id" ,"name", "description")
     search_fields = ("name",)
-    list_filter = ("created_at",)
 
 
 # ✅ Notification Admin
@@ -72,5 +72,12 @@ class TransactionAdmin(admin.ModelAdmin):
 class OrganisationAdmin(admin.ModelAdmin):
     list_display = ("name", "email", "phone", "created_at", "updated_at")
     search_fields = ("name", "email", "phone")
+    list_filter = ("created_at",)
+
+
+@admin.register(ForgotPassword)
+class ForgotPassword(admin.ModelAdmin):
+    list_display = ("id","user", "otp", "is_valid","is_verified", "used_at", "created_at")
+    search_fields = ("used_at", "created_at")
     list_filter = ("created_at",)
 

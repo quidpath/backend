@@ -1,71 +1,56 @@
-# core/utils/json_response.py
-from django.http import JsonResponse
-def standard_response(data, status=200):
-    return JsonResponse({'data': data}, status=status)
+import json
 
-def error_response(message, status=400):
-    return JsonResponse({'error': message}, status=status)
+from django.http import JsonResponse, HttpResponse
+from .registry import ServiceRegistry
 
-def success_response(message, status=200):
-    return JsonResponse({'success': message}, status=status)
+import json
+from uuid import UUID
 
-def not_found_response(message, status=404):
-    return JsonResponse({'not_found': message}, status=status)
+from .superserializer import json_super_serializer
 
-def unauthorized_response(message, status=401):
-    return JsonResponse({'unauthorized': message}, status=status)
 
-def forbidden_response(message, status=403):
-    return JsonResponse({'forbidden': message}, status=status)
+def uuid_converter(o):
+    if isinstance(o, UUID):
+        return str(o)
+    raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
 
-def conflict_response(message, status=409):
-    return JsonResponse({'conflict': message}, status=status)
+class ResponseProvider:
+	"""Provides standardized JSON responses.
 
-def server_error_response(message, status=500):
-    return JsonResponse({'server_error': message}, status=status)
+	Status Codes:
+	400 - Bad Request
+	200 - Success
+	401 - Unauthorized Access
+	500 - Internal Server Error
+	"""
 
-def bad_request_response(message, status=400):
-    return JsonResponse({'bad_request': message}, status=status)
+	def __init__(self, data=None, message=None, code=None):
+		self.data = data or {}
+		if message:
+			self.data["code"] = code
+			self.data["message"] = message
+		self.registry = ServiceRegistry()
 
-def method_not_allowed_response(message, status=405):
-    return JsonResponse({'method_not_allowed': message}, status=status)
+	def _response(self, status):
+		return JsonResponse(self.data, status=status, json_dumps_params={'default': json_super_serializer})
 
-def not_acceptable_response(message, status=406):
-    return JsonResponse({'not_acceptable': message}, status=status)
+	def success(self):
+		try:
+			# Use the custom encoder
+			json_data = json.dumps(self.data, default=uuid_converter)
+			return HttpResponse(json_data, content_type="application/json")
+		except Exception as e:
+			# Handle or log the error appropriately
+			return HttpResponse(json.dumps({"error": str(e)}), content_type="application/json")
 
-def request_timeout_response(message, status=408):
-    return JsonResponse({'request_timeout': message}, status=status)
+	def bad_request(self):
+		"""Return a bad request response (400)."""
+		return self._response(status=400)
 
-def length_required_response(message, status=411):
-    return JsonResponse({'length_required': message}, status=status)
+	def unauthorized(self):
+		"""Return an unauthorized response (401)."""
+		return self._response(status=401)
 
-def precondition_failed_response(message, status=412):
-    return JsonResponse({'precondition_failed': message}, status=status)
-
-def payload_too_large_response(message, status=413):
-    return JsonResponse({'payload_too_large': message}, status=status)
-
-def uri_too_long_response(message, status=414):
-    return JsonResponse({'uri_too_long': message}, status=status)
-
-def unsupported_media_type_response(message, status=415):
-    return JsonResponse({'unsupported_media_type': message}, status=status)
-
-def range_not_satisfiable_response(message, status=416):
-    return JsonResponse({'range_not_satisfiable': message}, status=status)
-
-def expectation_failed_response(message, status=417):
-    return JsonResponse({'expectation_failed': message}, status=status)
-
-def misdirected_request_response(message, status=421):
-    return JsonResponse({'misdirected_request': message}, status=status)
-
-def unprocessable_entity_response(message, status=422):
-    return JsonResponse({'unprocessable_entity': message}, status=status)
-
-def locked_response(message, status=423):
-    return JsonResponse({'locked': message}, status=status)
-
-def failed_dependency_response(message, status=424):
-    return JsonResponse({'failed_dependency': message}, status=status)
-
+	def exception(self):
+		"""Return an internal server error response (500)."""
+		return self._response(status=500)
