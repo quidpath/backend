@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'Authentication',
     "corsheaders",
     'OrgAuth',
+    'Banking',
 ]
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",

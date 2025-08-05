@@ -60,7 +60,7 @@ class TransactionTypeAdmin(admin.ModelAdmin):
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
     list_display = (
-        "reference", "transaction_type", "user", "amount",
+        "reference", "transaction_type", "message", "user", "amount",
         "state", "source_ip", "created_at"
     )
     search_fields = ("reference", "message", "user__username", "transaction_type__name")
