@@ -334,7 +334,8 @@ def update_bank_account(request):
         updated_account = registry.database(
             model_name="BankAccount",
             operation="update",
-            data={"id": account_id, **update_fields}
+            instance_id=account_id,
+            data=update_fields
         )
 
         # Log successful update
@@ -430,7 +431,8 @@ def delete_bank_account(request):
         # Perform soft delete
         deleted_account = registry.database(
             model_name="BankAccount",
-            operation="update",
+            operation="delete",
+            instance_id=account_id,
             data={"id": account_id, "is_active": False}
         )
 
