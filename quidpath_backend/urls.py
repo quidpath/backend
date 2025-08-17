@@ -23,5 +23,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('Authentication.urls')),
     path('', include('OrgAuth.urls')),
-    path('', include('Banking.urls'))
+    path('', include('Banking.urls')),
+    path('', include('Accounting.urls')),
 ]

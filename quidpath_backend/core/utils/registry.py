@@ -39,12 +39,11 @@ class ServiceRegistry:
         return data
 
     def serialize_instance(self, instance: Model) -> dict:
-        """
-        Convert a Django model instance into a JSON-serializable dictionary.
-        """
         data = {}
         for field in instance._meta.fields:
             value = getattr(instance, field.name)
+            if field.is_relation:
+                data[f"{field.name}_id"] = getattr(instance, f"{field.name}_id")
             data[field.name] = value.isoformat() if isinstance(value, datetime) else value
         return data
 
