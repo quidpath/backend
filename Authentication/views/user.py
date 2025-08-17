@@ -10,7 +10,6 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
-
 @login_required
 def user_profile(request):
     """

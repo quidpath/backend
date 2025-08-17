@@ -9,13 +9,14 @@ from Authentication.views.auth import (
     verify_otp
 )
 from Authentication.views.corpprofile import corporate_update_profile
+from Authentication.views.login_profile import get_profile
 from Authentication.views.register import register_user
-from Authentication.views.user import refresh_token, user_profile
+from Authentication.views.user import refresh_token
 
 urlpatterns = [
     path("login/", login_user, name="login"),
     path("register/", register_user, name="register"),
-    path("profile/", user_profile, name="profile"),
+    path("get_profile/", get_profile, name="profile"),
     path("token/refresh/", refresh_token, name="token_refresh"),
     path("logout/", logout_user, name="logout"),
     path("delete-user/", delete_user, name="delete_user"),

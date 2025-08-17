@@ -158,7 +158,6 @@ def logout_user(request):
 
     user.last_otp_sent_at = None
     user.otp_code = None
-    user.is_active = False
     user.save()
 
     TransactionLogBase.log("USER_LOGOUT", user=user, message="User logged out")

@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "corsheaders",
     'OrgAuth',
     'Banking',
+    'Accounting',
 ]
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -109,6 +110,9 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = '/media/'
 AUTH_USER_MODEL = "Authentication.CustomUser"
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
 CORS_ALLOW_HEADERS = list(default_headers) + [
     'authorization',
 ]
