@@ -10,7 +10,7 @@ from Accounting.models.purchases import PurchaseOrderLine, VendorBillLine, Purch
 from Accounting.models.sales import (
     Quotation, QuotationLine,
     ProformaInvoice, ProformaInvoiceLine,
-    Invoice, InvoiceLine,
+    Invoices, InvoiceLine,
     TaxRate
 )
 from Accounting.models.vendor import Vendor
@@ -53,7 +53,7 @@ class VendorAdmin(admin.ModelAdmin):
 
 @admin.register(TaxRate)
 class TaxRateAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'rate')
+    list_display = ('id', 'name')
     search_fields = ('name',)
     list_filter = ('name',)
 
@@ -74,8 +74,8 @@ class ProformaInvoiceAdmin(admin.ModelAdmin):
     inlines = [ProformaInvoiceLineInline]
 
 
-@admin.register(Invoice)
-class InvoiceAdmin(admin.ModelAdmin):
+@admin.register(Invoices)
+class InvoicesAdmin(admin.ModelAdmin):
     list_display = ('id', 'number', 'customer', 'date', 'status', 'due_date', 'salesperson')
     search_fields = ('number', '', 'customer__last_name', 'customer__company_name')
     list_filter = ('status', 'date', 'due_date')

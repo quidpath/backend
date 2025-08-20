@@ -5,22 +5,20 @@ from quidpath_backend.core.base_models.base import BaseModel
 
 
 class TaxRate(BaseModel):
-    NAMES = {
-        "exempt": "Exempt",
-        "zero_rated": "Zero Rated",
-        "general_rated": "General Rated"
-    }
-    RATE = {
-        "exempt": None,
-        "zero_rated": "0",
-        "general_rated": "16%"
-    }
-    name = models.CharField(max_length=255, choices=NAMES.items(), default=NAMES["general_rated"])
-    rate = models.CharField(max_length=255, choices=RATE.items(), default=RATE["general_rated"])
+    TAX_CHOICES = [
+        ("exempt", "Exempt (0%)"),
+        ("zero_rated", "Zero Rated (0%)"),
+        ("general_rated", "VAT (16%)"),
+    ]
+
+    name = models.CharField(
+        max_length=50,
+        choices=TAX_CHOICES,
+        default="general_rated"
+    )
 
     def __str__(self):
-        return f"{self.name} - {self.rate}"
-
+        return dict(self.TAX_CHOICES).get(self.name, self.name)
 
 class Quotation(BaseModel):
     STATUS = {
@@ -112,7 +110,7 @@ class ProformaInvoiceLine(BaseModel):
 
 
 
-class Invoice(BaseModel):
+class Invoices(BaseModel):
     STATUS = {
         "DRAFT": "DRAFT",
         "ISSUED": "ISSUED",
@@ -122,10 +120,10 @@ class Invoice(BaseModel):
         "CANCELLED": "CANCELLED",
     }
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="invoices")
-    corporate = models.ForeignKey(Corporate, on_delete= models.CASCADE, related_name= "invoices")
-    profoma_invoice = models.ForeignKey(ProformaInvoice, on_delete= models.SET_NULL, null=True, blank = True, related_name= "invoices")
+    corporate = models.ForeignKey(Corporate, on_delete=models.CASCADE, related_name="invoices")
+    proforma_invoice = models.ForeignKey(ProformaInvoice, on_delete=models.SET_NULL, null=True, blank=True, related_name="invoices")
     quotation = models.ForeignKey(Quotation, on_delete=models.SET_NULL, null=True, blank=True, related_name="invoices")
-    purchase_order = models.ForeignKey('PurchaseOrder', on_delete=models.SET_NULL, null=True, blank=True, related_name="invoices")
+    purchase_order = models.CharField(max_length=255, blank=True, null=True)
     date = models.DateField()
     number = models.CharField(max_length=255, unique=True)
     status = models.CharField(max_length=255, choices=STATUS.items(), default=STATUS["DRAFT"])
@@ -146,7 +144,7 @@ class Invoice(BaseModel):
 
 
 class InvoiceLine(BaseModel):
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="lines")
+    invoice = models.ForeignKey(Invoices, on_delete=models.CASCADE, related_name="lines")
     quotation_line = models.ForeignKey(QuotationLine, on_delete=models.SET_NULL, null=True, blank=True, related_name="invoice_lines")
     description = models.CharField(max_length=255)
     quantity = models.IntegerField()
