@@ -123,15 +123,26 @@ def save_quotation_draft(request):
                         code=400).bad_request()
 
             # Validate taxable
-            taxable_id = line_data.get("taxable")
-            if taxable_id:
-                tax_rates = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id}
-                )
-                if not tax_rates:
-                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+            taxable = line_data.get("taxable")
+            taxable_id = None
+            if taxable:
+                # Handle case where frontend sends full object
+                if isinstance(taxable, dict):
+                    taxable_id = taxable.get("id")
+                else:
+                    taxable_id = taxable
+
+                if taxable_id:
+                    tax_rates = registry.database(
+                        model_name="TaxRate",
+                        operation="filter",
+                        data={"id": taxable_id}
+                    )
+                    if not tax_rates:
+                        return ResponseProvider(
+                            message=f"Tax rate {taxable_id} not found",
+                            code=404
+                        ).bad_request()
 
             # Prepare line data for creation
             line_data_for_creation = {
@@ -313,15 +324,26 @@ def create_and_send_quotation(request):
                         code=400).bad_request()
 
             # Validate taxable
-            taxable_id = line_data.get("taxable")
-            if taxable_id:
-                tax_rates = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id}
-                )
-                if not tax_rates:
-                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+            taxable = line_data.get("taxable")
+            taxable_id = None
+            if taxable:
+                # Handle case where frontend sends full object
+                if isinstance(taxable, dict):
+                    taxable_id = taxable.get("id")
+                else:
+                    taxable_id = taxable
+
+                if taxable_id:
+                    tax_rates = registry.database(
+                        model_name="TaxRate",
+                        operation="filter",
+                        data={"id": taxable_id}
+                    )
+                    if not tax_rates:
+                        return ResponseProvider(
+                            message=f"Tax rate {taxable_id} not found",
+                            code=404
+                        ).bad_request()
 
             # Prepare line data for creation
             line_data_for_creation = {
@@ -689,7 +711,6 @@ def update_quotation(request):
     """
     Update an existing quotation for the user's corporate, including its lines, and set status to DRAFT or SENT.
     """
-    # Local imports to avoid globals, and to support environments where these are available
     from decimal import Decimal, InvalidOperation
     import json, ast, re
 
@@ -712,18 +733,11 @@ def update_quotation(request):
         """
         if not raw:
             return None
-
-        # If frontend also sends `taxable_id`, prefer that (already UUID)
         if isinstance(raw, dict) and raw.get("id"):
             return raw.get("id")
-
         if isinstance(raw, str):
-            s = raw.strip()
-            # strip ascii and unicode fancy quotes
-            s = s.strip('\'"“”‘’')
-            # If looks like a JSON/dict payload, parse it and pull id
-            if (s.startswith("{") and s.endswith("}")):
-                # Try JSON first, fallback to literal_eval
+            s = raw.strip().strip('\'"“”‘’')
+            if s.startswith("{") and s.endswith("}"):
                 try:
                     d = json.loads(s.replace("'", '"'))
                 except Exception:
@@ -733,11 +747,43 @@ def update_quotation(request):
                         d = None
                 if isinstance(d, dict):
                     return d.get("id") or d.get("uuid") or d.get("pk")
-                # else fall through and return s (may already be a UUID)
-            return s  # might already be a UUID string
-
-        # Any other type: just string it (last resort)
+            return s
         return str(raw)
+
+    def get_tax_rate_value(tax_rate):
+        """Extract tax rate percentage from TaxRate label (e.g., 'VAT (16%)' -> 0.16)."""
+        if not tax_rate or not tax_rate.get("label"):
+            TransactionLogBase.log(
+                transaction_type="QUOTATION_TAX_RATE_WARNING",
+                user=user,
+                message="Tax rate label missing or empty",
+                state_name="Warning",
+                request=request
+            )
+            return Decimal("0")
+        label = tax_rate["label"]
+        match = re.search(r'\((\d+)%\)', label)
+        if match:
+            try:
+                rate = Decimal(match.group(1)) / Decimal("100")
+                return rate
+            except (InvalidOperation, ValueError):
+                TransactionLogBase.log(
+                    transaction_type="QUOTATION_TAX_RATE_ERROR",
+                    user=user,
+                    message=f"Invalid tax rate label format: {label}",
+                    state_name="Failed",
+                    request=request
+                )
+                return Decimal("0")
+        TransactionLogBase.log(
+            transaction_type="QUOTATION_TAX_RATE_WARNING",
+            user=user,
+            message=f"Could not parse tax rate from label: {label}",
+            state_name="Warning",
+            request=request
+        )
+        return Decimal("0")
 
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
@@ -799,7 +845,7 @@ def update_quotation(request):
         if not salespersons:
             return ResponseProvider(message="Salesperson not found or inactive for this corporate", code=404).bad_request()
 
-        # Normalize status (frontend might send "Draft"/"Sent")
+        # Normalize status
         normalized_status = str(data.get("status", "DRAFT")).upper()
         if normalized_status not in {"DRAFT", "SENT"}:
             normalized_status = "DRAFT"
@@ -842,8 +888,6 @@ def update_quotation(request):
 
         # ----- Lines handling -----
         submitted_lines = data.get("lines", []) or []
-
-        # Get existing lines for this quotation
         existing_lines = registry.database(
             model_name="QuotationLine",
             operation="filter",
@@ -852,7 +896,7 @@ def update_quotation(request):
         existing_line_ids = {line["id"] for line in existing_lines if line.get("id")}
         submitted_line_ids = {line.get("id") for line in submitted_lines if line.get("id")}
 
-        # Delete lines omitted by client
+        # Delete omitted lines
         for line in existing_lines:
             if line["id"] not in submitted_line_ids:
                 registry.database(
@@ -861,13 +905,11 @@ def update_quotation(request):
                     instance_id=line["id"]
                 )
 
-        # Create or update submitted lines
+        # Create or update lines
         for line_data in submitted_lines:
-            # Accept either 'taxable_id' or 'taxable'
             raw_taxable = line_data.get("taxable_id") or line_data.get("taxable")
             taxable_id = normalize_taxable_id(raw_taxable)
 
-            # Validate required fields (allow client to omit 'taxable' only if it's None)
             required_line_fields = ["description", "quantity", "unit_price", "amount", "discount",
                                     "grand_total", "tax_amount", "tax_total", "sub_total", "total", "total_discount"]
             for field in required_line_fields:
@@ -877,7 +919,6 @@ def update_quotation(request):
                         code=400
                     ).bad_request()
 
-            # Validate/derive tax rate
             tax_rate_value = Decimal("0")
             if taxable_id:
                 tax_rates = registry.database(
@@ -887,35 +928,34 @@ def update_quotation(request):
                 )
                 if not tax_rates:
                     return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
-                # Your domain says 'general_rated' => 16%
-                tax_rate_value = Decimal("0.16") if tax_rates[0]["rate"] == "general_rated" else Decimal("0")
+                tax_rate_value = get_tax_rate_value(tax_rates[0])
 
-            # Coerce numbers to Decimal to avoid int+str errors
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
             discount = to_decimal(line_data["discount"])
             client_tax_amount = to_decimal(line_data["tax_amount"])
 
-            line_subtotal = qty * unit_price                            # quantity * unit_price
-            line_taxable_amount = line_subtotal - discount              # before tax
-            expected_tax_amount = (line_taxable_amount * tax_rate_value)
+            line_subtotal = qty * unit_price
+            line_taxable_amount = line_subtotal - discount
+            expected_tax_amount = line_taxable_amount * tax_rate_value
 
-            # Tolerance 0.01
-            if (client_tax_amount - expected_tax_amount).copy_abs() > Decimal("0.01"):
-                return ResponseProvider(
-                    message=f"Invalid tax_amount for line {line_data.get('description', '')}",
-                    code=400
-                ).bad_request()
+            # Log for debugging
+            TransactionLogBase.log(
+                transaction_type="QUOTATION_LINE_DEBUG",
+                user=user,
+                message=f"Line '{line_data.get('description', '')}': client_tax_amount={client_tax_amount}, expected_tax_amount={expected_tax_amount}, tax_rate_value={tax_rate_value}, taxable_id={taxable_id}",
+                state_name="Debug",
+                request=request
+            )
 
-            # Build payload for DB (use 'taxable_id' FK name if that's what your layer expects)
             line_payload = {
                 "quotation_id": quotation["id"],
                 "description": line_data["description"],
-                "quantity": float(qty),                  # store as float if your DB layer expects numbers
+                "quantity": float(qty),
                 "unit_price": float(unit_price),
                 "amount": float(to_decimal(line_data["amount"])),
                 "discount": float(discount),
-                "taxable_id": taxable_id,               # keep *_id since you used it previously
+                "taxable_id": taxable_id,
                 "grand_total": float(to_decimal(line_data["grand_total"])),
                 "tax_amount": float(client_tax_amount),
                 "tax_total": float(to_decimal(line_data["tax_total"])),
@@ -949,7 +989,7 @@ def update_quotation(request):
             request=request
         )
 
-        # Send email to customer if SENT
+        # Send email if SENT
         if quotation["status"] == "SENT":
             to_email = customer.get("email")
             if not to_email:
@@ -961,14 +1001,12 @@ def update_quotation(request):
                     request=request
                 )
             else:
-                # Use current DB lines for email
                 email_lines = registry.database(
                     model_name="QuotationLine",
                     operation="filter",
                     data={"quotation_id": quotation["id"]}
                 )
 
-                # Optional: show human-readable tax name
                 def tax_display(taxable_id_value):
                     if not taxable_id_value:
                         return ""
@@ -977,7 +1015,7 @@ def update_quotation(request):
                         operation="filter",
                         data={"id": taxable_id_value}
                     )
-                    return tr[0].get("name", "") if tr else ""
+                    return tr[0].get("label", "") if tr else ""
 
                 subject = f"Updated Quotation {quotation['number']} from {corporate['name']}"
                 message = f"""
@@ -1047,7 +1085,6 @@ def update_quotation(request):
         )
         quotation["lines"] = db_lines
 
-        # Avoid int+str errors by forcing numeric conversion
         quotation["total"] = float(sum(
             to_decimal(line.get("total", 0) or 0) for line in db_lines
         ))

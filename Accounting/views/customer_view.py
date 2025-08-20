@@ -151,26 +151,27 @@ def delete_customer(request):
 @csrf_exempt
 def get_tax_rate(request):
     try:
-        # Assuming get_clean_data extracts query params/body
         data, metadata = get_clean_data(request)
 
-        # Initialize ServiceRegistry (your custom abstraction)
         registry = ServiceRegistry()
 
-        # Fetch tax rates using ServiceRegistry
-        # Assuming it returns a queryset or list of TaxRate objects
+        # Fetch tax rates
         tax_rates = TaxRate.objects.filter(**data)
 
         # Convert to JSON-friendly format
         serialized_tax_rates = [
             {
-                'id': str(tr.id),  # UUID to string
-                'name': tr.name,
-                'rate': tr.rate if tr.rate is not None else '0%'
-            } for tr in tax_rates
+                "id": str(tr.id),   # UUID to string
+                "code": tr.name,    # e.g. "general_rated"
+                "label": dict(TaxRate.TAX_CHOICES).get(tr.name, tr.name)  # e.g. "VAT (16%)"
+            }
+            for tr in tax_rates
         ]
 
-        return ResponseProvider({'tax_rates': serialized_tax_rates}, code=200).success()
+        return ResponseProvider(serialized_tax_rates, code=200).success()
 
     except Exception as e:
-        return ResponseProvider({'error': f'Failed to fetch tax rates: {str(e)}'}, code=500).exception()
+        return ResponseProvider(
+            {"error": f"Failed to fetch tax rates: {str(e)}"},
+            code=500
+        ).exception()
