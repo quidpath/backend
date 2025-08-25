@@ -89,7 +89,7 @@ def create_vendor_bill(request):
     Expected data:
     - vendor: UUID of the vendor
     - corporate_id: UUID of the corporate
-    - purchase_order: UUID of the purchase order (optional)
+    - purchase_order: Purchase order number (string, optional)
     - date: Date of the vendor bill (YYYY-MM-DD)
     - number: Vendor bill number (unique)
     - due_date: Due date of the vendor bill (YYYY-MM-DD)
@@ -97,7 +97,11 @@ def create_vendor_bill(request):
     - comments: Comments (optional)
     - terms: Payment terms (optional)
     - lines: List of dictionaries, each containing fields for VendorBillLine
-      - description ○ quantity ○ unit_price ○ discount ○ taxable_id
+      - description
+      - quantity
+      - unit_price
+      - discount
+      - taxable_id
       - purchase_order_line: UUID of the purchase order line (optional)
     """
     data, metadata = get_clean_data(request)
@@ -145,15 +149,17 @@ def create_vendor_bill(request):
         if not created_by_users:
             return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
 
-        purchase_order_id = data.get("purchase_order")
-        if purchase_order_id:
+        purchase_order_number = data.get("purchase_order")
+        purchase_order_id = None
+        if purchase_order_number:
             purchase_orders = registry.database(
                 model_name="PurchaseOrder",
                 operation="filter",
-                data={"id": purchase_order_id, "corporate_id": corporate_id}
+                data={"number": purchase_order_number, "corporate_id": corporate_id}
             )
             if not purchase_orders:
-                return ResponseProvider(message="Purchase order not found for this corporate", code=404).bad_request()
+                return ResponseProvider(message=f"Purchase order with number {purchase_order_number} not found for this corporate", code=404).bad_request()
+            purchase_order_id = purchase_orders[0]["id"]
 
         sub_total = Decimal('0.00')
         tax_total = Decimal('0.00')
@@ -183,7 +189,7 @@ def create_vendor_bill(request):
                 tax_rate_value = Decimal('0')
 
             purchase_order_line_id = line_data.get("purchase_order_line")
-            if purchase_order_line_id:
+            if purchase_order_line_id and purchase_order_id:
                 po_lines = registry.database(
                     model_name="PurchaseOrderLine",
                     operation="filter",
