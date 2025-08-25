@@ -1,19 +1,94 @@
-from decimal import Decimal
-
+from decimal import Decimal, InvalidOperation
+import json
+import ast
+import re
 from django.views.decorators.csrf import csrf_exempt
+from django.db import transaction
 from collections import Counter
-
 from quidpath_backend import settings
 from quidpath_backend.core.utils.DocsEmail import DocumentNotificationHandler
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from django.views.decorators.csrf import csrf_exempt
+
+
+def to_decimal(val, default="0"):
+    """Safely convert any incoming value to Decimal."""
+    if val is None:
+        return Decimal(default)
+    try:
+        return Decimal(str(val))
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal(default)
+
+
+def normalize_taxable_id(raw):
+    """
+    Accepts any of: UUID string, dict with {'id': ...}, stringified dict.
+    Returns UUID string or None.
+    """
+    if not raw:
+        return None
+    if isinstance(raw, dict) and raw.get("id"):
+        return raw.get("id")
+    if isinstance(raw, str):
+        s = raw.strip().strip('\'"“”‘’')
+        if s.startswith("{") and s.endswith("}"):
+            try:
+                d = json.loads(s.replace("'", '"'))
+            except Exception:
+                try:
+                    d = ast.literal_eval(s)
+                except Exception:
+                    d = None
+                if isinstance(d, dict):
+                    return d.get("id") or d.get("uuid") or d.get("pk")
+            return s
+        return str(raw)
+
+
+def get_tax_rate_value(tax_rate):
+    """Extract tax rate percentage from TaxRate label (e.g., 'VAT (16%)' -> 0.16)."""
+    if not tax_rate or not tax_rate.get("name"):
+        TransactionLogBase.log(
+            transaction_type="QUOTATION_TAX_RATE_WARNING",
+            user=None,
+            message="Tax rate name missing or empty",
+            state_name="Warning",
+            request=None
+        )
+        return Decimal("0")
+    label = tax_rate["name"]
+    match = re.search(r'\((\d+)%\)', label)
+    if match:
+        try:
+            rate = Decimal(match.group(1)) / Decimal("100")
+            return rate
+        except (InvalidOperation, ValueError):
+            TransactionLogBase.log(
+                transaction_type="QUOTATION_TAX_RATE_ERROR",
+                user=None,
+                message=f"Invalid tax rate label format: {label}",
+                state_name="Failed",
+                request=None
+            )
+            return Decimal("0")
+    TransactionLogBase.log(
+        transaction_type="QUOTATION_TAX_RATE_WARNING",
+        user=None,
+        message=f"Could not parse tax rate from label: {label}",
+        state_name="Warning",
+        request=None
+    )
+    return Decimal("0")
+
+
 @csrf_exempt
 def save_quotation_draft(request):
     """
     Save a new quotation as draft for the user's corporate, including its lines.
+    Calculates sub_total, tax_total, total, and total_discount for the quotation.
 
     Expected data:
     - customer: UUID of the customer
@@ -27,22 +102,13 @@ def save_quotation_draft(request):
     - fob: FOB terms
     - comments: Comments (optional)
     - T_and_C: Terms and Conditions (optional)
-    - lines: List of dictionaries, each containing fields for QuotationLine (e.g., description, quantity, etc.)
-
-    Returns:
-    - 201: Quotation draft saved successfully with lines
-    - 400: Bad request (missing required fields or invalid data)
-    - 401: Unauthorized (user not authenticated)
-    - 404: Customer, salesperson, or taxable not found
-    - 500: Internal server error
+    - lines: List of dictionaries, each containing fields for QuotationLine
     """
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
-
     if not user:
         return ResponseProvider(message="User not authenticated", code=401).unauthorized()
 
-    # Get user ID from metadata
     user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
@@ -50,28 +116,25 @@ def save_quotation_draft(request):
     try:
         registry = ServiceRegistry()
 
-        # Query CorporateUser table to get corporate_id using user_id
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
             data={"customuser_ptr_id": user_id, "is_active": True}
         )
-
         if not corporate_users:
             return ResponseProvider(message="User has no corporate association", code=400).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
-
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
-        required_fields = ["customer", "date", "number", "valid_until", "ship_date", "ship_via", "terms", "fob"]
+        required_fields = ["customer", "date", "number", "valid_until", "ship_date", "ship_via", "terms", "fob",
+                           "salesperson"]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
                                         code=400).bad_request()
 
-        # Validate customer
         customers = registry.database(
             model_name="Customer",
             operation="filter",
@@ -80,7 +143,6 @@ def save_quotation_draft(request):
         if not customers:
             return ResponseProvider(message="Customer not found or inactive for this corporate", code=404).bad_request()
 
-        # Validate salesperson
         salespersons = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -90,83 +152,108 @@ def save_quotation_draft(request):
             return ResponseProvider(message="Salesperson not found or inactive for this corporate",
                                     code=404).bad_request()
 
-        # Create quotation as draft (status defaults to DRAFT in model)
-        quotation_data = {
-            "customer_id": data["customer"],
-            "corporate_id": corporate_id,
-            "date": data["date"],
-            "number": data["number"],
-            "valid_until": data["valid_until"],
-            "comments": data.get("comments", ""),
-            "T_and_C": data.get("T_and_C", ""),
-            "ship_date": data["ship_date"],
-            "ship_via": data["ship_via"],
-            "terms": data["terms"],
-            "fob": data["fob"],
-            "salesperson_id": data["salesperson"],
-        }
-        quotation = registry.database(
-            model_name="Quotation",
-            operation="create",
-            data=quotation_data
-        )
-
-        # Create quotation lines
         lines = data.get("lines", [])
+        sub_total = Decimal('0.00')
+        tax_total = Decimal('0.00')
+        total_discount = Decimal('0.00')
+        total = Decimal('0.00')
+
         for line_data in lines:
-            required_line_fields = ["description", "quantity", "unit_price", "amount", "discount", "taxable",
-                                    "grand_total", "tax_amount", "tax_total", "sub_total", "total", "total_discount"]
+            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable"]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Quotation line field {field.replace('_', ' ').title()} is required",
                         code=400).bad_request()
 
-            # Validate taxable
-            taxable = line_data.get("taxable")
-            taxable_id = None
-            if taxable:
-                # Handle case where frontend sends full object
-                if isinstance(taxable, dict):
-                    taxable_id = taxable.get("id")
-                else:
-                    taxable_id = taxable
+            taxable_id = normalize_taxable_id(line_data.get("taxable"))
+            if taxable_id:
+                tax_rates = registry.database(
+                    model_name="TaxRate",
+                    operation="filter",
+                    data={"id": taxable_id}
+                )
+                if not tax_rates:
+                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                tax_rate_value = get_tax_rate_value(tax_rates[0])
+            else:
+                tax_rate_value = Decimal('0')
 
+            qty = to_decimal(line_data["quantity"])
+            unit_price = to_decimal(line_data["unit_price"])
+            discount = to_decimal(line_data["discount"])
+            line_subtotal = qty * unit_price
+            line_taxable_amount = line_subtotal - discount
+            line_tax_amount = line_taxable_amount * tax_rate_value
+            line_total = line_taxable_amount + line_tax_amount
+
+            sub_total += line_subtotal
+            tax_total += line_tax_amount
+            total_discount += discount
+            total += line_total
+
+        with transaction.atomic():
+            quotation_data = {
+                "customer_id": data["customer"],
+                "corporate_id": corporate_id,
+                "date": data["date"],
+                "number": data["number"],
+                "valid_until": data["valid_until"],
+                "comments": data.get("comments", ""),
+                "T_and_C": data.get("T_and_C", ""),
+                "ship_date": data["ship_date"],
+                "ship_via": data["ship_via"],
+                "terms": data["terms"],
+                "fob": data["fob"],
+                "salesperson_id": data["salesperson"],
+                "status": "DRAFT",
+            }
+            quotation = registry.database(
+                model_name="Quotation",
+                operation="create",
+                data=quotation_data
+            )
+
+            for line_data in lines:
+                taxable_id = normalize_taxable_id(line_data.get("taxable"))
+                tax_rate_value = Decimal('0')
                 if taxable_id:
                     tax_rates = registry.database(
                         model_name="TaxRate",
                         operation="filter",
                         data={"id": taxable_id}
                     )
-                    if not tax_rates:
-                        return ResponseProvider(
-                            message=f"Tax rate {taxable_id} not found",
-                            code=404
-                        ).bad_request()
+                    tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
 
-            # Prepare line data for creation
-            line_data_for_creation = {
-                "quotation_id": quotation["id"],
-                "description": line_data["description"],
-                "quantity": line_data["quantity"],
-                "unit_price": line_data["unit_price"],
-                "amount": line_data["amount"],
-                "discount": line_data["discount"],
-                "taxable_id": taxable_id,
-                "grand_total": line_data["grand_total"],
-                "tax_amount": line_data["tax_amount"],
-                "tax_total": line_data["tax_total"],
-                "sub_total": line_data["sub_total"],
-                "total": line_data["total"],
-                "total_discount": line_data["total_discount"],
-            }
-            registry.database(
-                model_name="QuotationLine",
-                operation="create",
-                data=line_data_for_creation
-            )
+                qty = to_decimal(line_data["quantity"])
+                unit_price = to_decimal(line_data["unit_price"])
+                discount = to_decimal(line_data["discount"])
+                line_subtotal = qty * unit_price
+                line_taxable_amount = line_subtotal - discount
+                line_tax_amount = line_taxable_amount * tax_rate_value
+                line_total = line_taxable_amount + line_tax_amount
 
-        # Log creation
+                line_data_for_creation = {
+                    "quotation_id": quotation["id"],
+                    "description": line_data["description"],
+                    "quantity": float(qty),
+                    "unit_price": float(unit_price),
+                    "amount": float(line_subtotal),
+                    "discount": float(discount),
+                    "taxable_id": taxable_id,
+                    "grand_total": float(line_total),
+                    "tax_amount": float(line_tax_amount),
+                    "tax_total": float(line_tax_amount),
+                    "sub_total": float(line_subtotal),
+                    "total": float(line_total),
+                    "total_discount": float(discount),
+                }
+                registry.database(
+                    model_name="QuotationLine",
+                    operation="create",
+                    data=line_data_for_creation
+                )
+
         TransactionLogBase.log(
             transaction_type="QUOTATION_DRAFT_SAVED",
             user=user,
@@ -176,7 +263,6 @@ def save_quotation_draft(request):
             request=request
         )
 
-        # Fetch lines for the response
         lines = registry.database(
             model_name="QuotationLine",
             operation="filter",
@@ -200,10 +286,12 @@ def save_quotation_draft(request):
         )
         return ResponseProvider(message="An error occurred while saving quotation draft", code=500).exception()
 
+
 @csrf_exempt
 def create_and_send_quotation(request):
     """
-    Create a new quotation for the user's corporate, including its lines, set status to SENT, and send email to customer.
+    Create a new quotation for the user's corporate, set status to SENT, and send email to customer.
+    Calculates sub_total, tax_total, total, and total_discount for the quotation.
 
     Expected data:
     - customer: UUID of the customer
@@ -217,21 +305,13 @@ def create_and_send_quotation(request):
     - fob: FOB terms
     - comments: Comments (optional)
     - T_and_C: Terms and Conditions (optional)
-    - lines: List of dictionaries, each containing fields for QuotationLine (e.g., description, quantity, etc.)
-
-    Returns:
-    - 201: Quotation created and sent successfully with lines
-    - 400: Bad request (missing required fields or invalid data)
-    - 401: Unauthorized (user not authenticated)
-    - 404: Customer, salesperson, or taxable not found
-    - 500: Internal server error
+    - lines: List of dictionaries, each containing fields for QuotationLine
     """
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
         return ResponseProvider(message="User not authenticated", code=401).unauthorized()
 
-    # Get user ID from metadata
     user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
@@ -239,28 +319,25 @@ def create_and_send_quotation(request):
     try:
         registry = ServiceRegistry()
 
-        # Query CorporateUser table to get corporate_id using user_id
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
             data={"customuser_ptr_id": user_id, "is_active": True}
         )
-
         if not corporate_users:
             return ResponseProvider(message="User has no corporate association", code=400).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
-
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
-        required_fields = ["customer", "date", "number", "valid_until", "ship_date", "ship_via", "terms", "fob"]
+        required_fields = ["customer", "date", "number", "valid_until", "ship_date", "ship_via", "terms", "fob",
+                           "salesperson"]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
                                         code=400).bad_request()
 
-        # Validate customer
         customers = registry.database(
             model_name="Customer",
             operation="filter",
@@ -270,7 +347,6 @@ def create_and_send_quotation(request):
             return ResponseProvider(message="Customer not found or inactive for this corporate", code=404).bad_request()
         customer = customers[0]
 
-        # Validate salesperson
         salespersons = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -280,7 +356,6 @@ def create_and_send_quotation(request):
             return ResponseProvider(message="Salesperson not found or inactive for this corporate",
                                     code=404).bad_request()
 
-        # Fetch corporate for email
         corporates = registry.database(
             model_name="Corporate",
             operation="filter",
@@ -290,84 +365,112 @@ def create_and_send_quotation(request):
             return ResponseProvider(message="Corporate not found", code=404).bad_request()
         corporate = corporates[0]
 
-        # Create quotation with status SENT
-        quotation_data = {
-            "customer_id": data["customer"],
-            "corporate_id": corporate_id,
-            "date": data["date"],
-            "number": data["number"],
-            "valid_until": data["valid_until"],
-            "comments": data.get("comments", ""),
-            "T_and_C": data.get("T_and_C", ""),
-            "ship_date": data["ship_date"],
-            "ship_via": data["ship_via"],
-            "terms": data["terms"],
-            "fob": data["fob"],
-            "salesperson_id": data["salesperson"],
-            "status": "SENT",
-        }
-        quotation = registry.database(
-            model_name="Quotation",
-            operation="create",
-            data=quotation_data
-        )
-
-        # Create quotation lines
         lines = data.get("lines", [])
+        sub_total = Decimal('0.00')
+        tax_total = Decimal('0.00')
+        total_discount = Decimal('0.00')
+        total = Decimal('0.00')
+
         for line_data in lines:
-            required_line_fields = ["description", "quantity", "unit_price", "amount", "discount", "taxable",
-                                    "grand_total", "tax_amount", "tax_total", "sub_total", "total", "total_discount"]
+            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable"]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Quotation line field {field.replace('_', ' ').title()} is required",
                         code=400).bad_request()
 
-            # Validate taxable
-            taxable = line_data.get("taxable")
-            taxable_id = None
-            if taxable:
-                # Handle case where frontend sends full object
-                if isinstance(taxable, dict):
-                    taxable_id = taxable.get("id")
-                else:
-                    taxable_id = taxable
+            taxable_id = normalize_taxable_id(line_data.get("taxable"))
+            if taxable_id:
+                tax_rates = registry.database(
+                    model_name="TaxRate",
+                    operation="filter",
+                    data={"id": taxable_id}
+                )
+                if not tax_rates:
+                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                tax_rate_value = get_tax_rate_value(tax_rates[0])
+            else:
+                tax_rate_value = Decimal('0')
 
+            qty = to_decimal(line_data["quantity"])
+            unit_price = to_decimal(line_data["unit_price"])
+            discount = to_decimal(line_data["discount"])
+            line_subtotal = qty * unit_price
+            line_taxable_amount = line_subtotal - discount
+            line_tax_amount = line_taxable_amount * tax_rate_value
+            line_total = line_taxable_amount + line_tax_amount
+
+            sub_total += line_subtotal
+            tax_total += line_tax_amount
+            total_discount += discount
+            total += line_total
+
+        with transaction.atomic():
+            quotation_data = {
+                "customer_id": data["customer"],
+                "corporate_id": corporate_id,
+                "date": data["date"],
+                "number": data["number"],
+                "valid_until": data["valid_until"],
+                "comments": data.get("comments", ""),
+                "T_and_C": data.get("T_and_C", ""),
+                "ship_date": data["ship_date"],
+                "ship_via": data["ship_via"],
+                "terms": data["terms"],
+                "fob": data["fob"],
+                "salesperson_id": data["salesperson"],
+                "status": "SENT",
+                "sub_total": float(sub_total),
+                "tax_total": float(tax_total),
+                "total": float(total),
+                "total_discount": float(total_discount),
+            }
+            quotation = registry.database(
+                model_name="Quotation",
+                operation="create",
+                data=quotation_data
+            )
+
+            for line_data in lines:
+                taxable_id = normalize_taxable_id(line_data.get("taxable"))
+                tax_rate_value = Decimal('0')
                 if taxable_id:
                     tax_rates = registry.database(
                         model_name="TaxRate",
                         operation="filter",
                         data={"id": taxable_id}
                     )
-                    if not tax_rates:
-                        return ResponseProvider(
-                            message=f"Tax rate {taxable_id} not found",
-                            code=404
-                        ).bad_request()
+                    tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
 
-            # Prepare line data for creation
-            line_data_for_creation = {
-                "quotation_id": quotation["id"],
-                "description": line_data["description"],
-                "quantity": line_data["quantity"],
-                "unit_price": line_data["unit_price"],
-                "amount": line_data["amount"],
-                "discount": line_data["discount"],
-                "taxable_id": taxable_id,
-                "grand_total": line_data["grand_total"],
-                "tax_amount": line_data["tax_amount"],
-                "tax_total": line_data["tax_total"],
-                "sub_total": line_data["sub_total"],
-                "total": line_data["total"],
-                "total_discount": line_data["total_discount"],
-            }
-            registry.database(
-                model_name="QuotationLine",
-                operation="create",
-                data=line_data_for_creation
-            )
+                qty = to_decimal(line_data["quantity"])
+                unit_price = to_decimal(line_data["unit_price"])
+                discount = to_decimal(line_data["discount"])
+                line_subtotal = qty * unit_price
+                line_taxable_amount = line_subtotal - discount
+                line_tax_amount = line_taxable_amount * tax_rate_value
+                line_total = line_taxable_amount + line_tax_amount
 
-        # Log creation
+                line_data_for_creation = {
+                    "quotation_id": quotation["id"],
+                    "description": line_data["description"],
+                    "quantity": float(qty),
+                    "unit_price": float(unit_price),
+                    "amount": float(line_subtotal),
+                    "discount": float(discount),
+                    "taxable_id": taxable_id,
+                    "grand_total": float(line_total),
+                    "tax_amount": float(line_tax_amount),
+                    "tax_total": float(line_tax_amount),
+                    "sub_total": float(line_subtotal),
+                    "total": float(line_total),
+                    "total_discount": float(discount),
+                }
+                registry.database(
+                    model_name="QuotationLine",
+                    operation="create",
+                    data=line_data_for_creation
+                )
+
         TransactionLogBase.log(
             transaction_type="QUOTATION_CREATED_AND_SENT",
             user=user,
@@ -377,7 +480,6 @@ def create_and_send_quotation(request):
             request=request
         )
 
-        # Fetch lines for the response and email
         lines = registry.database(
             model_name="QuotationLine",
             operation="filter",
@@ -385,17 +487,8 @@ def create_and_send_quotation(request):
         )
         quotation["lines"] = lines
 
-        # Send email to customer using DocumentNotificationHandler
         to_email = customer.get("email")
-        if not to_email:
-            TransactionLogBase.log(
-                transaction_type="QUOTATION_SEND_FAILED",
-                user=user,
-                message="Customer has no email",
-                state_name="Failed",
-                request=request
-            )
-        else:
+        if to_email:
             subject = f"Quotation {quotation['number']} from {corporate['name']}"
             message = f"""
             <html>
@@ -411,11 +504,21 @@ def create_and_send_quotation(request):
             <p><strong>FOB:</strong> {quotation['fob']}</p>
             <p><strong>Comments:</strong> {quotation['comments']}</p>
             <p><strong>Terms and Conditions:</strong> {quotation['T_and_C']}</p>
+            <p><strong>Sub Total:</strong> {quotation['sub_total']}</p>
+            <p><strong>Tax Total:</strong> {quotation['tax_total']}</p>
+            <p><strong>Total Discount:</strong> {quotation['total_discount']}</p>
+            <p><strong>Total:</strong> {quotation['total']}</p>
             <h3>Lines:</h3>
             <table border="1">
-            <tr><th>Description</th><th>Quantity</th><th>Unit Price</th><th>Amount</th><th>Discount</th><th>Taxable</th><th>Grand Total</th></tr>
+            <tr><th>Description</th><th>Quantity</th><th>Unit Price</th><th>Amount</th><th>Discount</th><th>Taxable</th><th>Total</th></tr>
             """
             for line in lines:
+                tax_rate = registry.database(
+                    model_name="TaxRate",
+                    operation="filter",
+                    data={"id": line.get("taxable_id")}
+                )
+                tax_label = tax_rate[0]["name"] if tax_rate else "N/A"
                 message += f"""
                 <tr>
                 <td>{line['description']}</td>
@@ -423,8 +526,8 @@ def create_and_send_quotation(request):
                 <td>{line['unit_price']}</td>
                 <td>{line['amount']}</td>
                 <td>{line['discount']}</td>
-                <td>{line.get('taxable_id', '')}</td>
-                <td>{line['grand_total']}</td>
+                <td>{tax_label}</td>
+                <td>{line['total']}</td>
                 </tr>
                 """
             message += f"""
@@ -470,6 +573,274 @@ def create_and_send_quotation(request):
         return ResponseProvider(message="An error occurred while creating and sending quotation", code=500).exception()
 
 
+@csrf_exempt
+def convert_quotation_to_invoice(request):
+    """
+    Convert a quotation to an invoice, mark the quotation as INVOICED, and create invoice lines.
+    Optionally send the invoice to the customer via email.
+
+    Expected data:
+    - quotation_id: UUID of the quotation
+    - date: Date of the invoice
+    - number: Invoice number (unique)
+    - due_date: Due date of the invoice
+    - comments: Comments (optional)
+    - terms: Payment terms (optional)
+    - send_email: Boolean to indicate if invoice should be emailed (default: False)
+
+    Returns:
+    - 201: Invoice created successfully
+    - 400: Bad request (missing required fields or invalid data)
+    - 401: Unauthorized (user not authenticated)
+    - 404: Quotation, customer, or salesperson not found
+    - 500: Internal server error
+    """
+    data, metadata = get_clean_data(request)
+    user = metadata.get("user")
+    if not user:
+        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    if not user_id:
+        return ResponseProvider(message="User ID not found", code=400).bad_request()
+
+    try:
+        registry = ServiceRegistry()
+
+        corporate_users = registry.database(
+            model_name="CorporateUser",
+            operation="filter",
+            data={"customuser_ptr_id": user_id, "is_active": True}
+        )
+        if not corporate_users:
+            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+
+        corporate_id = corporate_users[0]["corporate_id"]
+        if not corporate_id:
+            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+
+        required_fields = ["quotation_id", "date", "number", "due_date"]
+        for field in required_fields:
+            if field not in data:
+                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
+                                        code=400).bad_request()
+
+        quotations = registry.database(
+            model_name="Quotation",
+            operation="filter",
+            data={"id": data["quotation_id"], "corporate_id": corporate_id}
+        )
+        if not quotations:
+            return ResponseProvider(message="Quotation not found for this corporate", code=404).bad_request()
+        quotation = quotations[0]
+
+        if quotation["status"] == "INVOICED":
+            return ResponseProvider(message="Quotation is already invoiced", code=400).bad_request()
+
+        customers = registry.database(
+            model_name="Customer",
+            operation="filter",
+            data={"id": quotation["customer_id"], "corporate_id": corporate_id, "is_active": True}
+        )
+        if not customers:
+            return ResponseProvider(message="Customer not found or inactive for this corporate", code=404).bad_request()
+        customer = customers[0]
+
+        salespersons = registry.database(
+            model_name="CorporateUser",
+            operation="filter",
+            data={"id": quotation["salesperson_id"], "corporate_id": corporate_id, "is_active": True}
+        )
+        if not salespersons:
+            return ResponseProvider(message="Salesperson not found or inactive for this corporate",
+                                    code=404).bad_request()
+
+        corporates = registry.database(
+            model_name="Corporate",
+            operation="filter",
+            data={"id": corporate_id}
+        )
+        if not corporates:
+            return ResponseProvider(message="Corporate not found", code=404).bad_request()
+        corporate = corporates[0]
+
+        quotation_lines = registry.database(
+            model_name="QuotationLine",
+            operation="filter",
+            data={"quotation_id": quotation["id"]}
+        )
+        if not quotation_lines:
+            return ResponseProvider(message="No lines found for this quotation", code=400).bad_request()
+
+        with transaction.atomic():
+            invoice_data = {
+                "customer_id": quotation["customer_id"],
+                "corporate_id": corporate_id,
+                "quotation_id": quotation["id"],
+                "date": data["date"],
+                "number": data["number"],
+                "due_date": data["due_date"],
+                "comments": data.get("comments", quotation["comments"]),
+                "terms": data.get("terms", quotation["terms"]),
+                "salesperson_id": quotation["salesperson_id"],
+                "ship_date": quotation["ship_date"],
+                "ship_via": quotation["ship_via"],
+                "fob": quotation["fob"],
+                "status": "DRAFT",
+                "sub_total": quotation.get("sub_total", 0.00),
+                "tax_total": quotation.get("tax_total", 0.00),
+                "total": quotation.get("total", 0.00),
+                "total_discount": quotation.get("total_discount", 0.00),
+            }
+            invoice = registry.database(
+                model_name="Invoices",
+                operation="create",
+                data=invoice_data
+            )
+
+            for line in quotation_lines:
+                line_data = {
+                    "invoice_id": invoice["id"],
+                    "quotation_line_id": line["id"],
+                    "description": line["description"],
+                    "quantity": line["quantity"],
+                    "unit_price": line["unit_price"],
+                    "amount": line["amount"],
+                    "discount": line["discount"],
+                    "taxable_id": line["taxable_id"],
+                    "tax_amount": line["tax_amount"],
+                    "sub_total": line["sub_total"],
+                    "total": line["total"],
+                }
+                registry.database(
+                    model_name="InvoiceLine",
+                    operation="create",
+                    data=line_data
+                )
+
+            registry.database(
+                model_name="Quotation",
+                operation="update",
+                instance_id=quotation["id"],
+                data={"id": quotation["id"], "status": "INVOICED"}
+            )
+
+        TransactionLogBase.log(
+            transaction_type="QUOTATION_CONVERTED_TO_INVOICE",
+            user=user,
+            message=f"Quotation {quotation['number']} converted to invoice {invoice['number']} for corporate {corporate_id}",
+            state_name="Completed",
+            extra={"quotation_id": quotation["id"], "invoice_id": invoice["id"], "line_count": len(quotation_lines)},
+            request=request
+        )
+
+        invoice_lines = registry.database(
+            model_name="InvoiceLine",
+            operation="filter",
+            data={"invoice_id": invoice["id"]}
+        )
+        invoice["lines"] = invoice_lines
+
+        if data.get("send_email", False):
+            to_email = customer.get("email")
+            if not to_email:
+                TransactionLogBase.log(
+                    transaction_type="INVOICE_SEND_FAILED",
+                    user=user,
+                    message="Customer has no email",
+                    state_name="Failed",
+                    request=request
+                )
+            else:
+                subject = f"Invoice {invoice['number']} from {corporate['name']}"
+                message = f"""
+                <html>
+                <body>
+                <p>Dear {customer.get('name', 'Customer')},</p>
+                <p>We have issued the following invoice based on Quotation {quotation['number']}:</p>
+                <p><strong>Invoice Number:</strong> {invoice['number']}</p>
+                <p><strong>Date:</strong> {invoice['date']}</p>
+                <p><strong>Due Date:</strong> {invoice['due_date']}</p>
+                <p><strong>Ship Date:</strong> {invoice['ship_date']}</p>
+                <p><strong>Ship Via:</strong> {invoice['ship_via']}</p>
+                <p><strong>Terms:</strong> {invoice['terms']}</p>
+                <p><strong>FOB:</strong> {invoice['fob']}</p>
+                <p><strong>Comments:</strong> {invoice['comments']}</p>
+                <p><strong>Sub Total:</strong> {invoice['sub_total']}</p>
+                <p><strong>Tax Total:</strong> {invoice['tax_total']}</p>
+                <p><strong>Total Discount:</strong> {invoice['total_discount']}</p>
+                <p><strong>Total:</strong> {invoice['total']}</p>
+                <h3>Lines:</h3>
+                <table border="1">
+                <tr><th>Description</th><th>Quantity</th><th>Unit Price</th><th>Amount</th><th>Discount</th><th>Taxable</th><th>Total</th></tr>
+                """
+                for line in invoice_lines:
+                    tax_rate = registry.database(
+                        model_name="TaxRate",
+                        operation="filter",
+                        data={"id": line.get("taxable_id")}
+                    )
+                    tax_label = tax_rate[0]["name"] if tax_rate else "N/A"
+                    message += f"""
+                    <tr>
+                    <td>{line['description']}</td>
+                    <td>{line['quantity']}</td>
+                    <td>{line['unit_price']}</td>
+                    <td>{line['amount']}</td>
+                    <td>{line['discount']}</td>
+                    <td>{tax_label}</td>
+                    <td>{line['total']}</td>
+                    </tr>
+                    """
+                message += f"""
+                </table>
+                <p>Thank you for your business!</p>
+                <p>Best regards,<br>{corporate['name']}</p>
+                </body>
+                </html>
+                """
+                notification_handler = DocumentNotificationHandler()
+                notifications = [{
+                    "message_type": "EMAIL",
+                    "organisation_id": corporate_id,
+                    "destination": to_email,
+                    "message": message,
+                    "subject": subject,
+                }]
+                send_result = notification_handler.send_document_notification(notifications, trans=None,
+                                                                              attachment=None, cc=None)
+                if send_result != "success":
+                    TransactionLogBase.log(
+                        transaction_type="INVOICE_SEND_FAILED",
+                        user=user,
+                        message="Failed to send invoice email",
+                        state_name="Failed",
+                        request=request
+                    )
+                else:
+                    registry.database(
+                        model_name="Invoices",
+                        operation="update",
+                        instance_id=invoice["id"],
+                        data={"id": invoice["id"], "status": "ISSUED"}
+                    )
+                    invoice["status"] = "ISSUED"
+
+        return ResponseProvider(
+            message="Invoice created successfully",
+            data=invoice,
+            code=201
+        ).success()
+
+    except Exception as e:
+        TransactionLogBase.log(
+            transaction_type="QUOTATION_CONVERT_TO_INVOICE_FAILED",
+            user=user,
+            message=str(e),
+            state_name="Failed",
+            request=request
+        )
+        return ResponseProvider(message="An error occurred while converting quotation to invoice", code=500).exception()
 
 @csrf_exempt
 def list_quotations(request):

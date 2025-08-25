@@ -6,12 +6,11 @@ from django.core.exceptions import ValidationError
 from django.forms.models import BaseInlineFormSet
 
 from Accounting.models.customer import Customer
-from Accounting.models.purchases import PurchaseOrderLine, VendorBillLine, PurchaseOrder, VendorBill
 from Accounting.models.sales import (
     Quotation, QuotationLine,
     ProformaInvoice, ProformaInvoiceLine,
     Invoices, InvoiceLine,
-    TaxRate
+    TaxRate, PurchaseOrderLine, VendorBillLine, PurchaseOrder, VendorBill
 )
 from Accounting.models.vendor import Vendor
 

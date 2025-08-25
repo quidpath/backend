@@ -1,11 +1,13 @@
 from django.urls import path
 
 from Accounting.views.Quote import list_quotations, get_quotation, update_quotation, delete_quotation, \
-    create_and_send_quotation, save_quotation_draft
+    create_and_send_quotation, save_quotation_draft, convert_quotation_to_invoice
 from Accounting.views.customer_view import create_customer, list_customers, update_customer, delete_customer, \
     get_tax_rate
 from Accounting.views.invoice import save_invoice_draft, create_and_send_invoice, list_invoices, get_invoice, \
     update_invoice, delete_invoice
+from Accounting.views.lpo import list_purchase_orders, get_purchase_order, update_purchase_order, \
+    delete_purchase_order, save_purchase_order_draft, create_and_send_purchase_order
 from Accounting.views.vendor_view import create_vendor, list_vendors, update_vendor, delete_vendor
 
 urlpatterns = [
@@ -26,6 +28,7 @@ urlpatterns = [
     path("quotation/get/", get_quotation, name="get_quotation"),
     path("quotation/update/", update_quotation, name="update_quotation"),
     path("quotation/delete/", delete_quotation, name="delete_quotation"),
+    path("quotation/invoice-quote/", convert_quotation_to_invoice, name="convert_quote_to_invoice"),
 
     path("invoice/save-draft/", save_invoice_draft, name="save_invoice_draft"),
     path("invoice/create-and-send/", create_and_send_invoice, name="create_and_send_invoice"),
@@ -33,6 +36,13 @@ urlpatterns = [
     path("invoice/get/", get_invoice, name="get_invoice"),
     path("invoice/update/", update_invoice, name="update_invoice"),
     path("invoice/delete/", delete_invoice, name="delete_invoice"),
+
+    path('purchase-orders/save-draft/', save_purchase_order_draft, name='save_purchase_order_draft'),
+    path('purchase-orders/create-and-send/', create_and_send_purchase_order, name='create_and_send_purchase_order'),
+    path('purchase-orders/list/', list_purchase_orders, name='list_purchase_orders'),
+    path('purchase-orders/get/', get_purchase_order, name='get_purchase_order'),
+    path('purchase-orders/update/', update_purchase_order, name='update_purchase_order'),
+    path('purchase-orders/delete/', delete_purchase_order, name='delete_purchase_order'),
 
     path('get-tax-rate/', get_tax_rate, name='get_tax_rate'),
 ]
