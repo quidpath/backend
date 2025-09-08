@@ -1,6 +1,8 @@
 import base64
+import uuid
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.files.base import ContentFile
 from django.db.models.fields.files import ImageFieldFile
 from django.forms import model_to_dict
 from django.http import JsonResponse
@@ -9,8 +11,9 @@ from django.views.decorators.csrf import csrf_exempt
 from OrgAuth.models import Corporate
 from quidpath_backend.core.utils.decorators import require_authenticated
 from quidpath_backend.core.utils.email import NotificationServiceHandler
+from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
+from quidpath_backend.core.utils.Logbase import TransactionLogBase, logger
 from quidpath_backend.core.utils.registry import ServiceRegistry
 
 
@@ -74,7 +77,7 @@ def list_corporates(request):
             corp_dict = {}
 
             if hasattr(corp, "_meta"):  # It's a Django model
-                for field in corp._meta.fields:
+                for field in corp.meta.fields:
                     field_name = field.name
                     value = getattr(corp, field_name)
 
@@ -125,24 +128,179 @@ def list_corporates(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
+
+def process_base64_image(base64_string, filename_prefix="profile"):
+    """
+    Process base64 image string and return ContentFile
+    """
+    try:
+        if base64_string.startswith('data:'):
+            header, data = base64_string.split(',', 1)
+            if 'jpeg' in header or 'jpg' in header:
+                ext = 'jpg'
+            elif 'png' in header:
+                ext = 'png'
+            elif 'gif' in header:
+                ext = 'gif'
+            elif 'webp' in header:
+                ext = 'webp'
+            else:
+                ext = 'jpg'
+        else:
+            data = base64_string
+            ext = 'jpg'
+        image_data = base64.b64decode(data)
+        filename = f"{filename_prefix}_{uuid.uuid4().hex[:8]}.{ext}"
+        return ContentFile(image_data, name=filename)
+    except Exception as e:
+        print(f"Error processing base64 image: {e}")
+        return None
+
+
 @csrf_exempt
 def update_corporate(request):
-    data, _ = get_clean_data(request)
-    corp_id = data.get("id")
-    if not corp_id:
-        return JsonResponse({"error": "Corporate ID is required"}, status=400)
-
     try:
-        corporate = ServiceRegistry().database("corporate", "get", data={"id": corp_id})
-        if not corporate:
-            return JsonResponse({"error": "Corporate not found"}, status=404)
+        # Parse request data and metadata
+        logger.debug("Parsing request data")
+        data, metadata = get_clean_data(request)
+        logger.debug(f"Received data: {data}, metadata: {metadata}")
 
-        updated = ServiceRegistry().database("corporate", "update", data=data)
-        TransactionLogBase.log("CORPORATE_UPDATED", user=None, message=f"Corporate {updated.name} updated",request=request)
-        return JsonResponse({"message": "Corporate updated successfully"})
+        user = metadata.get("user")
+        if not user:
+            logger.warning("User not authenticated")
+            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+
+        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        if not user_id:
+            logger.warning("User ID not found")
+            return ResponseProvider(message="User ID not found", code=400).bad_request()
+
+        # Initialize service registry
+        logger.debug("Initializing ServiceRegistry")
+        registry = ServiceRegistry()
+
+        # Validate user corporate association
+        logger.debug(f"Filtering CorporateUser for user_id: {user_id}")
+        corporate_users = registry.database(
+            model_name="CorporateUser",
+            operation="filter",
+            data={"customuser_ptr_id": user_id, "is_active": True}
+        )
+        logger.debug(f"Corporate users: {corporate_users}")
+        if not corporate_users:
+            logger.warning("No corporate association found for user")
+            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+
+        corporate_id = corporate_users[0]["corporate_id"]
+        if not corporate_id:
+            logger.warning("Corporate ID not found in corporate_users")
+            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+
+        # Handle base64 logo
+        logger.debug("Processing logo data")
+        logo_data = data.get("logo")
+        if logo_data and isinstance(logo_data, str) and logo_data.startswith("data:image/"):
+            try:
+                logger.debug("Decoding base64 logo")
+                base64_string = logo_data.split(";base64,")[-1]
+                image_data = base64.b64decode(base64_string)
+                if len(image_data) > 5 * 1024 * 1024:
+                    logger.warning("Image size exceeds 5MB limit")
+                    return JsonResponse({"error": "Image size exceeds 5MB limit"}, status=400)
+
+                ext = logo_data.split(";")[0].split("/")[-1]
+                processed_logo = ContentFile(image_data, name=f"logo_{corporate_id}.{ext}")
+                data["logo"] = processed_logo
+                logger.debug("Logo processed successfully")
+            except Exception as e:
+                logger.error(f"Failed to process base64 logo: {str(e)}", exc_info=True)
+                return JsonResponse({"error": f"Invalid base64 image data: {str(e)}"}, status=400)
+        elif logo_data == "":
+            logger.debug("Logo removal requested")
+            data["logo"] = None
+        elif logo_data:
+            logger.warning("Invalid logo format")
+            return JsonResponse({"error": "Logo must be a valid base64-encoded image"}, status=400)
+
+        # Update corporate
+        logger.debug(f"Updating Corporate with ID: {corporate_id}, data: {data}")
+        updated = registry.database("Corporate", "update", corporate_id, data=data)
+        logger.debug(f"Update result: {updated}")
+
+        # Ensure updated is a model instance
+        if isinstance(updated, dict):
+            logger.debug(f"Fetching Corporate instance for ID: {corporate_id}")
+            updated = registry.database(
+                model_name="Corporate",
+                operation="filter",
+                data={"id": corporate_id}
+            )
+            logger.debug(f"Filter result: {updated}")
+            if not updated:
+                logger.error("Failed to retrieve updated corporate")
+                return JsonResponse({"error": "Failed to retrieve updated corporate"}, status=400)
+            updated = updated[0] if isinstance(updated, list) else updated
+
+        # Convert to dict with base64 logo
+        logger.debug("Converting updated to dict")
+        updated_dict = model_to_dict(updated) if not isinstance(updated, dict) else updated
+        if updated_dict.get("logo"):
+            try:
+                if hasattr(updated, 'logo') and hasattr(updated.logo, 'path'):
+                    logger.debug("Encoding logo to base64")
+                    with open(updated.logo.path, "rb") as img:
+                        encoded = base64.b64encode(img.read()).decode("utf-8")
+                        ext = updated.logo.name.split(".")[-1].lower()
+                        updated_dict["logo"] = f"data:image/{ext};base64,{encoded}"
+                else:
+                    # If logo is an ImageFieldFile or string, convert to URL or null
+                    updated_dict["logo"] = str(updated_dict["logo"]) if updated_dict["logo"] else None
+            except Exception as e:
+                logger.error(f"Failed to encode logo: {str(e)}", exc_info=True)
+                updated_dict["logo"] = None
+
+        # Log the update
+        changed_fields = [k for k in data.keys() if k != "id"]
+        logger.debug(f"Logging update for fields: {changed_fields}")
+        TransactionLogBase.log(
+            "CORPORATE_UPDATED",
+            user=user,
+            message=f"Corporate {updated_dict.get('name', 'Unknown')} updated (fields: {', '.join(changed_fields)})",
+            request=request
+        )
+
+        # Send notification
+        if updated_dict.get("email"):
+            logger.debug(f"Sending notification to {updated_dict.get('email')}")
+            try:
+                notification_service = NotificationServiceHandler()
+                notification_service.send_notification([{
+                    "message_type": "2",
+                    "organisation_id": updated_dict.get("id"),
+                    "destination": updated_dict.get("email"),
+                    "message": f"""
+                        <h3>Corporate Profile Updated</h3>
+                        <p>Dear {updated_dict.get('name', 'Customer')},</p>
+                        <p>Your corporate profile has been successfully updated.</p>
+                        <p>Fields updated: {', '.join(changed_fields)}</p>
+                        <p>If this was unexpected, please contact support.</p>
+                    """
+                }])
+            except Exception as e:
+                logger.error(f"Failed to send notification: {str(e)}", exc_info=True)
+
+        logger.info("Corporate updated successfully")
+        return JsonResponse({
+            "message": "Corporate updated successfully",
+            "corporate": updated_dict
+        })
+
+    except ValueError as ve:
+        logger.error(f"Validation error: {str(ve)}", exc_info=True)
+        return JsonResponse({"error": f"Invalid data: {str(ve)}"}, status=400)
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
+        logger.error(f"Unexpected error in update_corporate: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An unexpected error occurred"}, status=500)
 
 @csrf_exempt
 def delete_corporate(request):
@@ -217,7 +375,7 @@ def approve_corporate(request):
             corporate.save()
 
             NotificationServiceHandler().send_notification([{
-                "message_type": "0",
+                "message_type": "2",
                 "organisation_id": corporate.id,
                 "destination": corporate.email,
                 "message": f"""
@@ -282,14 +440,3 @@ def suspend_corporate(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
-from django.urls import path
-
-
-urlpatterns = [
-    path("create/", create_corporate, name="create_corporate"),
-    path("list/", list_corporates, name="list_corporates"),
-    path("update/", update_corporate, name="update_corporate"),
-    path("delete/", delete_corporate, name="delete_corporate"),
-    path("approve/", approve_corporate, name="approve_corporate"),
-    path("suspend/", suspend_corporate, name="suspend_corporate"),
-]

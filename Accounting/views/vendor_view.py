@@ -54,48 +54,72 @@ def create_vendor(request):
 
 @csrf_exempt
 def list_vendors(request):
+    """
+    List all vendors for the user's corporate.
+
+    Returns:
+    - 200: List of vendors
+    - 400: Bad request (missing corporate)
+    - 401: Unauthorized (user not authenticated)
+    - 500: Internal server error
+    """
     data, metadata = get_clean_data(request)
-    corporate_id = data.get("corporate")
+    user = metadata.get("user")
+    if not user:
+        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
 
-    if not corporate_id:
-        return ResponseProvider(message="Corporate ID is required", code=400).bad_request()
-
-    try:
-        corporate = Corporate.objects.get(id=corporate_id)
-    except ObjectDoesNotExist:
-        return ResponseProvider(message="Corporate not found", code=404).bad_request()
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    if not user_id:
+        return ResponseProvider(message="User ID not found", code=400).bad_request()
 
     try:
-        vendors = Vendor.objects.filter(corporate=corporate, is_active=True)
-        vendor_list = [
+        registry = ServiceRegistry()
+
+        corporate_users = registry.database(
+            model_name="CorporateUser",
+            operation="filter",
+            data={"customuser_ptr_id": user_id, "is_active": True}
+        )
+        if not corporate_users:
+            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+
+        corporate_id = corporate_users[0]["corporate_id"]
+        if not corporate_id:
+            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+
+        vendors = registry.database(
+            model_name="Vendor",
+            operation="filter",
+            data={"corporate_id": corporate_id}
+        )
+
+        serialized_vendors = [
             {
-                "id": str(v.id),
-                "category": v.category,
-                "company_name": v.company_name,
-                "first_name": v.first_name,
-                "last_name": v.last_name,
-                "email": v.email,
-                "phone": v.phone,
-                "address": v.address,
-                "city": v.city,
-                "state": v.state,
-                "zip_code": v.zip_code,
-                "country": v.country,
-                "tax_id": v.tax_id,
-                "is_active": v.is_active,
-                "notes": v.notes,
+                "id": str(vendor["id"]),
+                "name": vendor.get("name", ""),
+                "company_name": vendor.get("company_name", ""),
+                "email": vendor.get("email", ""),
+                "phone": vendor.get("phone", ""),
+                "address": vendor.get("address", ""),
+                "city": vendor.get("city", ""),
+                "state": vendor.get("state", ""),
+                "zip_code": vendor.get("zip_code", ""),
+                "country": vendor.get("country", ""),
+                "tax_id": vendor.get("tax_id", ""),
+                "is_active": vendor.get("is_active", True),
+                "notes": vendor.get("notes", "")
             }
-            for v in vendors
+            for vendor in vendors
         ]
 
-        # Wrap the list in a dictionary structure
-        response_data = {"vendors": vendor_list}
-        return ResponseProvider(message="Vendors fetched successfully", data=response_data).success()
+        return ResponseProvider(
+            data={"vendors": serialized_vendors},
+            message="Vendors retrieved successfully",
+            code=200
+        ).success()
 
     except Exception as e:
-        print(f"Full error traceback: {traceback.format_exc()}")
-        return ResponseProvider(message=f"Failed to fetch vendors: {str(e)}", code=500).exception()
-
+        return ResponseProvider(message=str(e), code=500).exception()
 
 @csrf_exempt
 def get_vendor(request):

@@ -84,36 +84,58 @@ def get_tax_rate_value(tax_rate):
 @csrf_exempt
 def update_purchase_order(request):
     """
-    Update an existing purchase order for the user's corporate, including its lines, and set status to DRAFT or SENT.
+    Update an existing purchase order for the user's corporate, including its lines, and set status to DRAFT or POSTED.
+    Uses quotation_number instead of quotation_id for the quotation reference.
+    Does not send an email notification.
 
     Expected data:
     - id: UUID of the purchase order
     - vendor: UUID of the vendor
-    - corporate_id: UUID of the corporate
     - date: Date of the purchase order (YYYY-MM-DD)
     - number: Purchase order number (unique)
     - expected_delivery: Expected delivery date (YYYY-MM-DD)
-    - created_by: UUID of the user creating/updating the purchase order
+    - created_by: UUID of the user updating the purchase order
     - ship_via: Shipping method (optional)
     - terms: Payment terms (optional)
     - fob: FOB terms (optional)
     - comments: Comments (optional)
-    - quotation_id: UUID of the related quotation (optional)
-    - status: DRAFT or SENT
+    - quotation_number: Quotation number (optional)
+    - status: DRAFT or POSTED
     - lines: List of dictionaries, each containing fields for PurchaseOrderLine
-      - id: UUID of the line (optional, for updates)
-      - description: Item description
-      - quantity: Integer quantity
-      - unit_price: Decimal unit price
-      - discount: Decimal discount
-      - taxable_id: UUID of the tax rate
-      - amount: Calculated line amount
-      - sub_total: Calculated line subtotal
-      - tax_amount: Calculated tax amount
-      - tax_total: Calculated tax total
-      - total: Calculated line total
-      - total_discount: Calculated total discount
+        - id: UUID of the line (optional, for updates)
+        - description: Item description
+        - quantity: Quantity of the item
+        - unit_price: Price per unit
+        - discount: Discount amount
+        - taxable_id: Tax rate ID or exempt status
     """
+    def normalize_taxable_id(raw):
+        """
+        Accepts any of:
+          - UUID string
+          - dict with {'id': ...}
+          - stringified dict (including fancy quotes like “{...}”)
+        Returns UUID string or None.
+        """
+        if not raw:
+            return None
+        if isinstance(raw, dict) and raw.get("id"):
+            return raw.get("id")
+        if isinstance(raw, str):
+            s = raw.strip().strip('\'"“”‘’')
+            if s.startswith("{") and s.endswith("}"):
+                try:
+                    d = json.loads(s.replace("'", '"'))
+                except Exception:
+                    try:
+                        d = ast.literal_eval(s)
+                    except Exception:
+                        d = None
+                if isinstance(d, dict):
+                    return d.get("id") or d.get("uuid") or d.get("pk")
+            return s
+        return str(raw)
+
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
@@ -126,6 +148,7 @@ def update_purchase_order(request):
     try:
         registry = ServiceRegistry()
 
+        # Validate user corporate association
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -138,11 +161,13 @@ def update_purchase_order(request):
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
+        # Validate required fields
         required_fields = ["id", "vendor", "date", "number", "expected_delivery", "created_by"]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
 
+        # Validate purchase order
         purchase_orders = registry.database(
             model_name="PurchaseOrder",
             operation="filter",
@@ -152,6 +177,7 @@ def update_purchase_order(request):
             return ResponseProvider(message="Purchase order not found", code=404).bad_request()
         purchase_order_id = purchase_orders[0]["id"]
 
+        # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
@@ -159,8 +185,8 @@ def update_purchase_order(request):
         )
         if not vendors:
             return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
-        vendor = vendors[0]
 
+        # Validate created_by user
         created_by_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -169,39 +195,33 @@ def update_purchase_order(request):
         if not created_by_users:
             return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
 
-        quotation_id = data.get("quotation")
+        # Validate optional quotation by number
+        quotation = None
+        if "quotation_number" in data:
+            quotations = registry.database(
+                model_name="Quotation",
+                operation="filter",
+                data={"number": data["quotation_number"], "corporate_id": corporate_id}
+            )
+            if not quotations:
+                return ResponseProvider(message=f"Quotation with number {data['quotation_number']} not found for this corporate", code=404).bad_request()
+            quotation = quotations[0]
 
+        # Normalize status
         normalized_status = str(data.get("status", "DRAFT")).upper()
-        if normalized_status not in {"DRAFT", "SENT"}:
+        if normalized_status not in {"DRAFT", "POSTED"}:
             normalized_status = "DRAFT"
 
-        corporate = None
-        if normalized_status == "SENT":
-            corporates = registry.database(
-                model_name="Corporate",
-                operation="filter",
-                data={"id": corporate_id}
-            )
-            if not corporates:
-                return ResponseProvider(message="Corporate not found", code=404).bad_request()
-            corporate = corporates[0]
-
-        def tax_display(taxable_id_value):
-            if not taxable_id_value:
-                return "Exempt (0%)"
-            tr = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id_value}
-            )
-            return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
+        # Process lines and calculate totals
+        submitted_lines = data.get("lines", [])
+        if not submitted_lines:
+            return ResponseProvider(message="At least one purchase order line is required", code=400).bad_request()
 
         sub_total = Decimal('0.00')
         tax_total = Decimal('0.00')
         total_discount = Decimal('0.00')
         total = Decimal('0.00')
 
-        submitted_lines = data.get("lines", [])
         for line_data in submitted_lines:
             required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
             for field in required_line_fields:
@@ -236,12 +256,13 @@ def update_purchase_order(request):
             total_discount += discount
             total += line_total
 
+        # Update purchase order and lines within a transaction
         with transaction.atomic():
             purchase_order_data = {
                 "id": data["id"],
                 "vendor_id": data["vendor"],
                 "corporate_id": corporate_id,
-                "quotation_id": quotation_id,
+                "quotation_id": quotation["id"] if quotation else None,
                 "date": data["date"],
                 "number": data["number"],
                 "expected_delivery": data["expected_delivery"],
@@ -252,6 +273,10 @@ def update_purchase_order(request):
                 "fob": data.get("fob", ""),
                 "created_by_id": data["created_by"],
                 "status": normalized_status,
+                "sub_total": float(sub_total),
+                "tax_total": float(tax_total),
+                "total": float(total),
+                "total_discount": float(total_discount),
             }
             purchase_order = registry.database(
                 model_name="PurchaseOrder",
@@ -260,6 +285,7 @@ def update_purchase_order(request):
                 data=purchase_order_data
             )
 
+            # Delete omitted lines
             existing_lines = registry.database(
                 model_name="PurchaseOrderLine",
                 operation="filter",
@@ -276,6 +302,7 @@ def update_purchase_order(request):
                         instance_id=line["id"]
                     )
 
+            # Create or update lines
             for line_data in submitted_lines:
                 taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
                 tax_rate_value = Decimal('0')
@@ -324,94 +351,17 @@ def update_purchase_order(request):
                         data=line_payload
                     )
 
+        # Log update
         TransactionLogBase.log(
-            transaction_type="PURCHASE_ORDER_UPDATED",
+            transaction_type="PURCHASE_ORDER_UPDATED_AND_POSTED",
             user=user,
-            message=f"Purchase order {purchase_order['number']} updated for corporate {corporate_id} with status {purchase_order['status']}",
+            message=f"Purchase order {purchase_order['number']} updated and posted for corporate {corporate_id} with status {purchase_order['status']}",
             state_name="Completed",
             extra={"purchase_order_id": purchase_order["id"], "line_count": len(submitted_lines)},
             request=request
         )
 
-        if purchase_order["status"] == "SENT":
-            to_email = vendor.get("email")
-            if not to_email:
-                TransactionLogBase.log(
-                    transaction_type="PURCHASE_ORDER_SEND_FAILED",
-                    user=user,
-                    message="Vendor has no email",
-                    state_name="Failed",
-                    request=request
-                )
-            else:
-                email_lines = registry.database(
-                    model_name="PurchaseOrderLine",
-                    operation="filter",
-                    data={"purchase_order_id": purchase_order["id"]}
-                )
-
-                subject = f"Updated Purchase Order {purchase_order['number']} from {corporate['name']}"
-                message = f"""
-                <html><body>
-                <p>Dear {vendor.get('name', 'Vendor')},</p>
-                <p>We have updated the following purchase order:</p>
-                <p><strong>Purchase Order Number:</strong> {purchase_order['number']}</p>
-                <p><strong>Date:</strong> {purchase_order['date']}</p>
-                <p><strong>Expected Delivery:</strong> {purchase_order['expected_delivery']}</p>
-                <p><strong>Ship Via:</strong> {purchase_order['ship_via'] or 'N/A'}</p>
-                <p><strong>Terms:</strong> {purchase_order['terms'] or 'N/A'}</p>
-                <p><strong>FOB:</strong> {purchase_order['fob'] or 'N/A'}</p>
-                <p><strong>Comments:</strong> {purchase_order['comments'] or 'N/A'}</p>
-                <p><strong>Sub Total:</strong> KES {purchase_order['sub_total']:.2f}</p>
-                <p><strong>Tax Total:</strong> KES {purchase_order['tax_total']:.2f}</p>
-                <p><strong>Total Discount:</strong> KES {purchase_order['total_discount']:.2f}</p>
-                <p><strong>Total:</strong> KES {purchase_order['total']:.2f}</p>
-                <h3>Items:</h3>
-                <table border="1" cellpadding="6" cellspacing="0">
-                <tr>
-                    <th>Description</th><th>Quantity</th><th>Unit Price</th>
-                    <th>Amount</th><th>Discount</th><th>Tax Rate</th><th>Total</th>
-                </tr>
-                """
-                for line in email_lines:
-                    message += f"""
-                    <tr>
-                      <td>{line.get('description', '')}</td>
-                      <td>{line.get('quantity', 0)}</td>
-                      <td>KES {line.get('unit_price', 0):.2f}</td>
-                      <td>KES {line.get('amount', 0):.2f}</td>
-                      <td>KES {line.get('discount', 0):.2f}</td>
-                      <td>{tax_display(line.get('taxable_id'))}</td>
-                      <td>KES {line.get('total', 0):.2f}</td>
-                    </tr>
-                    """
-                message += f"""
-                </table>
-                <p>Thank you for your business!</p>
-                <p>Best regards,<br>{corporate['name']}</p>
-                </body></html>
-                """
-
-                notification_handler = DocumentNotificationHandler()
-                send_result = notification_handler.send_document_notification(
-                    [{
-                        "message_type": "EMAIL",
-                        "organisation_id": corporate_id,
-                        "destination": to_email,
-                        "message": message,
-                        "subject": subject,
-                    }],
-                    trans=None
-                )
-                if send_result != "success":
-                    TransactionLogBase.log(
-                        transaction_type="PURCHASE_ORDER_SEND_FAILED",
-                        user=user,
-                        message="Failed to send email",
-                        state_name="Failed",
-                        request=request
-                    )
-
+        # Fetch fresh lines for response
         db_lines = registry.database(
             model_name="PurchaseOrderLine",
             operation="filter",
@@ -432,8 +382,8 @@ def update_purchase_order(request):
                 "total_discount": float(line.get("total_discount", 0)),
                 "taxable": {
                     "id": str(line.get("taxable_id", "")),
-                    "code": tax_display(line.get("taxable_id")),
-                    "label": tax_display(line.get("taxable_id"))
+                    "code": str(line.get("taxable_id")),
+                    "label": str(line.get("taxable_id"))
                 } if line.get("taxable_id") else {
                     "id": "exempt",
                     "code": "exempt",
@@ -442,17 +392,22 @@ def update_purchase_order(request):
             }
             for line in db_lines
         ]
-        purchase_order["total"] = float(sum(to_decimal(line.get("total", 0)) for line in db_lines))
+
+        # Add calculated totals to response
+        purchase_order["sub_total"] = float(sub_total)
+        purchase_order["tax_total"] = float(tax_total)
+        purchase_order["total_discount"] = float(total_discount)
+        purchase_order["total"] = float(total)
 
         return ResponseProvider(
-            message="Purchase order updated successfully",
+            message="Purchase order updated and posted successfully",
             data=purchase_order,
             code=200
         ).success()
 
     except Exception as e:
         TransactionLogBase.log(
-            transaction_type="PURCHASE_ORDER_UPDATE_FAILED",
+            transaction_type="PURCHASE_ORDER_UPDATE_AND_POST_FAILED",
             user=user,
             message=str(e),
             state_name="Failed",
@@ -719,10 +674,11 @@ def save_purchase_order_draft(request):
         return ResponseProvider(message=f"An error occurred while saving purchase order draft: {str(e)}", code=500).exception()
 
 @csrf_exempt
-def create_and_send_purchase_order(request):
+def create_and_post_purchase_order(request):
     """
-    Create a new purchase order for the user's corporate, set status to SENT, and send email to vendor.
-    Calculates sub_total, tax_total, total, and total_discount for the response.
+    Create a new purchase order for the user's corporate, set status to POSTED, and save it to the database.
+    Calculates sub_total, tax_total, total, and total_discount for the purchase order.
+    Does not send an email notification. Uses quotation_number instead of quotation_id for the quotation reference.
 
     Expected data:
     - vendor: UUID of the vendor
@@ -735,8 +691,13 @@ def create_and_send_purchase_order(request):
     - terms: Payment terms (optional)
     - fob: FOB terms (optional)
     - comments: Comments (optional)
-    - quotation: Quotation number (optional)
+    - quotation_number: Quotation number (optional, instead of quotation_id)
     - lines: List of dictionaries, each containing fields for PurchaseOrderLine
+        - description: Line item description
+        - quantity: Quantity of the item
+        - unit_price: Price per unit
+        - discount: Discount amount
+        - taxable_id: Tax rate ID or exempt status
     """
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
@@ -750,6 +711,7 @@ def create_and_send_purchase_order(request):
     try:
         registry = ServiceRegistry()
 
+        # Validate user corporate association
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -762,11 +724,13 @@ def create_and_send_purchase_order(request):
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
+        # Validate required fields
         required_fields = ["vendor", "date", "number", "expected_delivery", "created_by"]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
 
+        # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
@@ -776,6 +740,7 @@ def create_and_send_purchase_order(request):
             return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
         vendor = vendors[0]
 
+        # Validate created_by user
         buyers = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -784,6 +749,7 @@ def create_and_send_purchase_order(request):
         if not buyers:
             return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
 
+        # Validate corporate
         corporates = registry.database(
             model_name="Corporate",
             operation="filter",
@@ -793,11 +759,23 @@ def create_and_send_purchase_order(request):
             return ResponseProvider(message="Corporate not found", code=404).bad_request()
         corporate = corporates[0]
 
-        quotation = data.get("quotation")
-
+        # Validate optional quotation by number
+        quotation = None
+        if "quotation_number" in data:
+            quotations = registry.database(
+                model_name="Quotation",
+                operation="filter",
+                data={"number": data["quotation_number"], "corporate_id": corporate_id}
+            )
+            if not quotations:
+                return ResponseProvider(message=f"Quotation with number {data['quotation_number']} not found for this corporate", code=404).bad_request()
+            quotation = quotations[0]
 
         # Process purchase order lines and calculate totals
         lines = data.get("lines", [])
+        if not lines:
+            return ResponseProvider(message="At least one purchase order line is required", code=400).bad_request()
+
         sub_total = Decimal('0.00')
         tax_total = Decimal('0.00')
         total_discount = Decimal('0.00')
@@ -837,11 +815,12 @@ def create_and_send_purchase_order(request):
             total_discount += discount
             total += line_total
 
+        # Create purchase order and lines within a transaction
         with transaction.atomic():
             purchase_order_data = {
                 "vendor_id": data["vendor"],
                 "corporate_id": corporate_id,
-                "quotation": quotation,
+                "quotation": quotation["id"] if quotation else None,
                 "date": data["date"],
                 "number": data["number"],
                 "expected_delivery": data["expected_delivery"],
@@ -851,7 +830,7 @@ def create_and_send_purchase_order(request):
                 "ship_via": data.get("ship_via", ""),
                 "fob": data.get("fob", ""),
                 "created_by_id": data["created_by"],
-                "status": "SENT",
+                "status": "POSTED",
             }
             purchase_order = registry.database(
                 model_name="PurchaseOrder",
@@ -897,15 +876,17 @@ def create_and_send_purchase_order(request):
                     data=line_data_for_creation
                 )
 
+        # Log the transaction
         TransactionLogBase.log(
-            transaction_type="PURCHASE_ORDER_CREATED_AND_SENT",
+            transaction_type="PURCHASE_ORDER_CREATED_AND_POSTED",
             user=user,
-            message=f"Purchase order {purchase_order['number']} created and sent for corporate {corporate_id}",
+            message=f"Purchase order {purchase_order['number']} created and posted for corporate {corporate_id}",
             state_name="Completed",
             extra={"purchase_order_id": purchase_order["id"], "line_count": len(lines)},
             request=request
         )
 
+        # Fetch lines for response
         lines = registry.database(
             model_name="PurchaseOrderLine",
             operation="filter",
@@ -937,97 +918,27 @@ def create_and_send_purchase_order(request):
             for line in lines
         ]
 
-        # Add calculated totals to the response
+        # Add calculated totals to response
         purchase_order["sub_total"] = float(sub_total)
         purchase_order["tax_total"] = float(tax_total)
         purchase_order["total_discount"] = float(total_discount)
         purchase_order["total"] = float(total)
 
-        to_email = vendor.get("email")
-        if to_email:
-            def tax_display(taxable_id_value):
-                if not taxable_id_value:
-                    return "Exempt (0%)"
-                tr = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id_value}
-                )
-                return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
-
-            subject = f"Purchase Order {purchase_order['number']} from {corporate['name']}"
-            message = f"""
-            <html>
-            <body>
-            <p>Dear {vendor.get('name', 'Vendor')},</p>
-            <p>We are pleased to send you the following purchase order:</p>
-            <p><strong>Purchase Order Number:</strong> {purchase_order['number']}</p>
-            <p><strong>Date:</strong> {purchase_order['date']}</p>
-            <p><strong>Expected Delivery:</strong> {purchase_order['expected_delivery']}</p>
-            <p><strong>Ship Via:</strong> {purchase_order['ship_via'] or 'N/A'}</p>
-            <p><strong>Terms:</strong> {purchase_order['terms'] or 'N/A'}</p>
-            <p><strong>FOB:</strong> {purchase_order['fob'] or 'N/A'}</p>
-            <p><strong>Comments:</strong> {purchase_order['comments'] or 'N/A'}</p>
-            <p><strong>Sub Total:</strong> KES {purchase_order['sub_total']:.2f}</p>
-            <p><strong>Tax Total:</strong> KES {purchase_order['tax_total']:.2f}</p>
-            <p><strong>Total Discount:</strong> KES {purchase_order['total_discount']:.2f}</p>
-            <p><strong>Total:</strong> KES {purchase_order['total']:.2f}</p>
-            <h3>Items:</h3>
-            <table border="1" cellpadding="6" cellspacing="0">
-            <tr><th>Description</th><th>Quantity</th><th>Unit Price</th><th>Amount</th><th>Discount</th><th>Tax Rate</th><th>Total</th></tr>
-            """
-            for line in lines:
-                message += f"""
-                <tr>
-                <td>{line['description']}</td>
-                <td>{line['quantity']}</td>
-                <td>KES {line['unit_price']:.2f}</td>
-                <td>KES {line['amount']:.2f}</td>
-                <td>KES {line['discount']:.2f}</td>
-                <td>{tax_display(line.get('taxable_id'))}</td>
-                <td>KES {line['total']:.2f}</td>
-                </tr>
-                """
-            message += f"""
-            </table>
-            <p>Thank you for your business!</p>
-            <p>Best regards,<br>{corporate['name']}</p>
-            </body>
-            </html>
-            """
-            notification_handler = DocumentNotificationHandler()
-            notifications = [{
-                "message_type": "EMAIL",
-                "organisation_id": corporate_id,
-                "destination": to_email,
-                "message": message,
-                "subject": subject,
-            }]
-            send_result = notification_handler.send_document_notification(notifications, trans=None, attachment=None, cc=None)
-            if send_result != "success":
-                TransactionLogBase.log(
-                    transaction_type="PURCHASE_ORDER_SEND_FAILED",
-                    user=user,
-                    message="Failed to send email",
-                    state_name="Failed",
-                    request=request
-                )
-
         return ResponseProvider(
-            message="Purchase order created and sent successfully",
+            message="Purchase order created and posted successfully",
             data=purchase_order,
             code=201
         ).success()
 
     except Exception as e:
         TransactionLogBase.log(
-            transaction_type="PURCHASE_ORDER_CREATION_AND_SEND_FAILED",
+            transaction_type="PURCHASE_ORDER_CREATION_AND_POST_FAILED",
             user=user,
             message=str(e),
             state_name="Failed",
             request=request
         )
-        return ResponseProvider(message="An error occurred while creating and sending purchase order", code=500).exception()
+        return ResponseProvider(message="An error occurred while creating and posting purchase order", code=500).exception()
 
 @csrf_exempt
 def list_purchase_orders(request):

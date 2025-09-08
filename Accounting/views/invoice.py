@@ -4,6 +4,7 @@ from collections import Counter
 import json, ast, re
 from django.db import transaction
 
+from Accounting.views.Quote import to_decimal
 from quidpath_backend import settings
 from quidpath_backend.core.utils.DocsEmail import DocumentNotificationHandler
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
@@ -276,9 +277,9 @@ def save_invoice_draft(request):
 
 
 @csrf_exempt
-def create_and_send_invoice(request):
+def create_and_post_invoice(request):
     """
-    Create a new invoice for the user's corporate, including its lines, set status to ISSUED, and send email to customer.
+    Create a new invoice for the user's corporate, including its lines, set status to ISSUED, and post it to the system.
     """
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
@@ -482,9 +483,9 @@ def create_and_send_invoice(request):
             )
 
         TransactionLogBase.log(
-            transaction_type="INVOICE_CREATED_AND_SENT",
+            transaction_type="INVOICE_CREATED_AND_POSTED",
             user=user,
-            message=f"Invoice {invoice['number']} created and sent for corporate {corporate_id}",
+            message=f"Invoice {invoice['number']} created and posted for corporate {corporate_id}",
             state_name="Completed",
             extra={"invoice_id": invoice["id"], "line_count": len(lines)},
             request=request
@@ -497,101 +498,21 @@ def create_and_send_invoice(request):
         )
         invoice["lines"] = lines
 
-        to_email = customer.get("email")
-        if not to_email:
-            TransactionLogBase.log(
-                transaction_type="INVOICE_SEND_FAILED",
-                user=user,
-                message="Customer has no email",
-                state_name="Failed",
-                request=request
-            )
-        else:
-            def tax_display(taxable_id_value):
-                if not taxable_id_value:
-                    return ""
-                tr = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id_value}
-                )
-                return tr[0].get("label", "") if tr else ""
-
-            subject = f"Invoice {invoice['number']} from {corporate['name']}"
-            message = f"""
-            <html>
-            <body>
-            <p>Dear {customer.get('name', 'Customer')},</p>
-            <p>We are pleased to send you the following invoice:</p>
-            <p><strong>Invoice Number:</strong> {invoice['number']}</p>
-            <p><strong>Purchase Order:</strong> {invoice.get('purchase_order', '')}</p>
-            <p><strong>Date:</strong> {invoice['date']}</p>
-            <p><strong>Due Date:</strong> {invoice['due_date']}</p>
-            <p><strong>Ship Date:</strong> {invoice.get('ship_date', '')}</p>
-            <p><strong>Ship Via:</strong> {invoice.get('ship_via', '')}</p>
-            <p><strong>Terms:</strong> {invoice.get('terms', '')}</p>
-            <p><strong>FOB:</strong> {invoice.get('fob', '')}</p>
-            <p><strong>Comments:</strong> {invoice.get('comments', '')}</p>
-            <h3>Lines:</h3>
-            <table border="1">
-            <tr><th>Description</th><th>Quantity</th><th>Unit Price</th><th>Amount</th><th>Discount</th><th>Taxable</th><th>Total</th></tr>
-            """
-            for line in lines:
-                message += f"""
-                <tr>
-                <td>{line['description']}</td>
-                <td>{line['quantity']}</td>
-                <td>{line['unit_price']}</td>
-                <td>{line['amount']}</td>
-                <td>{line['discount']}</td>
-                <td>{tax_display(line.get('taxable_id'))}</td>
-                <td>{line['total']}</td>
-                </tr>
-                """
-            message += f"""
-            </table>
-            <p><strong>Sub Total:</strong> {invoice['sub_total']}</p>
-            <p><strong>Tax Total:</strong> {invoice['tax_total']}</p>
-            <p><strong>Total:</strong> {invoice['total']}</p>
-            <p>Thank you for your business!</p>
-            <p>Best regards,<br>{corporate['name']}</p>
-            </body>
-            </html>
-            """
-            notification_handler = DocumentNotificationHandler()
-            notifications = [{
-                "message_type": "EMAIL",
-                "organisation_id": corporate_id,
-                "destination": to_email,
-                "message": message,
-                "subject": subject,
-            }]
-            send_result = notification_handler.send_document_notification(notifications, trans=None, attachment=None,
-                                                                          cc=None)
-            if send_result != "success":
-                TransactionLogBase.log(
-                    transaction_type="INVOICE_SEND_FAILED",
-                    user=user,
-                    message="Failed to send email",
-                    state_name="Failed",
-                    request=request
-                )
-
         return ResponseProvider(
-            message="Invoice created and sent successfully",
+            message="Invoice created and posted successfully",
             data=invoice,
             code=201
         ).success()
 
     except Exception as e:
         TransactionLogBase.log(
-            transaction_type="INVOICE_CREATION_AND_SEND_FAILED",
+            transaction_type="INVOICE_CREATION_AND_POST_FAILED",
             user=user,
             message=str(e),
             state_name="Failed",
             request=request
         )
-        return ResponseProvider(message="An error occurred while creating and sending invoice", code=500).exception()
+        return ResponseProvider(message="An error occurred while creating and posting invoice", code=500).exception()
 
 @csrf_exempt
 def list_invoices(request):
@@ -844,27 +765,46 @@ def get_invoice(request):
 @csrf_exempt
 def update_invoice(request):
     """
-    Update an existing invoice for the user's corporate, including its lines, and set status to DRAFT or ISSUED.
-    """
-    def to_decimal(val, default="0"):
-        if val is None:
-            return Decimal(default)
-        try:
-            return Decimal(str(val))
-        except (InvalidOperation, ValueError, TypeError):
-            return Decimal(default)
+    Update an existing invoice for the user's corporate, including its lines, and set status to DRAFT or POSTED.
+    Does not send an email notification.
 
+    Expected data:
+    - id: UUID of the invoice
+    - customer: UUID of the customer
+    - date: Date of the invoice (YYYY-MM-DD)
+    - number: Invoice number (format: INV-<6 digits>, e.g., INV-123456)
+    - due_date: Due date of the invoice (YYYY-MM-DD)
+    - salesperson: UUID of the salesperson (optional)
+    - comments: Comments (optional)
+    - terms: Payment terms (optional)
+    - ship_date: Shipping date (optional)
+    - ship_via: Shipping method (optional)
+    - fob: FOB terms (optional)
+    - purchase_order: Purchase order reference (optional)
+    - status: DRAFT or POSTED
+    - lines: List of dictionaries, each containing fields for InvoiceLine
+        - id: UUID of the line (optional, for updates)
+        - description: Item description
+        - quantity: Quantity of the item
+        - unit_price: Price per unit
+        - discount: Discount amount
+        - taxable_id: Tax rate ID or exempt status
+    """
     def normalize_taxable_id(raw):
+        """
+        Accepts any of:
+          - UUID string
+          - dict with {'id': ...}
+          - stringified dict (including fancy quotes like “{...}”)
+        Returns UUID string or None.
+        """
         if not raw:
             return None
-
         if isinstance(raw, dict) and raw.get("id"):
             return raw.get("id")
-
         if isinstance(raw, str):
-            s = raw.strip()
-            s = s.strip('\'"“”‘’')
-            if (s.startswith("{") and s.endswith("}")):
+            s = raw.strip().strip('\'"“”‘’')
+            if s.startswith("{") and s.endswith("}"):
                 try:
                     d = json.loads(s.replace("'", '"'))
                 except Exception:
@@ -875,7 +815,6 @@ def update_invoice(request):
                 if isinstance(d, dict):
                     return d.get("id") or d.get("uuid") or d.get("pk")
             return s
-
         return str(raw)
 
     data, metadata = get_clean_data(request)
@@ -890,6 +829,7 @@ def update_invoice(request):
     try:
         registry = ServiceRegistry()
 
+        # Validate user corporate association
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -902,7 +842,13 @@ def update_invoice(request):
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
+        # Validate required fields
         required_fields = ["id", "customer", "date", "number", "due_date"]
+        for field in required_fields:
+            if field not in data:
+                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+
+        # Validate invoice number format
         invoice_number = data["number"]
         pattern = r"^INV-\d{6}$"
         if not re.match(pattern, invoice_number):
@@ -910,10 +856,8 @@ def update_invoice(request):
                 message="Invoice number must be in format INV-<6 digits> (e.g., INV-123456)",
                 code=400
             ).bad_request()
-        for field in required_fields:
-            if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
 
+        # Validate invoice
         invoices = registry.database(
             model_name="Invoices",
             operation="filter",
@@ -923,6 +867,7 @@ def update_invoice(request):
             return ResponseProvider(message="Invoice not found", code=404).bad_request()
         invoice_id = invoices[0]["id"]
 
+        # Validate customer
         customers = registry.database(
             model_name="Customer",
             operation="filter",
@@ -930,92 +875,42 @@ def update_invoice(request):
         )
         if not customers:
             return ResponseProvider(message="Customer not found or inactive for this corporate", code=404).bad_request()
-        customer = customers[0]
 
-        salespersons = registry.database(
-            model_name="CorporateUser",
-            operation="filter",
-            data={"id": data.get("salesperson"), "corporate_id": corporate_id, "is_active": True} if data.get("salesperson") else {}
-        )
-        if data.get("salesperson") and not salespersons:
-            return ResponseProvider(message="Salesperson not found or inactive for this corporate", code=404).bad_request()
+        # Validate salesperson (if provided)
+        if data.get("salesperson"):
+            salespersons = registry.database(
+                model_name="CorporateUser",
+                operation="filter",
+                data={"id": data["salesperson"], "corporate_id": corporate_id, "is_active": True}
+            )
+            if not salespersons:
+                return ResponseProvider(message="Salesperson not found or inactive for this corporate", code=404).bad_request()
 
+        # Normalize status
         normalized_status = str(data.get("status", "DRAFT")).upper()
-        if normalized_status not in {"DRAFT", "ISSUED"}:
+        if normalized_status not in {"DRAFT", "POSTED"}:
             normalized_status = "DRAFT"
 
-        corporate = None
-        if normalized_status == "ISSUED":
-            corporates = registry.database(
-                model_name="Corporate",
-                operation="filter",
-                data={"id": corporate_id}
-            )
-            if not corporates:
-                return ResponseProvider(message="Corporate not found", code=404).bad_request()
-            corporate = corporates[0]
+        # Process lines and calculate totals
+        submitted_lines = data.get("lines", [])
+        if not submitted_lines:
+            return ResponseProvider(message="At least one invoice line is required", code=400).bad_request()
 
-        invoice_data = {
-            "id": data["id"],
-            "customer_id": data["customer"],
-            "corporate_id": corporate_id,
-            "date": data["date"],
-            "number": data["number"],
-            "due_date": data["due_date"],
-            "comments": data.get("comments", ""),
-            "terms": data.get("terms", ""),
-            "ship_date": data.get("ship_date"),
-            "ship_via": data.get("ship_via"),
-            "fob": data.get("fob"),
-            "salesperson_id": data.get("salesperson"),
-            "status": normalized_status,
-            "purchase_order": data.get("purchase_order", ""),
-        }
-        invoice = registry.database(
-            model_name="Invoices",
-            operation="update",
-            instance_id=invoice_id,
-            data=invoice_data
-        )
-
-        submitted_lines = data.get("lines", []) or []
-
-        existing_lines = registry.database(
-            model_name="InvoiceLine",
-            operation="filter",
-            data={"invoice_id": invoice["id"]}
-        )
-        existing_line_ids = {line["id"] for line in existing_lines if line.get("id")}
-        submitted_line_ids = {line.get("id") for line in submitted_lines if line.get("id")}
-
-        for line in existing_lines:
-            if line["id"] not in submitted_line_ids:
-                registry.database(
-                    model_name="InvoiceLine",
-                    operation="delete",
-                    instance_id=line["id"]
-                )
-
-        sub_total = Decimal('0')
-        tax_total = Decimal('0')
-        total = Decimal('0')
-        total_discount = Decimal('0')
+        sub_total = Decimal('0.00')
+        tax_total = Decimal('0.00')
+        total_discount = Decimal('0.00')
+        total = Decimal('0.00')
 
         for line_data in submitted_lines:
-            raw_taxable = line_data.get("taxable_id") or line_data.get("taxable")
-            taxable_id = normalize_taxable_id(raw_taxable)
-
-            required_line_fields = ["description", "quantity", "unit_price", "amount", "discount",
-                                    "tax_amount", "sub_total", "total"]
+            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Invoice line field {field.replace('_', ' ').title()} is required",
-                        code=400
-                    ).bad_request()
+                        code=400).bad_request()
 
-            tax_rate_value = Decimal("0")  # default
-
+            taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
+            tax_rate_value = Decimal("0")
             if taxable_id:
                 tax_rates = registry.database(
                     model_name="TaxRate",
@@ -1023,192 +918,163 @@ def update_invoice(request):
                     data={"id": taxable_id}
                 )
                 if not tax_rates:
-                    return ResponseProvider(
-                        message=f"Tax rate {taxable_id} not found",
-                        code=404
-                    ).bad_request()
-
-                tax_rate_code = tax_rates[0][
-                    "name"]  # stored field in your model: "general_rated", "zero_rated", "exempt"
-
-                if tax_rate_code == "general_rated":
-                    tax_rate_value = Decimal("0.16")
-                else:
-                    tax_rate_value = Decimal("0")
+                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                tax_rate_code = tax_rates[0]["name"]
+                tax_rate_value = Decimal("0.16") if tax_rate_code == "general_rated" else Decimal("0")
 
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
             discount = to_decimal(line_data["discount"])
-            client_tax_amount = to_decimal(line_data["tax_amount"])
-
             line_subtotal = qty * unit_price
             line_taxable_amount = line_subtotal - discount
-            expected_tax_amount = (line_taxable_amount * tax_rate_value)
+            line_tax_amount = line_taxable_amount * tax_rate_value
+            line_total = line_taxable_amount + line_tax_amount
 
-            if (client_tax_amount - expected_tax_amount).copy_abs() > Decimal("0.01"):
-                return ResponseProvider(
-                    message=f"Invalid tax_amount for line {line_data.get('description', '')}",
-                    code=400
-                ).bad_request()
+            sub_total += line_subtotal
+            tax_total += line_tax_amount
+            total_discount += discount
+            total += line_total
 
-            line_payload = {
-                "invoice_id": invoice["id"],
-                "description": line_data["description"],
-                "quantity": float(qty),
-                "unit_price": float(unit_price),
-                "amount": float(to_decimal(line_data["amount"])),
-                "discount": float(discount),
-                "taxable_id": taxable_id,
-                "tax_amount": float(client_tax_amount),
-                "sub_total": float(to_decimal(line_data["sub_total"])),
-                "total": float(to_decimal(line_data["total"])),
+        # Update invoice and lines within a transaction
+        with transaction.atomic():
+            invoice_data = {
+                "id": data["id"],
+                "customer_id": data["customer"],
+                "corporate_id": corporate_id,
+                "date": data["date"],
+                "number": data["number"],
+                "due_date": data["due_date"],
+                "comments": data.get("comments", ""),
+                "terms": data.get("terms", ""),
+                "ship_date": data.get("ship_date"),
+                "ship_via": data.get("ship_via"),
+                "fob": data.get("fob"),
+                "salesperson_id": data.get("salesperson"),
+                "status": normalized_status,
+                "purchase_order": data.get("purchase_order", ""),
+                "sub_total": float(sub_total),
+                "tax_total": float(tax_total),
+                "total": float(total),
+                "total_discount": float(total_discount),
             }
+            invoice = registry.database(
+                model_name="Invoices",
+                operation="update",
+                instance_id=invoice_id,
+                data=invoice_data
+            )
 
-            if line_data.get("id") in existing_line_ids:
-                line_payload["id"] = line_data["id"]
-                updated_line = registry.database(
-                    model_name="InvoiceLine",
-                    operation="update",
-                    instance_id=line_data["id"],
-                    data=line_payload
-                )
-            else:
-                updated_line = registry.database(
-                    model_name="InvoiceLine",
-                    operation="create",
-                    data=line_payload
-                )
+            # Delete omitted lines
+            existing_lines = registry.database(
+                model_name="InvoiceLine",
+                operation="filter",
+                data={"invoice_id": invoice["id"]}
+            )
+            existing_line_ids = {line["id"] for line in existing_lines if line.get("id")}
+            submitted_line_ids = {line.get("id") for line in submitted_lines if line.get("id")}
 
-            sub_total += to_decimal(updated_line["sub_total"])
-            tax_total += to_decimal(updated_line["tax_amount"])
-            total += to_decimal(updated_line["total"])  # Fixed: Accumulate total correctly
-            total_discount += to_decimal(updated_line["discount"])
+            for line in existing_lines:
+                if line["id"] not in submitted_line_ids:
+                    registry.database(
+                        model_name="InvoiceLine",
+                        operation="delete",
+                        instance_id=line["id"]
+                    )
 
-        invoice_update_data = {
-            "sub_total": str(sub_total),
-            "tax_total": str(tax_total),
-            "total": str(total),
-            "total_discount": str(total_discount)
-        }
-        registry.database(
-            model_name="Invoices",  # Fixed: Correct model name
-            operation="update",
-            instance_id=invoice["id"],
-            data=invoice_update_data
-        )
-        invoice.update(invoice_update_data)
+            # Create or update lines
+            for line_data in submitted_lines:
+                taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
+                tax_rate_value = Decimal("0")
+                if taxable_id:
+                    tax_rates = registry.database(
+                        model_name="TaxRate",
+                        operation="filter",
+                        data={"id": taxable_id}
+                    )
+                    if not tax_rates:
+                        return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                    tax_rate_code = tax_rates[0]["name"]
+                    tax_rate_value = Decimal("0.16") if tax_rate_code == "general_rated" else Decimal("0")
 
+                qty = to_decimal(line_data["quantity"])
+                unit_price = to_decimal(line_data["unit_price"])
+                discount = to_decimal(line_data["discount"])
+                line_subtotal = qty * unit_price
+                line_taxable_amount = line_subtotal - discount
+                line_tax_amount = line_taxable_amount * tax_rate_value
+                line_total = line_taxable_amount + line_tax_amount
+
+                line_payload = {
+                    "invoice_id": invoice["id"],
+                    "description": line_data["description"],
+                    "quantity": float(qty),
+                    "unit_price": float(unit_price),
+                    "amount": float(line_subtotal),
+                    "discount": float(discount),
+                    "taxable_id": taxable_id,
+                    "tax_amount": float(line_tax_amount),
+                    "sub_total": float(line_subtotal),
+                    "total": float(line_total),
+                }
+
+                if line_data.get("id") in existing_line_ids:
+                    line_payload["id"] = line_data["id"]
+                    registry.database(
+                        model_name="InvoiceLine",
+                        operation="update",
+                        instance_id=line_data["id"],
+                        data=line_payload
+                    )
+                else:
+                    registry.database(
+                        model_name="InvoiceLine",
+                        operation="create",
+                        data=line_payload
+                    )
+
+        # Log update
         TransactionLogBase.log(
-            transaction_type="INVOICE_UPDATED",
+            transaction_type="INVOICE_UPDATED_AND_POSTED",
             user=user,
-            message=f"Invoice {invoice['number']} updated for corporate {corporate_id} with status {invoice['status']}",
+            message=f"Invoice {invoice['number']} updated and posted for corporate {corporate_id} with status {invoice['status']}",
             state_name="Completed",
             extra={"invoice_id": invoice["id"], "line_count": len(submitted_lines)},
             request=request
         )
 
-        if invoice["status"] == "ISSUED":
-            to_email = customer.get("email")
-            if not to_email:
-                TransactionLogBase.log(
-                    transaction_type="INVOICE_SEND_FAILED",
-                    user=user,
-                    message="Customer has no email",
-                    state_name="Failed",
-                    request=request
-                )
-            else:
-                email_lines = registry.database(
-                    model_name="InvoiceLine",
-                    operation="filter",
-                    data={"invoice_id": invoice["id"]}
-                )
-
-                def tax_display(taxable_id_value):
-                    if not taxable_id_value:
-                        return ""
-                    tr = registry.database(
-                        model_name="TaxRate",
-                        operation="filter",
-                        data={"id": taxable_id_value}
-                    )
-                    return tr[0].get("name", "") if tr else ""
-
-                subject = f"Updated Invoice {invoice['number']} from {corporate['name']}"
-                message = f"""
-                <html><body>
-                <p>Dear {customer.get('name') or customer.get('first_name') or 'Customer'},</p>
-                <p>We have updated the following invoice:</p>
-                <p><strong>Invoice Number:</strong> {invoice['number']}</p>
-                <p><strong>Purchase Order:</strong> {invoice.get('purchase_order', '')}</p>
-                <p><strong>Date:</strong> {invoice['date']}</p>
-                <p><strong>Due Date:</strong> {invoice['due_date']}</p>
-                <p><strong>Ship Date:</strong> {invoice.get('ship_date','')}</p>
-                <p><strong>Ship Via:</strong> {invoice.get('ship_via','')}</p>
-                <p><strong>Terms:</strong> {invoice.get('terms','')}</p>
-                <p><strong>FOB:</strong> {invoice.get('fob','')}</p>
-                <p><strong>Comments:</strong> {invoice.get('comments','')}</p>
-                <h3>Lines:</h3>
-                <table border="1" cellpadding="6" cellspacing="0">
-                <tr>
-                    <th>Description</th><th>Quantity</th><th>Unit Price</th>
-                    <th>Amount</th><th>Discount</th><th>Taxable</th><th>Total</th>
-                </tr>
-                """
-                for l in email_lines:
-                    message += f"""
-                    <tr>
-                      <td>{l.get('description','')}</td>
-                      <td>{l.get('quantity','')}</td>
-                      <td>{l.get('unit_price','')}</td>
-                      <td>{l.get('amount','')}</td>
-                      <td>{l.get('discount','')}</td>
-                      <td>{tax_display(l.get('taxable_id'))}</td>
-                      <td>{l.get('total','')}</td>
-                    </tr>
-                    """
-                message += f"""
-                </table>
-                <p><strong>Sub Total:</strong> {invoice['sub_total']}</p>
-                <p><strong>Tax Total:</strong> {invoice['tax_total']}</p>
-                <p><strong>Total:</strong> {invoice['total']}</p>
-                <p>Thank you for your business!</p>
-                <p>Best regards,<br>{corporate['name']}</p>
-                </body></html>
-                """
-
-                notification_handler = DocumentNotificationHandler()
-                send_result = notification_handler.send_document_notification(
-                    [{
-                        "message_type": "EMAIL",
-                        "organisation_id": corporate_id,
-                        "destination": to_email,
-                        "message": message,
-                        "subject": subject,
-                    }],
-                    trans=None
-                )
-                if send_result != "success":
-                    TransactionLogBase.log(
-                        transaction_type="INVOICE_SEND_FAILED",
-                        user=user,
-                        message="Failed to send email",
-                        state_name="Failed",
-                        request=request
-                    )
-
+        # Fetch fresh lines for response
         db_lines = registry.database(
             model_name="InvoiceLine",
             operation="filter",
             data={"invoice_id": invoice["id"]}
         )
-        invoice["lines"] = db_lines
+        invoice["lines"] = [
+            {
+                "id": str(line.get("id", "")),
+                "description": line.get("description", ""),
+                "quantity": float(line.get("quantity", 0)),
+                "unit_price": float(line.get("unit_price", 0)),
+                "amount": float(line.get("amount", 0)),
+                "discount": float(line.get("discount", 0)),
+                "taxable_id": str(line.get("taxable_id", "")),
+                "tax_amount": float(line.get("tax_amount", 0)),
+                "sub_total": float(line.get("sub_total", 0)),
+                "total": float(line.get("total", 0)),
+            }
+            for line in db_lines
+        ]
 
-        return ResponseProvider(message="Invoice updated successfully", data=invoice, code=200).success()
+        # Add calculated totals to response
+        invoice["sub_total"] = float(sub_total)
+        invoice["tax_total"] = float(tax_total)
+        invoice["total_discount"] = float(total_discount)
+        invoice["total"] = float(total)
+
+        return ResponseProvider(message="Invoice updated and posted successfully", data=invoice, code=200).success()
 
     except Exception as e:
         TransactionLogBase.log(
-            transaction_type="INVOICE_UPDATE_FAILED",
+            transaction_type="INVOICE_UPDATE_AND_POST_FAILED",
             user=user,
             message=str(e),
             state_name="Failed",
@@ -1269,7 +1135,7 @@ def delete_invoice(request):
 
         with transaction.atomic():
             registry.database(
-                model_name="Invoice",
+                model_name="Invoices",
                 operation="delete",
                 instance_id=invoice_id,
                 data={"id": invoice_id}

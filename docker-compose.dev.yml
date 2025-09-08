@@ -5,28 +5,38 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: django_dev
+    container_name: django-backend-dev
     ports:
       - "8000:8000"
     volumes:
-      - .:/app  # ✅ mounts your local code for live reload
+      - .:/app  # mount local code for live reload
     env_file:
       - .env.dev
+    environment:
+      DJANGO_SETTINGS_MODULE: quidpath_backend.settings.dev
     depends_on:
       - db
+    networks:
+      - backend_net   # 👈 attach to custom network
 
   db:
-    image: postgres:15
-    container_name: postgres_dev
-    restart: always
-    environment:
-      POSTGRES_USER: devuser
-      POSTGRES_PASSWORD: devpass
-      POSTGRES_DB: devdb
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+        image: postgres:15
+        container_name: postgres_dev
+        restart: always
+        environment:
+          POSTGRES_USER: devuser
+          POSTGRES_PASSWORD: devpass
+          POSTGRES_DB: devdb
+        ports:
+          - "5432:5432"
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+        networks:
+          - backend_net
 
 volumes:
   postgres_data:
+
+networks:
+  backend_net:
+    driver: bridge

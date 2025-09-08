@@ -24,7 +24,7 @@ class TaxRate(BaseModel):
 class Quotation(BaseModel):
     STATUS = {
         "DRAFT": "DRAFT",
-        "SENT": "SENT",
+        "POSTED": "POSTED",
         "INVOICED": "INVOICED",
         "REJECTED": "REJECTED",
     }
@@ -67,7 +67,7 @@ class QuotationLine(BaseModel):
 class PurchaseOrder(BaseModel):
     STATUS = {
         "DRAFT": "DRAFT",
-        "SENT": "SENT",
+        "POSTED": "POSTED",
         "INVOICED": "INVOICED",
         "CONFIRMED": "CONFIRMED",
         "RECEIVED": "RECEIVED",
@@ -110,7 +110,7 @@ class PurchaseOrderLine(BaseModel):
 class ProformaInvoice(BaseModel):
     STATUS = {
         "DRAFT": "DRAFT",
-        "SENT": "SENT",
+        "POSTED": "POSTED",
         "INVOICED": "INVOICED",
         "REJECTED": "REJECTED",
     }
@@ -157,7 +157,7 @@ class ProformaInvoiceLine(BaseModel):
 class Invoices(BaseModel):
     STATUS = {
         "DRAFT": "DRAFT",
-        "ISSUED": "ISSUED",
+        "POSTED": "POSTED",
         "PAID": "PAID",
         "PARTIALLY_PAID": "PARTIALLY PAID",
         "OVERDUE": "OVERDUE",

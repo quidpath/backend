@@ -47,7 +47,10 @@ def normalize_taxable_id(raw):
     return None
 
 def get_tax_rate_value(tax_rate):
-    """Extract tax rate percentage from TaxRate label (e.g., 'VAT (16%)' -> 0.16)."""
+    """
+    Convert a TaxRate choice into a Decimal percentage.
+    e.g. 'general_rated' -> Decimal('0.16')
+    """
     if not tax_rate or not tax_rate.get("name"):
         TransactionLogBase.log(
             transaction_type="VENDOR_BILL_TAX_RATE_WARNING",
@@ -57,51 +60,58 @@ def get_tax_rate_value(tax_rate):
             request=None
         )
         return Decimal("0")
-    label = tax_rate["name"]
-    match = re.search(r'\((\d+)%\)', label)
-    if match:
-        try:
-            rate = Decimal(match.group(1)) / Decimal("100")
-            return rate
-        except (InvalidOperation, ValueError):
-            TransactionLogBase.log(
-                transaction_type="VENDOR_BILL_TAX_RATE_ERROR",
-                user=None,
-                message=f"Invalid tax rate label format: {label}",
-                state_name="Failed",
-                request=None
-            )
-            return Decimal("0")
-    TransactionLogBase.log(
-        transaction_type="VENDOR_BILL_TAX_RATE_WARNING",
-        user=None,
-        message=f"Could not parse tax rate from label: {label}",
-        state_name="Warning",
-        request=None
-    )
-    return Decimal("0")
+
+    rate_map = {
+        "exempt": Decimal("0"),
+        "zero_rated": Decimal("0"),
+        "general_rated": Decimal("0.16"),
+    }
+
+    key = tax_rate["name"]
+    value = rate_map.get(key, Decimal("0"))
+
+    if value == Decimal("0") and key not in rate_map:
+        TransactionLogBase.log(
+            transaction_type="VENDOR_BILL_TAX_RATE_WARNING",
+            user=None,
+            message=f"Unknown tax rate key: {key}",
+            state_name="Warning",
+            request=None
+        )
+
+    return value
 
 @csrf_exempt
 def create_vendor_bill(request):
     """
-    Create a new vendor bill for the user's corporate, set status to DRAFT, and calculate totals.
+    Create a new vendor bill for the user's corporate, set status to DRAFT or POSTED, and calculate totals.
+    Purchase order must be specified by number and must be POSTED.
 
     Expected data:
     - vendor: UUID of the vendor
     - corporate_id: UUID of the corporate
-    - purchase_order: Purchase order number (string, optional)
+    - purchase_order: Purchase order number (e.g., 'PO-123', optional)
     - date: Date of the vendor bill (YYYY-MM-DD)
     - number: Vendor bill number (unique)
     - due_date: Due date of the vendor bill (YYYY-MM-DD)
     - created_by: UUID of the user creating the vendor bill
     - comments: Comments (optional)
     - terms: Payment terms (optional)
+    - status: DRAFT or POSTED
+    - sub_total: Total before taxes and discounts
+    - tax_total: Total tax amount
+    - total_discount: Total discount amount
+    - total: Final total amount
     - lines: List of dictionaries, each containing fields for VendorBillLine
       - description
       - quantity
       - unit_price
       - discount
       - taxable_id
+      - amount
+      - sub_total
+      - tax_amount
+      - total
       - purchase_order_line: UUID of the purchase order line (optional)
     """
     data, metadata = get_clean_data(request)
@@ -128,10 +138,14 @@ def create_vendor_bill(request):
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
-        required_fields = ["vendor", "date", "number", "due_date", "created_by"]
+        required_fields = ["vendor", "date", "number", "due_date", "created_by", "status"]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+
+        normalized_status = str(data.get("status", "DRAFT")).upper()
+        if normalized_status not in {"DRAFT", "POSTED"}:
+            return ResponseProvider(message="Invalid status. Must be 'DRAFT' or 'POSTED'", code=400).bad_request()
 
         vendors = registry.database(
             model_name="Vendor",
@@ -149,26 +163,33 @@ def create_vendor_bill(request):
         if not created_by_users:
             return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
 
-        purchase_order_number = data.get("purchase_order")
         purchase_order_id = None
-        if purchase_order_number:
+        purchase_order_input = data.get("purchase_order")
+        if purchase_order_input:
             purchase_orders = registry.database(
                 model_name="PurchaseOrder",
                 operation="filter",
-                data={"number": purchase_order_number, "corporate_id": corporate_id}
+                data={"number": purchase_order_input, "corporate_id": corporate_id, "status": "POSTED"}
             )
             if not purchase_orders:
-                return ResponseProvider(message=f"Purchase order with number {purchase_order_number} not found for this corporate", code=404).bad_request()
+                return ResponseProvider(
+                    message=f"Purchase order {purchase_order_input} not found or not in POSTED status for this corporate",
+                    code=404
+                ).bad_request()
             purchase_order_id = purchase_orders[0]["id"]
 
+        # Initialize totals
         sub_total = Decimal('0.00')
         tax_total = Decimal('0.00')
         total_discount = Decimal('0.00')
         total = Decimal('0.00')
 
         lines = data.get("lines", [])
+        if not lines:
+            return ResponseProvider(message="At least one vendor bill line is required", code=400).bad_request()
+
         for line_data in lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
+            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id", "amount", "sub_total", "tax_amount", "total"]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
@@ -201,10 +222,22 @@ def create_vendor_bill(request):
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
             discount = to_decimal(line_data["discount"])
-            line_subtotal = qty * unit_price
-            line_taxable_amount = line_subtotal - discount
-            line_tax_amount = line_taxable_amount * tax_rate_value
-            line_total = line_taxable_amount + line_tax_amount
+            line_subtotal = to_decimal(line_data["amount"])
+            line_taxable_amount = to_decimal(line_data["sub_total"])
+            line_tax_amount = to_decimal(line_data["tax_amount"])
+            line_total = to_decimal(line_data["total"])
+
+            # Validate calculations
+            expected_subtotal = qty * unit_price
+            expected_taxable_amount = expected_subtotal - discount
+            expected_tax_amount = expected_taxable_amount * tax_rate_value
+            expected_total = expected_taxable_amount + expected_tax_amount
+
+            if abs(line_subtotal - expected_subtotal) > Decimal('0.01') or \
+               abs(line_taxable_amount - expected_taxable_amount) > Decimal('0.01') or \
+               abs(line_tax_amount - expected_tax_amount) > Decimal('0.01') or \
+               abs(line_total - expected_total) > Decimal('0.01'):
+                return ResponseProvider(message=f"Invalid calculations for line: {line_data['description']}", code=400).bad_request()
 
             sub_total += line_subtotal
             tax_total += line_tax_amount
@@ -222,7 +255,7 @@ def create_vendor_bill(request):
                 "comments": data.get("comments", ""),
                 "terms": data.get("terms", ""),
                 "created_by_id": data["created_by"],
-                "status": "DRAFT",
+                "status": normalized_status,
                 "sub_total": float(sub_total),
                 "tax_total": float(tax_total),
                 "total_discount": float(total_discount),
@@ -245,41 +278,24 @@ def create_vendor_bill(request):
                     )
                     tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
 
-                qty = to_decimal(line_data["quantity"])
-                unit_price = to_decimal(line_data["unit_price"])
-                discount = to_decimal(line_data["discount"])
-                line_subtotal = qty * unit_price
-                line_taxable_amount = line_subtotal - discount
-                line_tax_amount = line_taxable_amount * tax_rate_value
-                line_total = line_taxable_amount + line_tax_amount
-
                 line_data_for_creation = {
                     "vendor_bill_id": vendor_bill["id"],
                     "purchase_order_line_id": line_data.get("purchase_order_line"),
                     "description": line_data["description"],
-                    "quantity": float(qty),
-                    "unit_price": float(unit_price),
-                    "amount": float(line_subtotal),
-                    "discount": float(discount),
+                    "quantity": float(line_data["quantity"]),
+                    "unit_price": float(line_data["unit_price"]),
+                    "amount": float(line_data["amount"]),
+                    "discount": float(line_data["discount"]),
                     "taxable_id": taxable_id,
-                    "tax_amount": float(line_tax_amount),
-                    "sub_total": float(line_subtotal),
-                    "total": float(line_total),
+                    "tax_amount": float(line_data["tax_amount"]),
+                    "sub_total": float(line_data["sub_total"]),
+                    "total": float(line_data["total"]),
                 }
                 registry.database(
                     model_name="VendorBillLine",
                     operation="create",
                     data=line_data_for_creation
                 )
-
-        TransactionLogBase.log(
-            transaction_type="VENDOR_BILL_CREATED",
-            user=user,
-            message=f"Vendor bill {vendor_bill['number']} created for corporate {corporate_id}",
-            state_name="Completed",
-            extra={"vendor_bill_id": vendor_bill["id"], "line_count": len(lines)},
-            request=request
-        )
 
         def tax_display(taxable_id_value):
             if not taxable_id_value:
@@ -323,31 +339,25 @@ def create_vendor_bill(request):
         ]
 
         return ResponseProvider(
-            message="Vendor bill created successfully",
+            message=f"Vendor bill {'posted' if normalized_status == 'POSTED' else 'created as draft'} successfully",
             data=vendor_bill,
             code=201
         ).success()
 
     except Exception as e:
-        TransactionLogBase.log(
-            transaction_type="VENDOR_BILL_CREATION_FAILED",
-            user=user,
-            message=str(e),
-            state_name="Failed",
-            request=request
-        )
         return ResponseProvider(message="An error occurred while creating vendor bill", code=500).exception()
 
 @csrf_exempt
 def update_vendor_bill(request):
     """
-    Update an existing vendor bill for the user's corporate, including its lines, and set status to DRAFT or POSTED.
+    Update an existing vendor bill for the user's corporate, including its lines, set status to DRAFT or POSTED,
+    and ensure purchase order is specified by number and is POSTED.
 
     Expected data:
     - id: UUID of the vendor bill
     - vendor: UUID of the vendor
     - corporate_id: UUID of the corporate
-    - purchase_order: UUID of the purchase order (optional)
+    - purchase_order: Purchase order number (e.g., 'PO-123', optional)
     - date: Date of the vendor bill (YYYY-MM-DD)
     - number: Vendor bill number (unique)
     - due_date: Due date of the vendor bill (YYYY-MM-DD)
@@ -355,9 +365,21 @@ def update_vendor_bill(request):
     - comments: Comments (optional)
     - terms: Payment terms (optional)
     - status: DRAFT or POSTED
+    - sub_total: Total before taxes and discounts
+    - tax_total: Total tax amount
+    - total_discount: Total discount amount
+    - total: Final total amount
     - lines: List of dictionaries, each containing fields for VendorBillLine
       - id: UUID of the line (optional, for updates)
-      - description ○ quantity ○ unit_price ○ discount ○ taxable_id
+      - description
+      - quantity
+      - unit_price
+      - discount
+      - taxable_id
+      - amount
+      - sub_total
+      - tax_amount
+      - total
       - purchase_order_line: UUID of the purchase order line (optional)
     """
     data, metadata = get_clean_data(request)
@@ -384,7 +406,7 @@ def update_vendor_bill(request):
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
-        required_fields = ["id", "vendor", "date", "number", "due_date", "created_by"]
+        required_fields = ["id", "vendor", "date", "number", "due_date", "created_by", "status"]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
@@ -414,28 +436,37 @@ def update_vendor_bill(request):
         if not created_by_users:
             return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
 
-        purchase_order_id = data.get("purchase_order")
-        if purchase_order_id:
+        purchase_order_id = None
+        purchase_order_input = data.get("purchase_order")
+        if purchase_order_input:
             purchase_orders = registry.database(
                 model_name="PurchaseOrder",
                 operation="filter",
-                data={"id": purchase_order_id, "corporate_id": corporate_id}
+                data={"number": purchase_order_input, "corporate_id": corporate_id, "status": "POSTED"}
             )
             if not purchase_orders:
-                return ResponseProvider(message="Purchase order not found for this corporate", code=404).bad_request()
+                return ResponseProvider(
+                    message=f"Purchase order {purchase_order_input} not found or not in POSTED status for this corporate",
+                    code=404
+                ).bad_request()
+            purchase_order_id = purchase_orders[0]["id"]
 
         normalized_status = str(data.get("status", "DRAFT")).upper()
         if normalized_status not in {"DRAFT", "POSTED"}:
-            normalized_status = "DRAFT"
+            return ResponseProvider(message="Invalid status. Must be 'DRAFT' or 'POSTED'", code=400).bad_request()
 
+        # Initialize totals
         sub_total = Decimal('0.00')
         tax_total = Decimal('0.00')
         total_discount = Decimal('0.00')
         total = Decimal('0.00')
 
         submitted_lines = data.get("lines", [])
+        if not submitted_lines:
+            return ResponseProvider(message="At least one vendor bill line is required", code=400).bad_request()
+
         for line_data in submitted_lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
+            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id", "amount", "sub_total", "tax_amount", "total"]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
@@ -456,7 +487,7 @@ def update_vendor_bill(request):
                 tax_rate_value = Decimal('0')
 
             purchase_order_line_id = line_data.get("purchase_order_line")
-            if purchase_order_line_id:
+            if purchase_order_line_id and purchase_order_id:
                 po_lines = registry.database(
                     model_name="PurchaseOrderLine",
                     operation="filter",
@@ -468,10 +499,22 @@ def update_vendor_bill(request):
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
             discount = to_decimal(line_data["discount"])
-            line_subtotal = qty * unit_price
-            line_taxable_amount = line_subtotal - discount
-            line_tax_amount = line_taxable_amount * tax_rate_value
-            line_total = line_taxable_amount + line_tax_amount
+            line_subtotal = to_decimal(line_data["amount"])
+            line_taxable_amount = to_decimal(line_data["sub_total"])
+            line_tax_amount = to_decimal(line_data["tax_amount"])
+            line_total = to_decimal(line_data["total"])
+
+            # Validate calculations
+            expected_subtotal = qty * unit_price
+            expected_taxable_amount = expected_subtotal - discount
+            expected_tax_amount = expected_taxable_amount * tax_rate_value
+            expected_total = expected_taxable_amount + expected_tax_amount
+
+            if abs(line_subtotal - expected_subtotal) > Decimal('0.01') or \
+               abs(line_taxable_amount - expected_taxable_amount) > Decimal('0.01') or \
+               abs(line_tax_amount - expected_tax_amount) > Decimal('0.01') or \
+               abs(line_total - expected_total) > Decimal('0.01'):
+                return ResponseProvider(message=f"Invalid calculations for line: {line_data['description']}", code=400).bad_request()
 
             sub_total += line_subtotal
             tax_total += line_tax_amount
@@ -530,26 +573,18 @@ def update_vendor_bill(request):
                     )
                     tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
 
-                qty = to_decimal(line_data["quantity"])
-                unit_price = to_decimal(line_data["unit_price"])
-                discount = to_decimal(line_data["discount"])
-                line_subtotal = qty * unit_price
-                line_taxable_amount = line_subtotal - discount
-                line_tax_amount = line_taxable_amount * tax_rate_value
-                line_total = line_taxable_amount + line_tax_amount
-
                 line_payload = {
                     "vendor_bill_id": vendor_bill["id"],
                     "purchase_order_line_id": line_data.get("purchase_order_line"),
                     "description": line_data["description"],
-                    "quantity": float(qty),
-                    "unit_price": float(unit_price),
-                    "amount": float(line_subtotal),
-                    "discount": float(discount),
+                    "quantity": float(line_data["quantity"]),
+                    "unit_price": float(line_data["unit_price"]),
+                    "amount": float(line_data["amount"]),
+                    "discount": float(line_data["discount"]),
                     "taxable_id": taxable_id,
-                    "tax_amount": float(line_tax_amount),
-                    "sub_total": float(line_subtotal),
-                    "total": float(line_total),
+                    "tax_amount": float(line_data["tax_amount"]),
+                    "sub_total": float(line_data["sub_total"]),
+                    "total": float(line_data["total"]),
                 }
 
                 if line_data.get("id") in existing_line_ids:
@@ -566,15 +601,6 @@ def update_vendor_bill(request):
                         operation="create",
                         data=line_payload
                     )
-
-        TransactionLogBase.log(
-            transaction_type="VENDOR_BILL_UPDATED",
-            user=user,
-            message=f"Vendor bill {vendor_bill['number']} updated for corporate {corporate_id} with status {vendor_bill['status']}",
-            state_name="Completed",
-            extra={"vendor_bill_id": vendor_bill["id"], "line_count": len(submitted_lines)},
-            request=request
-        )
 
         def tax_display(taxable_id_value):
             if not taxable_id_value:
@@ -618,19 +644,12 @@ def update_vendor_bill(request):
         ]
 
         return ResponseProvider(
-            message="Vendor bill updated successfully",
+            message=f"Vendor bill {'posted' if normalized_status == 'POSTED' else 'updated as draft'} successfully",
             data=vendor_bill,
             code=200
         ).success()
 
     except Exception as e:
-        TransactionLogBase.log(
-            transaction_type="VENDOR_BILL_UPDATE_FAILED",
-            user=user,
-            message=str(e),
-            state_name="Failed",
-            request=request
-        )
         return ResponseProvider(message="An error occurred while updating vendor bill", code=500).exception()
 
 @csrf_exempt
@@ -1207,3 +1226,62 @@ def convert_purchase_order_to_vendor_bill(request):
             request=request
         )
         return ResponseProvider(message="An error occurred while converting purchase order to vendor bill", code=500).exception()
+
+@csrf_exempt
+def list_po(request):
+    """
+    List all purchase orders for the user's corporate.
+
+    Returns:
+    - 200: List of purchase orders
+    - 400: Bad request (missing corporate)
+    - 401: Unauthorized (user not authenticated)
+    - 500: Internal server error
+    """
+    data, metadata = get_clean_data(request)
+    user = metadata.get("user")
+    if not user:
+        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    if not user_id:
+        return ResponseProvider(message="User ID not found", code=400).bad_request()
+
+    try:
+        registry = ServiceRegistry()
+
+        corporate_users = registry.database(
+            model_name="CorporateUser",
+            operation="filter",
+            data={"customuser_ptr_id": user_id, "is_active": True}
+        )
+        if not corporate_users:
+            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+
+        corporate_id = corporate_users[0]["corporate_id"]
+        if not corporate_id:
+            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+
+        purchase_orders = registry.database(
+            model_name="PurchaseOrder",
+            operation="filter",
+            data={"corporate_id": corporate_id}
+        )
+
+        serialized_purchase_orders = [
+            {
+                "id": str(po["id"]),
+                "number": po.get("number", ""),
+                "po_number": po.get("po_number", po.get("number", ""))
+            }
+            for po in purchase_orders
+        ]
+
+        return ResponseProvider(
+            data={"purchase_orders": serialized_purchase_orders},
+            message="Purchase orders retrieved successfully",
+            code=200
+        ).success()
+
+    except Exception as e:
+        return ResponseProvider(message=str(e), code=500).exception()

@@ -7,6 +7,11 @@ from quidpath_backend.core.base_models.base import BaseModel
 # Create your models here.
 class Corporate(BaseModel):
      name = models.CharField(max_length=255)
+     industry = models.CharField(max_length=255, blank=True, null=True)
+     company_size = models.CharField(max_length=255, blank=True, null=True)
+     message = models.TextField(blank=True, null=True)
+     registration_number = models.CharField(max_length=255, blank=True, null=True)
+     tax_id = models.CharField(max_length=255, blank=True, null=True)
      description = models.TextField()
      website = models.URLField()
      logo = models.ImageField(upload_to='corporates/logos/')
