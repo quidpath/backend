@@ -189,27 +189,42 @@ def get_transaction(request, transaction_id):
 @csrf_exempt
 def list_transactions(request):
     """
-    Retrieve all transactions for a corporate's bank accounts.
-
-    Expected data:
-    - corporate: UUID of the corporate entity
+    Retrieve all transactions for a corporate's bank accounts based on the logged-in user's corporate.
 
     Returns:
     - 200: List of transactions
-    - 400: Bad request (missing corporate)
+    - 400: Bad request (user not linked to a corporate)
+    - 401: Unauthorized (user not authenticated)
     - 404: Corporate not found
     - 500: Internal server error
     """
-    data, metadata = get_clean_data(request)
-    corporate_id = data.get("corporate")
-
-    if not corporate_id:
-        return ResponseProvider(message="Corporate ID is required", code=400).bad_request()
-
     try:
+        data, metadata = get_clean_data(request)
+        user = metadata.get("user")
+        if not user:
+            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+
+        # Get user_id safely
+        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        if not user_id:
+            return ResponseProvider(message="User ID not found", code=400).bad_request()
+
         registry = ServiceRegistry()
 
-        # Validate corporate
+        # Get corporate linked to this user
+        corporate_users = registry.database(
+            model_name="CorporateUser",
+            operation="filter",
+            data={"customuser_ptr_id": user_id, "is_active": True}
+        )
+        if not corporate_users:
+            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+
+        corporate_id = corporate_users[0].get("corporate_id")
+        if not corporate_id:
+            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+
+        # Ensure corporate is active
         corporates = registry.database(
             model_name="Corporate",
             operation="filter",
@@ -218,15 +233,15 @@ def list_transactions(request):
         if not corporates:
             return ResponseProvider(message="Corporate not found or inactive", code=404).bad_request()
 
-        # Get all bank accounts for the corporate
+        # Get all active bank accounts for this corporate
         bank_accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"corporate": corporate_id, "is_active": True}
+            data={"corporate_id": corporate_id, "is_active": True}
         )
         bank_account_ids = [acc["id"] for acc in bank_accounts]
 
-        # Get transactions for those accounts
+        # Get all transactions linked to those bank accounts
         transactions = registry.database(
             model_name="BankTransaction",
             operation="filter",
@@ -236,27 +251,42 @@ def list_transactions(request):
         # Log successful retrieval
         TransactionLogBase.log(
             transaction_type="BANK_TRANSACTION_LIST_SUCCESS",
-            user=metadata.get("user"),
+            user=user,
             message=f"Retrieved {len(transactions)} transactions for corporate {corporate_id}",
             state_name="Success",
+            extra={"transaction_count": len(transactions)},
             request=request
         )
 
         return ResponseProvider(
             message="Transactions retrieved successfully",
-            data={"transactions": transactions, "count": len(transactions)},
+            data={
+                "transactions": transactions,
+                "count": len(transactions),
+                "corporate_id": corporate_id
+            },
             code=200
         ).success()
+
+    except ValueError as ve:
+        TransactionLogBase.log(
+            transaction_type="BANK_TRANSACTION_LIST_VALIDATION_ERROR",
+            user=metadata.get("user") if 'metadata' in locals() else None,
+            message=f"Validation error: {str(ve)}",
+            state_name="Failed",
+            request=request
+        )
+        return ResponseProvider(message=f"Validation error: {str(ve)}", code=400).bad_request()
 
     except Exception as e:
         TransactionLogBase.log(
             transaction_type="BANK_TRANSACTION_LIST_FAILED",
-            user=metadata.get("user"),
-            message=str(e),
+            user=metadata.get("user") if 'metadata' in locals() else None,
+            message=f"Unexpected error: {str(e)}",
             state_name="Failed",
             request=request
         )
-        return ResponseProvider(message="Error retrieving transactions", code=500).exception()
+        return ResponseProvider(message="An error occurred while retrieving transactions", code=500).exception()
 
 @csrf_exempt
 def update_transaction(request):

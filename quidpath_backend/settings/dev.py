@@ -1,11 +1,9 @@
 # settings/dev.py
 from .base import *
-DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+if os.environ.get("DJANGO_ENV") == "dev":
+    DEBUG = True
+    ALLOWED_HOSTS = ["*"]
 print("Using Development Settings")
-# Development database
-DATABASES['default'] = {
-    'ENGINE': 'django.db.backends.sqlite3',
-    'NAME': BASE_DIR / 'dev_db.sqlite3',
-}
-# Additional dev-specific settings can go here
+
+import os
+print("DATABASE_URL:", os.environ.get("DATABASE_URL"))

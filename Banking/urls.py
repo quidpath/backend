@@ -47,4 +47,5 @@ urlpatterns = [
     path("transaction/list/", list_transactions, name="list_transactions"),
     path("transaction/update/", update_transaction, name="update_transaction"),
     path("transaction/delete/", delete_transaction, name="delete_transaction"),
+
 ]

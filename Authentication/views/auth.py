@@ -4,6 +4,7 @@ from datetime import timedelta
 from importlib.metadata import metadata
 
 from django.http import JsonResponse
+from django.utils import timezone
 from django.utils.timezone import now
 from django.contrib.auth.hashers import check_password
 from django.conf import settings
@@ -24,13 +25,14 @@ from quidpath_backend.core.utils.request_parser import get_clean_data
 
 def issue_tokens_for_user(user, role=None, corporate_id=None):
     refresh = RefreshToken.for_user(user)
+    # Add custom claims to refresh token
     if role:
         refresh["role"] = role
     if corporate_id:
         refresh["organisation_id"] = str(corporate_id)
     refresh["is_global_user"] = False if corporate_id else True
+    refresh["is_superuser"] = user.is_superuser  # Add superuser status to payload
     return str(refresh.access_token), str(refresh)
-
 
 @csrf_exempt
 def login_user(request):
@@ -41,47 +43,50 @@ def login_user(request):
     if not username or not password:
         return JsonResponse({"error": "Username and password required"}, status=400)
 
-
     try:
         user = CustomUser.objects.get(username=username)
     except CustomUser.DoesNotExist:
         return JsonResponse({"error": "Invalid credentials"}, status=401)
 
-    if not user.is_active:
+    if not user.is_active and not user.is_superuser:
         return JsonResponse({"error": "User is suspended"}, status=401)
 
     if not check_password(password, user.password):
         return JsonResponse({"error": "Invalid password"}, status=401)
 
+    # Initialize role and corporate_id
     corporate_user = CorporateUser.objects.filter(id=user.id).first()
     role = corporate_id = None
     if corporate_user:
         role = corporate_user.role.name if corporate_user.role else None
         corporate_id = corporate_user.corporate_id
 
-    otp_expired = not user.last_otp_sent_at or (now() - user.last_otp_sent_at > timedelta(hours=24))
+    # Skip OTP for superusers
+    if not user.is_superuser:
+        otp_expired = not user.last_otp_sent_at or (timezone.now() - user.last_otp_sent_at > timedelta(hours=24))
+        if otp_expired:
+            user.is_active = False
+            user.save(update_fields=["is_active"])
+            otp_code = user.generate_otp()
 
-    if otp_expired:
-        user.is_active = False
+            NotificationServiceHandler().send_notification([{
+                "message_type": "EMAIL",
+                "organisation_id": corporate_id,
+                "destination": user.email,
+                "message": f"<p>Hello {user.username},</p><p>Your OTP is <b>{otp_code}</b>.</p>",
+                "confirmation_code": otp_code
+            }])
+            TransactionLogBase.log("OTP_SENT", user=user, message="OTP sent due to expiration")
+
+            return JsonResponse({
+                "message": "OTP expired. A new one has been sent to your email.",
+                "otp_required": True
+            })
+
+    # Ensure user is active after login (especially for superusers)
+    if not user.is_active:
+        user.is_active = True
         user.save(update_fields=["is_active"])
-        otp_code = user.generate_otp()
-
-        NotificationServiceHandler().send_notification([{
-            "message_type": "EMAIL",
-            "organisation_id": corporate_id,
-            "destination": user.email,
-            "message": f"<p>Hello {user.username},</p><p>Your OTP is <b>{otp_code}</b>.</p>",
-            "confirmation_code": otp_code
-        }])
-        TransactionLogBase.log("OTP_SENT", user=user, message="OTP sent due to expiration")
-
-        return JsonResponse({
-            "message": "OTP expired. A new one has been sent to your email.",
-            "otp_required": True
-        })
-
-    user.is_active = True
-    user.save(update_fields=["is_active"])
 
     access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
     TransactionLogBase.log("USER_LOGIN", user=user, message="User logged in successfully")
@@ -92,7 +97,7 @@ def login_user(request):
         "otp_required": False,
         "is_global_user": not corporate_user,
         "organisation_id": corporate_id,
-        "role": role,
+        "role": role or ("superuser" if user.is_superuser else None),
     })
     response["Authorization"] = f"Bearer {access_token}"
     return response

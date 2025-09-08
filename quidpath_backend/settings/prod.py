@@ -1,9 +1,9 @@
 # settings/dev.py
 from .base import *
-DEBUG = False
+DEBUG = True
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
-# Development database
-DATABASES['default'] = {
-    'ENGINE': 'django.db.backends.sqlite3',
-    'NAME': BASE_DIR / 'dev_db.sqlite3',
-}
+
+print("Using Production Settings")
+
+import os
+print("DATABASE_URL:", os.environ.get("DATABASE_URL"))

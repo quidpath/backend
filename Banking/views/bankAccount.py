@@ -180,61 +180,62 @@ def add_bank_account(request):
             code=500
         ).exception()
 
+from django.views.decorators.csrf import csrf_exempt
+
 @csrf_exempt
 def list_bank_accounts(request):
     """
-    Retrieve a list of active bank accounts for a given corporate.
-
-    Expected data:
-    - corporate: UUID of the corporate entity
+    Retrieve a list of active bank accounts for the user's corporate.
 
     Returns:
     - 200: List of bank accounts
-    - 400: Bad request (missing corporate or corporate not found)
+    - 400: Bad request (user not linked to a corporate)
+    - 401: Unauthorized (user not authenticated)
     - 500: Internal server error
     """
     try:
         data, metadata = get_clean_data(request)
+        user = metadata.get("user")
+        if not user:
+            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+
+        # Get user_id safely
+        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        if not user_id:
+            return ResponseProvider(message="User ID not found", code=400).bad_request()
+
         registry = ServiceRegistry()
 
-        # Validate required fields
-        corporate_id = data.get("corporate")
-        if not corporate_id:
-            return ResponseProvider(
-                message="Corporate ID is required",
-                code=400
-            ).bad_request()
-
-        # Validate corporate exists and is active
-        corporates = registry.database(
-            model_name="Corporate",
+        # Get corporate linked to this user
+        corporate_users = registry.database(
+            model_name="CorporateUser",
             operation="filter",
-            data={"id": corporate_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True}
         )
+        if not corporate_users:
+            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
 
-        if not corporates or len(corporates) == 0:
-            return ResponseProvider(
-                message="Corporate not found or inactive",
-                code=404
-            ).bad_request()
+        corporate_id = corporate_users[0]["corporate_id"]
+        if not corporate_id:
+            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
-        # Get list of bank accounts for the corporate
+        # Get list of active bank accounts for the corporate
         accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"corporate": corporate_id, "is_active": True}
+            data={"corporate_id": corporate_id, "is_active": True}
         )
 
-        # Log successful retrieval
+        # Log success
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_LIST_SUCCESS",
-            user=metadata.get("user"),
+            user=user,
             message=f"Retrieved {len(accounts)} bank accounts for corporate {corporate_id}",
             state_name="Success",
+            extra={"account_count": len(accounts)},
             request=request
         )
 
-        # Return the accounts - ResponseProvider will handle serialization automatically
         return ResponseProvider(
             message="Bank accounts retrieved successfully",
             data={
@@ -246,7 +247,6 @@ def list_bank_accounts(request):
         ).success()
 
     except ValueError as ve:
-        # Handle validation errors
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_LIST_VALIDATION_ERROR",
             user=metadata.get("user") if 'metadata' in locals() else None,
@@ -254,13 +254,9 @@ def list_bank_accounts(request):
             state_name="Failed",
             request=request
         )
-        return ResponseProvider(
-            message=f"Validation error: {str(ve)}",
-            code=400
-        ).bad_request()
+        return ResponseProvider(message=f"Validation error: {str(ve)}", code=400).bad_request()
 
     except Exception as e:
-        # Handle any unexpected errors
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_LIST_FAILED",
             user=metadata.get("user") if 'metadata' in locals() else None,
@@ -268,11 +264,7 @@ def list_bank_accounts(request):
             state_name="Failed",
             request=request
         )
-        return ResponseProvider(
-            message="An error occurred while retrieving bank accounts",
-            code=500
-        ).exception()
-
+        return ResponseProvider(message="An error occurred while retrieving bank accounts", code=500).exception()
 
 @csrf_exempt
 def update_bank_account(request):
