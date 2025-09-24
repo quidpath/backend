@@ -1,3 +1,4 @@
+# invoices.py
 from decimal import Decimal, InvalidOperation
 from django.views.decorators.csrf import csrf_exempt
 from collections import Counter
@@ -6,14 +7,12 @@ from django.db import transaction
 
 from Accounting.views.Quote import to_decimal
 from quidpath_backend import settings
+from quidpath_backend.core.utils.AccountingService import AccountingService
 from quidpath_backend.core.utils.DocsEmail import DocumentNotificationHandler
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-
-from decimal import Decimal, InvalidOperation
-import json, ast
 
 
 def normalize_taxable_id(raw, registry):
@@ -292,6 +291,7 @@ def create_and_post_invoice(request):
 
     try:
         registry = ServiceRegistry()
+        accounting_service = AccountingService(registry)
 
         corporate_users = registry.database(
             model_name="CorporateUser",
@@ -481,6 +481,16 @@ def create_and_post_invoice(request):
                 instance_id=quotation["id"],
                 data={"status": "INVOICED"}
             )
+
+        # Create journal entry using AccountingService
+        journal_entry = accounting_service.create_invoice_journal_entry(invoice["id"], user)
+        registry.database(
+            model_name="Invoices",
+            operation="update",
+            instance_id=invoice["id"],
+            data={"journal_entry_id": journal_entry["id"]}
+        )
+        invoice["journal_entry_id"] = journal_entry["id"]
 
         TransactionLogBase.log(
             transaction_type="INVOICE_CREATED_AND_POSTED",
@@ -766,29 +776,6 @@ def get_invoice(request):
 def update_invoice(request):
     """
     Update an existing invoice for the user's corporate, including its lines, and set status to DRAFT or POSTED.
-    Does not send an email notification.
-
-    Expected data:
-    - id: UUID of the invoice
-    - customer: UUID of the customer
-    - date: Date of the invoice (YYYY-MM-DD)
-    - number: Invoice number (format: INV-<6 digits>, e.g., INV-123456)
-    - due_date: Due date of the invoice (YYYY-MM-DD)
-    - salesperson: UUID of the salesperson (optional)
-    - comments: Comments (optional)
-    - terms: Payment terms (optional)
-    - ship_date: Shipping date (optional)
-    - ship_via: Shipping method (optional)
-    - fob: FOB terms (optional)
-    - purchase_order: Purchase order reference (optional)
-    - status: DRAFT or POSTED
-    - lines: List of dictionaries, each containing fields for InvoiceLine
-        - id: UUID of the line (optional, for updates)
-        - description: Item description
-        - quantity: Quantity of the item
-        - unit_price: Price per unit
-        - discount: Discount amount
-        - taxable_id: Tax rate ID or exempt status
     """
     def normalize_taxable_id(raw):
         """
@@ -812,9 +799,9 @@ def update_invoice(request):
                         d = ast.literal_eval(s)
                     except Exception:
                         d = None
-                if isinstance(d, dict):
-                    return d.get("id") or d.get("uuid") or d.get("pk")
-            return s
+                    if isinstance(d, dict):
+                        return d.get("id") or d.get("uuid") or d.get("pk")
+                return s
         return str(raw)
 
     data, metadata = get_clean_data(request)
@@ -828,6 +815,7 @@ def update_invoice(request):
 
     try:
         registry = ServiceRegistry()
+        accounting_service = AccountingService(registry)
 
         # Validate user corporate association
         corporate_users = registry.database(
@@ -1032,6 +1020,37 @@ def update_invoice(request):
                         data=line_payload
                     )
 
+            # Update journal entry if posted
+            if normalized_status == "POSTED":
+                # Delete old journal entry if exists
+                if invoice.get("journal_entry_id"):
+                    old_je_lines = registry.database(
+                        model_name="JournalEntryLine",
+                        operation="filter",
+                        data={"journal_entry_id": invoice["journal_entry_id"]}
+                    )
+                    for line in old_je_lines:
+                        registry.database(
+                            model_name="JournalEntryLine",
+                            operation="delete",
+                            instance_id=line["id"]
+                        )
+                    registry.database(
+                        model_name="JournalEntry",
+                        operation="delete",
+                        instance_id=invoice["journal_entry_id"]
+                    )
+
+                # Create new journal entry
+                journal_entry = accounting_service.create_invoice_journal_entry(invoice["id"], user)
+                registry.database(
+                    model_name="Invoices",
+                    operation="update",
+                    instance_id=invoice["id"],
+                    data={"journal_entry_id": journal_entry["id"]}
+                )
+                invoice["journal_entry_id"] = journal_entry["id"]
+
         # Log update
         TransactionLogBase.log(
             transaction_type="INVOICE_UPDATED_AND_POSTED",
@@ -1056,10 +1075,10 @@ def update_invoice(request):
                 "unit_price": float(line.get("unit_price", 0)),
                 "amount": float(line.get("amount", 0)),
                 "discount": float(line.get("discount", 0)),
-                "taxable_id": str(line.get("taxable_id", "")),
+                "taxable": str(line.get("taxable_id", "")),
                 "tax_amount": float(line.get("tax_amount", 0)),
                 "sub_total": float(line.get("sub_total", 0)),
-                "total": float(line.get("total", 0)),
+                "total": float(line.get("total", 0))
             }
             for line in db_lines
         ]
@@ -1107,10 +1126,6 @@ def delete_invoice(request):
         if not user_id:
             return ResponseProvider(message="User ID not found", code=400).bad_request()
 
-        invoice_id = data.get("id")
-        if not invoice_id:
-            return ResponseProvider(message="Invoice ID is required", code=400).bad_request()
-
         registry = ServiceRegistry()
 
         corporate_users = registry.database(
@@ -1125,8 +1140,12 @@ def delete_invoice(request):
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
+        invoice_id = data.get("id")
+        if not invoice_id:
+            return ResponseProvider(message="Invoice ID is required", code=400).bad_request()
+
         invoices = registry.database(
-            model_name="Invoice",
+            model_name="Invoices",
             operation="filter",
             data={"id": invoice_id, "corporate_id": corporate_id}
         )

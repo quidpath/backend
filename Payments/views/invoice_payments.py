@@ -1,12 +1,58 @@
+# invoice_payments.py (full corrected code)
+from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
-
 from Payments.models import RecordPayment
+from quidpath_backend.core.utils.AccountingService import AccountingService
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.request_parser import get_clean_data
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.Logbase import TransactionLogBase, logger
+
+
+def validate_decimal_precision(value, field_name, max_decimal_places=2):
+    """Validate decimal precision for monetary values"""
+    try:
+        decimal_val = Decimal(str(value))
+        # Check if it has more than max_decimal_places
+        if decimal_val.as_tuple().exponent < -max_decimal_places:
+            raise ValueError(f"{field_name} cannot have more than {max_decimal_places} decimal places")
+        return decimal_val
+    except (InvalidOperation, ValueError) as e:
+        raise ValueError(f"Invalid {field_name}: {str(e)}")
+
+
+def validate_payment_allocations(allocations, available_amount, invoices_dict):
+    """Validate payment allocations before processing"""
+    errors = []
+    total_allocated = Decimal("0")
+
+    for i, alloc in enumerate(allocations):
+        invoice_id = alloc.get("invoice_id")
+        if not invoice_id:
+            errors.append(f"Allocation {i + 1}: invoice_id is required")
+            continue
+
+        if str(invoice_id) not in invoices_dict:
+            errors.append(f"Allocation {i + 1}: Invalid invoice_id {invoice_id}")
+            continue
+
+        try:
+            amount_applied = Decimal(str(alloc.get("amount_applied", 0)))
+            if amount_applied <= 0:
+                errors.append(f"Allocation {i + 1}: amount_applied must be greater than 0")
+                continue
+            total_allocated += amount_applied
+        except (InvalidOperation, ValueError):
+            errors.append(f"Allocation {i + 1}: Invalid amount_applied format")
+            continue
+
+    if total_allocated > available_amount:
+        errors.append(
+            f"Total allocated amount ({total_allocated}) exceeds available payment amount ({available_amount})")
+
+    return errors
 
 
 @csrf_exempt
@@ -94,16 +140,17 @@ def list_customers(request):
         )
         return ResponseProvider(message="An error occurred while retrieving customers", code=500).exception()
 
+
 @csrf_exempt
 def list_unpaid_invoices(request):
     """
-    List all unpaid or partially paid invoices for a selected customer.
+    List all unpaid, partially paid, or overdue invoices for a selected customer.
 
     Expected data:
     - customer_id: UUID of the customer
 
     Returns:
-    - 200: List of unpaid/partially paid invoices with outstanding amounts
+    - 200: List of unpaid/partially paid/overdue invoices with outstanding amounts
     - 400: Bad request (missing customer ID or invalid corporate)
     - 401: Unauthorized (user not authenticated)
     - 404: Customer not found
@@ -148,10 +195,12 @@ def list_unpaid_invoices(request):
         invoices = registry.database(
             model_name="Invoices",
             operation="filter",
-            data={"customer_id": customer_id, "corporate_id": corporate_id, "status__in": ["ISSUED", "PARTIALLY_PAID"]}
+            data={"customer_id": customer_id, "corporate_id": corporate_id,
+                  "status__in": ["ISSUED", "PARTIALLY_PAID", "OVERDUE"]}
         )
 
         serialized_invoices = []
+        today = date.today()
         for inv in invoices:
             payments = registry.database(
                 model_name="RecordPaymentLine",
@@ -159,18 +208,53 @@ def list_unpaid_invoices(request):
                 data={"invoice_id": inv["id"]}
             )
             total_paid = sum(Decimal(str(p["amount_applied"])) for p in payments)
-            outstanding_amount = Decimal(str(inv.get("total", 0))) - total_paid
+            total = Decimal(str(inv.get("total", 0)))
+            outstanding_amount = total - total_paid
 
+            # Determine new status
+            new_status = inv["status"]
+            if outstanding_amount <= 0:
+                new_status = "PAID"
+            else:
+                due_date_value = inv.get("due_date")
+
+                if isinstance(due_date_value, str):
+                    due_date = date.fromisoformat(due_date_value)
+                elif isinstance(due_date_value, (date, datetime)):
+                    due_date = due_date_value.date() if isinstance(due_date_value, datetime) else due_date_value
+                else:
+                    continue  # skip invoice if due_date is invalid
+
+                if due_date < today and outstanding_amount > 0:
+                    new_status = "OVERDUE"
+                elif total_paid > 0:
+                    new_status = "PARTIALLY_PAID"
+                else:
+                    new_status = "ISSUED"
+
+            # Update invoice status if changed
+            if new_status != inv["status"]:
+                registry.database(
+                    model_name="Invoices",
+                    operation="update",
+                    instance_id=inv["id"],
+                    data={"status": new_status}
+                )
+
+            # Include only invoices with outstanding amounts
             if outstanding_amount > 0:
                 serialized_invoices.append({
                     "id": str(inv["id"]),
                     "number": inv["number"],
                     "date": inv["date"],
                     "due_date": inv["due_date"],
-                    "total": float(inv.get("total", 0)),
+                    "total": float(total),
                     "outstanding_amount": float(outstanding_amount),
-                    "status": inv["status"]
+                    "status": new_status
                 })
+
+        # Sort invoices by due_date (ascending)
+        serialized_invoices = sorted(serialized_invoices, key=lambda x: x["due_date"])
 
         TransactionLogBase.log(
             transaction_type="UNPAID_INVOICES_LIST_SUCCESS",
@@ -229,6 +313,14 @@ def record_payment(request):
         logger.debug("Parsed data: %s, metadata: %s", data, metadata)
     except Exception as e:
         logger.exception("Failed to parse request data: %s", str(e))
+        TransactionLogBase.log(
+            transaction_type="PAYMENT_RECORD_FAILED",
+            user=None,
+            message=f"Invalid request data: {str(e)}",
+            state_name="Failed",
+            request=request,
+            extra={"request_body": str(request.body)}
+        )
         return ResponseProvider(message=f"Invalid request data: {str(e)}", code=400).bad_request()
 
     user = metadata.get("user")
@@ -245,6 +337,7 @@ def record_payment(request):
     try:
         registry = ServiceRegistry()
         logger.debug("Initialized ServiceRegistry")
+        accounting_service = AccountingService(registry)
 
         corporate_users = registry.database(
             model_name="CorporateUser",
@@ -266,6 +359,13 @@ def record_payment(request):
         for field in required_fields:
             if field not in data:
                 logger.error("Missing required field: %s", field)
+                TransactionLogBase.log(
+                    transaction_type="PAYMENT_RECORD_FAILED",
+                    user=user,
+                    message=f"{field.replace('_', ' ').title()} is required",
+                    state_name="Failed",
+                    request=request
+                )
                 return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
                                         code=400).bad_request()
 
@@ -291,20 +391,96 @@ def record_payment(request):
             logger.error("Bank account not found or inactive: %s", data["account_id"])
             return ResponseProvider(message="Bank account not found or inactive", code=404).bad_request()
 
+        bank_account = accounts[0]
+
+        # Get or create ledger account for this bank account (same logic as above)
+        ledger_account_id = bank_account.get("ledger_account_id")
+        if not ledger_account_id:
+            logger.debug("Creating ledger account for bank_account: %s", bank_account["id"])
+            # Get ASSET account type
+            type_data = registry.database(
+                model_name="AccountType",
+                operation="filter",
+                data={"name": "ASSET"}
+            )
+            if not type_data:
+                new_type = registry.database(
+                    model_name="AccountType",
+                    operation="create",
+                    data={"name": "ASSET", "description": "Asset accounts"}
+                )
+                type_id = new_type["id"]
+            else:
+                type_id = type_data[0]["id"]
+
+            # Find next available code for asset accounts (starting from 1100)
+            asset_accounts = registry.database(
+                model_name="Account",
+                operation="filter",
+                data={"corporate_id": corporate_id, "account_type_id": type_id}
+            )
+            codes = []
+            for acc in asset_accounts:
+                try:
+                    codes.append(int(acc["code"]))
+                except ValueError:
+                    pass
+            max_code = max(codes) if codes else 1099
+            new_code = str(max_code + 1)
+
+            new_account_data = {
+                "corporate_id": corporate_id,
+                "code": new_code,
+                "name": f"{bank_account['bank_name']} - {bank_account['account_name']}",
+                "account_type_id": type_id,
+                "is_active": True,
+                "description": f"Ledger account for bank account {bank_account['account_number']}"
+            }
+            new_account = registry.database(
+                model_name="Account",
+                operation="create",
+                data=new_account_data
+            )
+            ledger_account_id = new_account["id"]
+
+            # Update bank_account with ledger_account_id
+            registry.database(
+                model_name="BankAccount",
+                operation="update",
+                instance_id=bank_account["id"],
+                data={"ledger_account_id": ledger_account_id}
+            )
+            logger.debug("Created and linked ledger account: %s", ledger_account_id)
+
+        # ENHANCED: Use validation function with proper error handling
         try:
-            amount_received = Decimal(str(data["amount_received"]))
-        except Exception as e:
-            logger.error("Invalid amount_received format: %s", str(e))
-            return ResponseProvider(message="Amount received must be a valid decimal", code=400).bad_request()
+            amount_received = validate_decimal_precision(data["amount_received"], "Amount received")
+        except ValueError as e:
+            logger.error("Amount validation error: %s", str(e))
+            TransactionLogBase.log(
+                transaction_type="PAYMENT_RECORD_FAILED",
+                user=user,
+                message=str(e),
+                state_name="Failed",
+                request=request
+            )
+            return ResponseProvider(message=str(e), code=400).bad_request()
         if amount_received <= 0:
             logger.error("Amount received must be greater than 0: %s", amount_received)
             return ResponseProvider(message="Amount received must be greater than 0", code=400).bad_request()
 
         try:
-            bank_charges = Decimal(str(data.get("bank_charges", 0)))
-        except Exception as e:
-            logger.error("Invalid bank_charges format: %s", str(e))
-            return ResponseProvider(message="Bank charges must be a valid decimal", code=400).bad_request()
+            bank_charges = validate_decimal_precision(data.get("bank_charges", 0), "Bank charges")
+        except ValueError as e:
+            logger.error("Bank charges validation error: %s", str(e))
+            TransactionLogBase.log(
+                transaction_type="PAYMENT_RECORD_FAILED",
+                user=user,
+                message=str(e),
+                state_name="Failed",
+                request=request
+            )
+            return ResponseProvider(message=str(e), code=400).bad_request()
         if bank_charges < 0:
             logger.error("Bank charges cannot be negative: %s", bank_charges)
             return ResponseProvider(message="Bank charges cannot be negative", code=400).bad_request()
@@ -324,7 +500,7 @@ def record_payment(request):
                 "bank_charges": str(bank_charges),
                 "payment_date": data["payment_date"],
                 "payment_method": payment_method,
-                "account_id": data["account_id"],
+                "account_id": ledger_account_id,  # Use ledger_account_id here
                 "payment_number": data.get("payment_number", ""),
                 "reference_number": data.get("reference_number", ""),
                 "notes": data.get("notes", ""),
@@ -345,7 +521,7 @@ def record_payment(request):
                 model_name="Invoices",
                 operation="filter",
                 data={"customer_id": data["customer_id"], "corporate_id": corporate_id,
-                      "status__in": ["ISSUED", "PARTIALLY_PAID"]}
+                      "status__in": ["ISSUED", "PARTIALLY_PAID", "OVERDUE"]}
             )
             logger.debug("Invoices: %s", invoices)
 
@@ -354,11 +530,32 @@ def record_payment(request):
             amount_used = Decimal("0")
             payment_lines = []
             valid_allocations = []
+            manually_processed = set()  # ADDED: Track manually processed invoices
+
+            # ADDED: Validate allocations before processing
+            if allocations:
+                invoices_dict = {str(inv["id"]): inv for inv in invoices}
+                validation_errors = validate_payment_allocations(
+                    allocations,
+                    amount_remaining,
+                    invoices_dict
+                )
+                if validation_errors:
+                    error_msg = "; ".join(validation_errors)
+                    logger.error("Allocation validation failed: %s", error_msg)
+                    TransactionLogBase.log(
+                        transaction_type="PAYMENT_RECORD_FAILED",
+                        user=user,
+                        message=f"Allocation validation failed: {error_msg}",
+                        state_name="Failed",
+                        request=request
+                    )
+                    return ResponseProvider(message=f"Allocation validation failed: {error_msg}",
+                                            code=400).bad_request()
 
             # Pre-validate allocations
             if allocations:
                 logger.debug("Pre-validating allocations: %s", allocations)
-                invoice_ids = [alloc.get("invoice_id") for alloc in allocations]
                 valid_invoices = {str(inv["id"]): inv for inv in invoices}
                 for alloc in allocations:
                     invoice_id = alloc.get("invoice_id")
@@ -377,7 +574,7 @@ def record_payment(request):
                         amount_applied = Decimal(str(alloc.get("amount_applied", 0)))
                     except Exception as e:
                         logger.error("Invalid amount_applied format for invoice %s: %s", invoice_id, str(e))
-                        continue  # Skip invalid amount
+                        continue
                     if amount_applied <= 0:
                         logger.debug("Skipping allocation with non-positive amount: %s", alloc)
                         continue
@@ -412,14 +609,20 @@ def record_payment(request):
                     payment_lines.append(line_data)
                     amount_used += amount_applied
                     amount_remaining -= amount_applied
+                    manually_processed.add(str(invoice_id))  # ADDED: Track processed invoices
                     logger.debug("Added payment line: %s", line_data)
 
-            # Automatic allocation if remaining amount
+            # FIXED: Automatic allocation excludes manually processed invoices
             if amount_remaining > 0:
                 logger.debug("Processing automatic allocation with remaining amount: %s", amount_remaining)
                 for invoice in sorted(invoices, key=lambda x: x["due_date"]):  # Oldest first
                     if amount_remaining <= 0:
                         break
+
+                    # ADDED: Skip if already manually processed
+                    if str(invoice["id"]) in manually_processed:
+                        logger.debug("Skipping manually processed invoice: %s", invoice["id"])
+                        continue
 
                     payments = registry.database(
                         model_name="RecordPaymentLine",
@@ -458,6 +661,7 @@ def record_payment(request):
 
             # Update invoice statuses after all payment lines are created
             processed_invoices = set()
+            today = date.today()
             for line_data in payment_lines:
                 invoice_id = line_data["invoice_id"]
 
@@ -482,12 +686,13 @@ def record_payment(request):
                 invoice_total = Decimal(str(invoice["total"]))
 
                 # Determine new status
+                due_date = date.fromisoformat(invoice["due_date"])
                 if total_paid >= invoice_total:
                     new_status = "PAID"
                 elif total_paid > 0:
                     new_status = "PARTIALLY_PAID"
                 else:
-                    new_status = "CANCELLED"  # This shouldn't happen, but just in case
+                    new_status = "ISSUED" if due_date >= today else "OVERDUE"
 
                 logger.debug("Updating invoice %s to status: %s (total_paid: %s, invoice_total: %s)",
                              invoice_id, new_status, total_paid, invoice_total)
@@ -513,38 +718,84 @@ def record_payment(request):
             )
             payment.update(payment_update_data)
 
-            payment["lines"] = registry.database(
-                model_name="RecordPaymentLine",
-                operation="filter",
-                data={"payment_id": payment["id"]}
-            )
-            logger.debug("Payment lines: %s", payment["lines"])
+            # ENHANCED: Better transaction handling with explicit rollback
+            try:
+                # Create journal entry for the payment
+                journal_entry = accounting_service.create_payment_journal_entry(
+                    payment["id"], user, payment_model="RecordPayment"
+                )
+                registry.database(
+                    model_name="RecordPayment",
+                    operation="update",
+                    instance_id=payment["id"],
+                    data={"journal_entry_id": journal_entry["id"], "is_posted": True}
+                )
+                payment["journal_entry_id"] = journal_entry["id"]
+                payment["is_posted"] = True
+                logger.info("Journal entry created successfully: %s", journal_entry["id"])
 
+            except Exception as journal_error:
+                logger.error("Failed to create journal entry for payment %s: %s",
+                             payment["id"], str(journal_error))
+                TransactionLogBase.log(
+                    transaction_type="PAYMENT_JOURNAL_FAILED",
+                    user=user,
+                    message=str(journal_error),
+                    state_name="Failed",
+                    request=request
+                )
+                raise
+
+                # Log success after successful transaction
             TransactionLogBase.log(
-                transaction_type="PAYMENT_RECORDED",
+                transaction_type="PAYMENT_RECORD_SUCCESS",
                 user=user,
-                message=f"Payment {payment.get('payment_number', payment['id'])} recorded for customer {data['customer_id']}",
-                state_name="Completed",
-                extra={"payment_id": payment["id"], "line_count": len(payment_lines), "amount_used": str(amount_used)},
+                message=f"Payment recorded successfully for customer {data['customer_id']}",
+                state_name="Success",
+                extra={
+                    "payment_id": payment["id"],
+                    "amount_received": str(amount_received),
+                    "amount_used": str(amount_used),
+                    "amount_excess": str(amount_excess),
+                    "invoice_count": len(payment_lines)
+                },
                 request=request
             )
-            logger.debug("Payment recorded successfully: %s", payment)
+
+            # Serialize payment response
+            serialized_payment = {
+                "id": str(payment["id"]),
+                "customer_id": str(payment["customer_id"]),
+                "amount_received": float(amount_received),
+                "bank_charges": float(bank_charges),
+                "payment_date": payment["payment_date"],
+                "payment_method": payment["payment_method"],
+                "account_id": str(payment["account_id"]),
+                "payment_number": payment["payment_number"],
+                "reference_number": payment["reference_number"],
+                "notes": payment["notes"],
+                "amount_used": float(amount_used),
+                "amount_excess": float(amount_excess),
+                "lines": [
+                    {
+                        "invoice_id": str(line["invoice_id"]),
+                        "amount_applied": float(Decimal(str(line["amount_applied"])))
+                    } for line in payment_lines
+                ]
+            }
 
             return ResponseProvider(
+                data={"payment": serialized_payment},
                 message="Payment recorded and distributed successfully",
-                data=payment,
                 code=201
             ).success()
 
     except Exception as e:
-        logger.exception("Payment recording failed with exception: %s", str(e))
         TransactionLogBase.log(
             transaction_type="PAYMENT_RECORD_FAILED",
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request,
-            extra={"request_data": data if 'data' in locals() else None}
+            request=request
         )
-        return ResponseProvider(message=f"An error occurred while recording payment: {str(e)}", code=500).exception()
-
+        return ResponseProvider(message="An error occurred while recording payment", code=500).exception()

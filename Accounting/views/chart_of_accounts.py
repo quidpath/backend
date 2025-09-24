@@ -1,10 +1,9 @@
+# chart_of_accounts.py (full corrected code)
 from decimal import Decimal, InvalidOperation
 import json, ast, re
-import uuid
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
 from collections import Counter
-from quidpath_backend.core.utils.DocsEmail import DocumentNotificationHandler
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.registry import ServiceRegistry
@@ -914,7 +913,7 @@ def list_accounts(request):
     try:
         registry = ServiceRegistry()
 
-        # --- Corporate association ---
+        # Corporate association
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -928,7 +927,7 @@ def list_accounts(request):
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
-        # --- Accounts ---
+        # Accounts
         accounts = registry.database(
             model_name="Account",
             operation="filter",
@@ -948,7 +947,7 @@ def list_accounts(request):
             for acc in accounts
         ]
 
-        # --- Type counts ---
+        # Type counts
         type_counts = {}
         for acc in accounts:
             account_type_id = acc.get("account_type_id")

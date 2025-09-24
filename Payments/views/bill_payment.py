@@ -1,11 +1,58 @@
+# bill_payments.py (full corrected code)
 from decimal import Decimal, InvalidOperation
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
 from Payments.models import VendorPayment, VendorPaymentLine
+from quidpath_backend.core.utils.AccountingService import AccountingService
 from quidpath_backend.core.utils.Logbase import logger, TransactionLogBase
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.request_parser import get_clean_data
 from quidpath_backend.core.utils.registry import ServiceRegistry
+
+
+def validate_decimal_precision(value, field_name, max_decimal_places=2):
+    """Validate decimal precision for monetary values"""
+    try:
+        decimal_val = Decimal(str(value))
+        # Check if it has more than max_decimal_places
+        if decimal_val.as_tuple().exponent < -max_decimal_places:
+            raise ValueError(f"{field_name} cannot have more than {max_decimal_places} decimal places")
+        return decimal_val
+    except (InvalidOperation, ValueError) as e:
+        raise ValueError(f"Invalid {field_name}: {str(e)}")
+
+
+def validate_payment_allocations(allocations, available_amount, bills_dict):
+    """Validate payment allocations before processing"""
+    errors = []
+    total_allocated = Decimal("0")
+
+    for i, alloc in enumerate(allocations):
+        bill_id = alloc.get("bill_id")
+        if not bill_id:
+            errors.append(f"Allocation {i + 1}: bill_id is required")
+            continue
+
+        if str(bill_id) not in bills_dict:
+            errors.append(f"Allocation {i + 1}: Invalid bill_id {bill_id}")
+            continue
+
+        try:
+            amount_applied = Decimal(str(alloc.get("amount_applied", 0)))
+            if amount_applied <= 0:
+                errors.append(f"Allocation {i + 1}: amount_applied must be greater than 0")
+                continue
+            total_allocated += amount_applied
+        except (InvalidOperation, ValueError):
+            errors.append(f"Allocation {i + 1}: Invalid amount_applied format")
+            continue
+
+    if total_allocated > available_amount:
+        errors.append(
+            f"Total allocated amount ({total_allocated}) exceeds available payment amount ({available_amount})")
+
+    return errors
+
 
 @csrf_exempt
 def list_vendors(request):
@@ -92,6 +139,11 @@ def list_vendors(request):
         )
         return ResponseProvider(message="An error occurred while retrieving vendors", code=500).exception()
 
+
+from decimal import Decimal
+from datetime import date, datetime
+from django.views.decorators.csrf import csrf_exempt
+
 @csrf_exempt
 def list_unpaid_bills(request):
     """
@@ -146,6 +198,7 @@ def list_unpaid_bills(request):
     try:
         registry = ServiceRegistry()
 
+        # Validate corporate association
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -161,6 +214,7 @@ def list_unpaid_bills(request):
             )
             return ResponseProvider(message="User has no corporate association", code=400).bad_request()
 
+        # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
@@ -176,6 +230,7 @@ def list_unpaid_bills(request):
             )
             return ResponseProvider(message="Vendor not found or inactive", code=404).bad_request()
 
+        # Fetch bills
         bills = registry.database(
             model_name="VendorBill",
             operation="filter",
@@ -183,26 +238,65 @@ def list_unpaid_bills(request):
         )
 
         serialized_bills = []
+        today = date.today()
+
         for bill in bills:
+            # Payments applied
             payments = registry.database(
                 model_name="VendorPaymentLine",
                 operation="filter",
                 data={"bill_id": bill["id"]}
             )
-            total_paid = sum(Decimal(str(p["amount_applied"])) for p in payments)
-            outstanding_amount = Decimal(str(bill.get("total", 0))) - total_paid
 
+            bill_total = Decimal(str(bill.get("total", 0))) or Decimal("0")
+            total_paid = sum(Decimal(str(p.get("amount_applied", 0))) for p in payments)
+
+            # Correct outstanding amount
+            outstanding_amount = max(bill_total - total_paid, Decimal("0"))
+
+            # Update bill status dynamically
+            new_status = bill["status"]
+            if outstanding_amount <= 0:
+                new_status = "PAID"
+            else:
+                due_date_value = bill.get("due_date")
+                if isinstance(due_date_value, str):
+                    due_date = date.fromisoformat(due_date_value)
+                elif isinstance(due_date_value, (date, datetime)):
+                    due_date = due_date_value.date() if isinstance(due_date_value, datetime) else due_date_value
+                else:
+                    due_date = None
+
+                if due_date and due_date < today and outstanding_amount > 0:
+                    new_status = "OVERDUE"
+                elif total_paid > 0:
+                    new_status = "PARTIALLY_PAID"
+                else:
+                    new_status = "POSTED"
+
+            if new_status != bill["status"]:
+                registry.database(
+                    model_name="VendorBill",
+                    operation="update",
+                    instance_id=bill["id"],
+                    data={"status": new_status}
+                )
+
+            # Only include bills still unpaid
             if outstanding_amount > 0:
                 serialized_bills.append({
                     "id": str(bill["id"]),
                     "number": bill["number"],
                     "date": bill["date"],
                     "due_date": bill["due_date"],
-                    "total": float(bill.get("total", 0)),
+                    "total": float(bill_total),
                     "outstanding_amount": float(outstanding_amount),
-                    "status": bill["status"],
+                    "status": new_status,
                     "currency": bill.get("currency", "USD")
                 })
+
+        # Sort bills by due_date ascending
+        serialized_bills = sorted(serialized_bills, key=lambda x: x["due_date"] or "")
 
         TransactionLogBase.log(
             transaction_type="UNPAID_BILLS_LIST_SUCCESS",
@@ -228,6 +322,7 @@ def list_unpaid_bills(request):
             request=request
         )
         return ResponseProvider(message="An error occurred while retrieving unpaid bills", code=500).exception()
+
 
 
 @csrf_exempt
@@ -300,6 +395,7 @@ def record_vendor_payment(request):
     try:
         registry = ServiceRegistry()
         logger.debug("Initialized ServiceRegistry")
+        accounting_service = AccountingService(registry)
 
         corporate_id = data.get("corporate_id")
         if not corporate_id:
@@ -380,18 +476,79 @@ def record_vendor_payment(request):
             )
             return ResponseProvider(message="Bank account not found or inactive", code=404).bad_request()
 
+        bank_account = accounts[0]
+
+        # Get or create ledger account for this bank account
+        ledger_account_id = bank_account.get("ledger_account_id")
+        if not ledger_account_id:
+            logger.debug("Creating ledger account for bank_account: %s", bank_account["id"])
+            # Get ASSET account type
+            type_data = registry.database(
+                model_name="AccountType",
+                operation="filter",
+                data={"name": "ASSET"}
+            )
+            if not type_data:
+                new_type = registry.database(
+                    model_name="AccountType",
+                    operation="create",
+                    data={"name": "ASSET", "description": "Asset accounts"}
+                )
+                type_id = new_type["id"]
+            else:
+                type_id = type_data[0]["id"]
+
+            # Find next available code for asset accounts (starting from 1100)
+            asset_accounts = registry.database(
+                model_name="Account",
+                operation="filter",
+                data={"corporate_id": corporate_id, "account_type_id": type_id}
+            )
+            codes = []
+            for acc in asset_accounts:
+                try:
+                    codes.append(int(acc["code"]))
+                except ValueError:
+                    pass
+            max_code = max(codes) if codes else 1099  # Start from 1100
+            new_code = str(max_code + 1)
+
+            new_account_data = {
+                "corporate_id": corporate_id,
+                "code": new_code,
+                "name": f"{bank_account['bank_name']} - {bank_account['account_name']}",
+                "account_type_id": type_id,
+                "is_active": True,
+                "description": f"Ledger account for bank account {bank_account['account_number']}"
+            }
+            new_account = registry.database(
+                model_name="Account",
+                operation="create",
+                data=new_account_data
+            )
+            ledger_account_id = new_account["id"]
+
+            # Update bank_account with ledger_account_id
+            registry.database(
+                model_name="BankAccount",
+                operation="update",
+                instance_id=bank_account["id"],
+                data={"ledger_account_id": ledger_account_id}
+            )
+            logger.debug("Created and linked ledger account: %s", ledger_account_id)
+
         try:
-            amount_disbursed = Decimal(str(data["amount_disbursed"]))
-        except Exception as e:
-            logger.error("Invalid amount_disbursed format: %s", str(e))
+            amount_disbursed = validate_decimal_precision(data["amount_disbursed"], "Amount disbursed")
+        except ValueError as e:
+            logger.error("Decimal validation error: %s", str(e))
             TransactionLogBase.log(
                 transaction_type="VENDOR_PAYMENT_RECORD_FAILED",
                 user=user,
-                message="Amount disbursed must be a valid decimal",
+                message=str(e),
                 state_name="Failed",
                 request=request
             )
-            return ResponseProvider(message="Amount disbursed must be a valid decimal", code=400).bad_request()
+            return ResponseProvider(message=str(e), code=400).bad_request()
         if amount_disbursed <= 0:
             logger.error("Amount disbursed must be greater than 0: %s", amount_disbursed)
             TransactionLogBase.log(
@@ -404,17 +561,17 @@ def record_vendor_payment(request):
             return ResponseProvider(message="Amount disbursed must be greater than 0", code=400).bad_request()
 
         try:
-            bank_charges = Decimal(str(data.get("bank_charges", 0)))
-        except Exception as e:
-            logger.error("Invalid bank_charges format: %s", str(e))
+            bank_charges = validate_decimal_precision(data.get("bank_charges", 0), "Bank charges")
+        except ValueError as e:
+            logger.error("Bank charges validation error: %s", str(e))
             TransactionLogBase.log(
                 transaction_type="VENDOR_PAYMENT_RECORD_FAILED",
                 user=user,
-                message="Bank charges must be a valid decimal",
+                message=str(e),
                 state_name="Failed",
                 request=request
             )
-            return ResponseProvider(message="Bank charges must be a valid decimal", code=400).bad_request()
+            return ResponseProvider(message=str(e), code=400).bad_request()
         if bank_charges < 0:
             logger.error("Bank charges cannot be negative: %s", bank_charges)
             TransactionLogBase.log(
@@ -468,7 +625,7 @@ def record_vendor_payment(request):
                 "bank_charges": str(bank_charges),
                 "payment_date": data["payment_date"],
                 "payment_method": payment_method,
-                "account_id": data["account_id"],
+                "account_id": ledger_account_id,  # Use ledger_account_id here
                 "payment_number": data.get("payment_number", ""),
                 "bill_number": bill_number or "",
                 "notes": data.get("notes", ""),
@@ -522,14 +679,35 @@ def record_vendor_payment(request):
             amount_used = Decimal("0")
             payment_lines = []
             valid_allocations = []
+            manually_processed = set()  # ADDED: Track manually processed bills
+
+            # ADDED: Validate allocations before processing
+            if allocations:
+                bills_dict = {str(bill["id"]): bill for bill in bills}
+                validation_errors = validate_payment_allocations(
+                    allocations,
+                    amount_remaining,
+                    bills_dict
+                )
+                if validation_errors:
+                    error_msg = "; ".join(validation_errors)
+                    logger.error("Allocation validation failed: %s", error_msg)
+                    TransactionLogBase.log(
+                        transaction_type="VENDOR_PAYMENT_RECORD_FAILED",
+                        user=user,
+                        message=f"Allocation validation failed: {error_msg}",
+                        state_name="Failed",
+                        request=request
+                    )
+                    return ResponseProvider(message=f"Allocation validation failed: {error_msg}",
+                                            code=400).bad_request()
 
             # Pre-validate allocations
             if allocations:
                 logger.debug("Pre-validating allocations: %s", allocations)
-                bill_ids = [alloc.get("bill_id") for alloc in allocations]
                 valid_bills = {str(bill["id"]): bill for bill in bills}
                 for alloc in allocations:
-                    bill_id = alloc.get("bill_id")
+                    bill_id = alloc.get("bill_id")  # FIXED: was "invoice_id"
                     if str(bill_id) in valid_bills:
                         valid_allocations.append(alloc)
                     else:
@@ -579,14 +757,20 @@ def record_vendor_payment(request):
                     payment_lines.append(line_data)
                     amount_used += amount_applied
                     amount_remaining -= amount_applied
+                    manually_processed.add(str(bill_id))  # ADDED: Track processed bills
                     logger.debug("Added payment line: %s", line_data)
 
-            # Automatic allocation if remaining amount
+            # FIXED: Automatic allocation excludes manually processed bills
             if amount_remaining > 0:
                 logger.debug("Processing automatic allocation with remaining amount: %s", amount_remaining)
                 for bill in sorted(bills, key=lambda x: x["due_date"]):  # Oldest first
                     if amount_remaining <= 0:
                         break
+
+                    # ADDED: Skip if already manually processed
+                    if str(bill["id"]) in manually_processed:
+                        logger.debug("Skipping manually processed bill: %s", bill["id"])
+                        continue
 
                     payments = registry.database(
                         model_name="VendorPaymentLine",
@@ -679,6 +863,36 @@ def record_vendor_payment(request):
                 data=payment_update_data
             )
             payment.update(payment_update_data)
+
+            # ENHANCED: Better transaction handling with explicit rollback
+            try:
+                # Create journal entry for the payment
+                journal_entry = accounting_service.create_payment_journal_entry(
+                    payment["id"], user, payment_model="VendorPayment"
+                )
+                registry.database(
+                    model_name="VendorPayment",
+                    operation="update",
+                    instance_id=payment["id"],
+                    data={"journal_entry_id": journal_entry["id"], "is_posted": True}
+                )
+                payment["journal_entry_id"] = journal_entry["id"]
+                payment["is_posted"] = True
+                logger.info("Journal entry created successfully: %s", journal_entry["id"])
+
+            except Exception as journal_error:
+                logger.error("Failed to create journal entry for payment %s: %s",
+                             payment["id"], str(journal_error))
+                TransactionLogBase.log(
+                    transaction_type="VENDOR_PAYMENT_JOURNAL_FAILED",
+                    user=user,
+                    message=f"Journal entry creation failed: {str(journal_error)}",
+                    state_name="Failed",
+                    request=request,
+                    extra={"payment_id": payment["id"]}
+                )
+                # Re-raise to trigger transaction rollback
+                raise Exception(f"Payment processing failed during journal entry creation: {str(journal_error)}")
 
             payment["lines"] = registry.database(
                 model_name="VendorPaymentLine",

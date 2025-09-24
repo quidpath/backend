@@ -1,3 +1,4 @@
+# enhanced_vendor_bills.py
 from decimal import Decimal, InvalidOperation
 import json
 import ast
@@ -5,11 +6,15 @@ import re
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
 from collections import Counter
+from datetime import datetime, date
+
+from quidpath_backend.core.utils.AccountingService import AccountingService
 from quidpath_backend.core.utils.DocsEmail import DocumentNotificationHandler
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+
 
 def to_decimal(val, default="0"):
     """Safely convert any incoming value to Decimal."""
@@ -20,17 +25,28 @@ def to_decimal(val, default="0"):
     except (InvalidOperation, ValueError, TypeError):
         return Decimal(default)
 
-def normalize_taxable_id(raw):
+
+def normalize_taxable_id(raw, registry):
     """
     Accepts any of: UUID string, dict with {'id': ...}, stringified dict.
-    Returns UUID string or None.
+    Returns UUID string or finds default exempt rate.
     """
     if not raw:
-        return None
+        # Find default exempt tax rate
+        default_rate = registry.database(
+            model_name="TaxRate",
+            operation="filter",
+            data={"name": "exempt"}
+        )
+        if default_rate:
+            return default_rate[0]["id"]
+        raise ValueError("No default exempt tax rate found")
+
     if isinstance(raw, dict) and raw.get("id"):
         return raw.get("id")
+
     if isinstance(raw, str):
-        s = raw.strip().strip('\'"“”‘’')
+        s = raw.strip().strip('\'"""''')
         if s.startswith("{") and s.endswith("}"):
             try:
                 d = json.loads(s.replace("'", '"'))
@@ -44,7 +60,9 @@ def normalize_taxable_id(raw):
                 except Exception:
                     return None
         return s
-    return None
+
+    return str(raw) if raw else None
+
 
 def get_tax_rate_value(tax_rate):
     """
@@ -52,13 +70,6 @@ def get_tax_rate_value(tax_rate):
     e.g. 'general_rated' -> Decimal('0.16')
     """
     if not tax_rate or not tax_rate.get("name"):
-        TransactionLogBase.log(
-            transaction_type="VENDOR_BILL_TAX_RATE_WARNING",
-            user=None,
-            message="Tax rate name missing or empty",
-            state_name="Warning",
-            request=None
-        )
         return Decimal("0")
 
     rate_map = {
@@ -68,51 +79,14 @@ def get_tax_rate_value(tax_rate):
     }
 
     key = tax_rate["name"]
-    value = rate_map.get(key, Decimal("0"))
+    return rate_map.get(key, Decimal("0"))
 
-    if value == Decimal("0") and key not in rate_map:
-        TransactionLogBase.log(
-            transaction_type="VENDOR_BILL_TAX_RATE_WARNING",
-            user=None,
-            message=f"Unknown tax rate key: {key}",
-            state_name="Warning",
-            request=None
-        )
-
-    return value
 
 @csrf_exempt
 def create_vendor_bill(request):
     """
-    Create a new vendor bill for the user's corporate, set status to DRAFT or POSTED, and calculate totals.
-    Purchase order must be specified by number and must be POSTED.
-
-    Expected data:
-    - vendor: UUID of the vendor
-    - corporate_id: UUID of the corporate
-    - purchase_order: Purchase order number (e.g., 'PO-123', optional)
-    - date: Date of the vendor bill (YYYY-MM-DD)
-    - number: Vendor bill number (unique)
-    - due_date: Due date of the vendor bill (YYYY-MM-DD)
-    - created_by: UUID of the user creating the vendor bill
-    - comments: Comments (optional)
-    - terms: Payment terms (optional)
-    - status: DRAFT or POSTED
-    - sub_total: Total before taxes and discounts
-    - tax_total: Total tax amount
-    - total_discount: Total discount amount
-    - total: Final total amount
-    - lines: List of dictionaries, each containing fields for VendorBillLine
-      - description
-      - quantity
-      - unit_price
-      - discount
-      - taxable_id
-      - amount
-      - sub_total
-      - tax_amount
-      - total
-      - purchase_order_line: UUID of the purchase order line (optional)
+    Create a new vendor bill for the user's corporate, set status to DRAFT or POSTED,
+    calculate totals, and create journal entries if posted.
     """
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
@@ -125,7 +99,9 @@ def create_vendor_bill(request):
 
     try:
         registry = ServiceRegistry()
+        accounting_service = AccountingService(registry)
 
+        # Get user's corporate association
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -138,15 +114,19 @@ def create_vendor_bill(request):
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
-        required_fields = ["vendor", "date", "number", "due_date", "created_by", "status"]
+        # Validate required fields
+        required_fields = ["vendor", "date", "number", "due_date"]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
+                                        code=400).bad_request()
 
+        # Normalize and validate status
         normalized_status = str(data.get("status", "DRAFT")).upper()
         if normalized_status not in {"DRAFT", "POSTED"}:
             return ResponseProvider(message="Invalid status. Must be 'DRAFT' or 'POSTED'", code=400).bad_request()
 
+        # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
@@ -155,14 +135,7 @@ def create_vendor_bill(request):
         if not vendors:
             return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
 
-        created_by_users = registry.database(
-            model_name="CorporateUser",
-            operation="filter",
-            data={"id": data["created_by"], "corporate_id": corporate_id, "is_active": True}
-        )
-        if not created_by_users:
-            return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
-
+        # Validate purchase order if provided
         purchase_order_id = None
         purchase_order_input = data.get("purchase_order")
         if purchase_order_input:
@@ -173,30 +146,34 @@ def create_vendor_bill(request):
             )
             if not purchase_orders:
                 return ResponseProvider(
-                    message=f"Purchase order {purchase_order_input} not found or not in POSTED status for this corporate",
+                    message=f"Purchase order {purchase_order_input} not found or not in POSTED status",
                     code=404
                 ).bad_request()
             purchase_order_id = purchase_orders[0]["id"]
 
-        # Initialize totals
+        # Process and validate lines
+        lines = data.get("lines", [])
+        if not lines:
+            return ResponseProvider(message="At least one vendor bill line is required", code=400).bad_request()
+
+        # Calculate totals and validate line data
         sub_total = Decimal('0.00')
         tax_total = Decimal('0.00')
         total_discount = Decimal('0.00')
         total = Decimal('0.00')
 
-        lines = data.get("lines", [])
-        if not lines:
-            return ResponseProvider(message="At least one vendor bill line is required", code=400).bad_request()
-
+        validated_lines = []
         for line_data in lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id", "amount", "sub_total", "tax_amount", "total"]
+            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Vendor bill line field {field.replace('_', ' ').title()} is required",
                         code=400).bad_request()
 
-            taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
+            # Normalize and validate tax rate
+            taxable_id = normalize_taxable_id(line_data.get("taxable_id"), registry)
+            tax_rate_value = Decimal('0')
             if taxable_id:
                 tax_rates = registry.database(
                     model_name="TaxRate",
@@ -206,45 +183,40 @@ def create_vendor_bill(request):
                 if not tax_rates:
                     return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
                 tax_rate_value = get_tax_rate_value(tax_rates[0])
-            else:
-                tax_rate_value = Decimal('0')
 
-            purchase_order_line_id = line_data.get("purchase_order_line")
-            if purchase_order_line_id and purchase_order_id:
-                po_lines = registry.database(
-                    model_name="PurchaseOrderLine",
-                    operation="filter",
-                    data={"id": purchase_order_line_id, "purchase_order_id": purchase_order_id}
-                )
-                if not po_lines:
-                    return ResponseProvider(message=f"Purchase order line {purchase_order_line_id} not found", code=404).bad_request()
-
+            # Calculate line amounts
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
             discount = to_decimal(line_data["discount"])
-            line_subtotal = to_decimal(line_data["amount"])
-            line_taxable_amount = to_decimal(line_data["sub_total"])
-            line_tax_amount = to_decimal(line_data["tax_amount"])
-            line_total = to_decimal(line_data["total"])
 
-            # Validate calculations
-            expected_subtotal = qty * unit_price
-            expected_taxable_amount = expected_subtotal - discount
-            expected_tax_amount = expected_taxable_amount * tax_rate_value
-            expected_total = expected_taxable_amount + expected_tax_amount
+            line_subtotal = qty * unit_price
+            line_taxable_amount = line_subtotal - discount
+            line_tax_amount = line_taxable_amount * tax_rate_value
+            line_total = line_taxable_amount + line_tax_amount
 
-            if abs(line_subtotal - expected_subtotal) > Decimal('0.01') or \
-               abs(line_taxable_amount - expected_taxable_amount) > Decimal('0.01') or \
-               abs(line_tax_amount - expected_tax_amount) > Decimal('0.01') or \
-               abs(line_total - expected_total) > Decimal('0.01'):
-                return ResponseProvider(message=f"Invalid calculations for line: {line_data['description']}", code=400).bad_request()
-
+            # Accumulate totals
             sub_total += line_subtotal
             tax_total += line_tax_amount
             total_discount += discount
             total += line_total
 
+            # Store validated line data
+            validated_lines.append({
+                "description": line_data["description"],
+                "quantity": float(qty),
+                "unit_price": float(unit_price),
+                "amount": float(line_subtotal),
+                "discount": float(discount),
+                "taxable_id": taxable_id,
+                "tax_amount": float(line_tax_amount),
+                "sub_total": float(line_taxable_amount),
+                "total": float(line_total),
+                "purchase_order_line_id": line_data.get("purchase_order_line")
+            })
+
+        # Create vendor bill and lines within transaction
         with transaction.atomic():
+            # Create vendor bill
             vendor_bill_data = {
                 "vendor_id": data["vendor"],
                 "corporate_id": corporate_id,
@@ -254,89 +226,97 @@ def create_vendor_bill(request):
                 "due_date": data["due_date"],
                 "comments": data.get("comments", ""),
                 "terms": data.get("terms", ""),
-                "created_by_id": data["created_by"],
                 "status": normalized_status,
                 "sub_total": float(sub_total),
                 "tax_total": float(tax_total),
                 "total_discount": float(total_discount),
                 "total": float(total),
+                "created_by_id": user_id,  # Added this line
             }
+
             vendor_bill = registry.database(
                 model_name="VendorBill",
                 operation="create",
                 data=vendor_bill_data
             )
 
-            for line_data in lines:
-                taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
-                tax_rate_value = Decimal('0')
-                if taxable_id:
-                    tax_rates = registry.database(
-                        model_name="TaxRate",
-                        operation="filter",
-                        data={"id": taxable_id}
-                    )
-                    tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
-
-                line_data_for_creation = {
-                    "vendor_bill_id": vendor_bill["id"],
-                    "purchase_order_line_id": line_data.get("purchase_order_line"),
-                    "description": line_data["description"],
-                    "quantity": float(line_data["quantity"]),
-                    "unit_price": float(line_data["unit_price"]),
-                    "amount": float(line_data["amount"]),
-                    "discount": float(line_data["discount"]),
-                    "taxable_id": taxable_id,
-                    "tax_amount": float(line_data["tax_amount"]),
-                    "sub_total": float(line_data["sub_total"]),
-                    "total": float(line_data["total"]),
-                }
+            # Create vendor bill lines
+            for line_data in validated_lines:
+                line_data["vendor_bill_id"] = vendor_bill["id"]
                 registry.database(
                     model_name="VendorBillLine",
                     operation="create",
-                    data=line_data_for_creation
+                    data=line_data
                 )
 
-        def tax_display(taxable_id_value):
+            # Create journal entry if posted
+            if normalized_status == "POSTED":
+                journal_entry = accounting_service.create_vendor_bill_journal_entry(vendor_bill["id"], user)
+                registry.database(
+                    model_name="VendorBill",
+                    operation="update",
+                    instance_id=vendor_bill["id"],
+                    data={"journal_entry_id": journal_entry["id"]}
+                )
+                vendor_bill["journal_entry_id"] = journal_entry["id"]
+
+        # Format response data
+        def get_tax_display(taxable_id_value):
             if not taxable_id_value:
-                return "Exempt (0%)"
-            tr = registry.database(
+                return {"id": "", "code": "exempt", "label": "Exempt (0%)"}
+            tax_rates = registry.database(
                 model_name="TaxRate",
                 operation="filter",
                 data={"id": taxable_id_value}
             )
-            return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
+            if tax_rates:
+                tax_rate = tax_rates[0]
+                return {
+                    "id": str(taxable_id_value),
+                    "code": tax_rate.get("name", "exempt"),
+                    "label": f"{tax_rate.get('name', 'exempt').replace('_', ' ').title()} ({float(get_tax_rate_value(tax_rate) * 100):.0f}%)"
+                }
+            return {"id": str(taxable_id_value), "code": "exempt", "label": "Exempt (0%)"}
 
-        lines = registry.database(
+        # Get lines for response
+        vendor_bill_lines = registry.database(
             model_name="VendorBillLine",
             operation="filter",
             data={"vendor_bill_id": vendor_bill["id"]}
         )
+
         vendor_bill["lines"] = [
             {
-                "id": str(line.get("id", "")),
-                "description": line.get("description", ""),
-                "quantity": float(line.get("quantity", 0)),
-                "unit_price": float(line.get("unit_price", 0)),
-                "amount": float(line.get("amount", 0)),
-                "discount": float(line.get("discount", 0)),
+                "id": str(line["id"]),
+                "description": line["description"],
+                "quantity": float(line["quantity"]),
+                "unit_price": float(line["unit_price"]),
+                "amount": float(line["amount"]),
+                "discount": float(line["discount"]),
                 "taxable_id": str(line.get("taxable_id", "")),
-                "tax_amount": float(line.get("tax_amount", 0)),
-                "sub_total": float(line.get("sub_total", 0)),
-                "total": float(line.get("total", 0)),
+                "tax_amount": float(line["tax_amount"]),
+                "sub_total": float(line["sub_total"]),
+                "total": float(line["total"]),
                 "purchase_order_line": str(line.get("purchase_order_line_id", "")),
-                "taxable": {
-                    "id": str(line.get("taxable_id", "")),
-                    "code": tax_display(line.get("taxable_id")),
-                    "label": tax_display(line.get("taxable_id"))
-                } if line.get("taxable_id") else {
-                    "id": "exempt",
-                    "code": "exempt",
-                    "label": "Exempt (0%)"
-                }
+                "taxable": get_tax_display(line.get("taxable_id"))
             }
-            for line in lines
+            for line in vendor_bill_lines
         ]
+
+        # Log success
+        TransactionLogBase.log(
+            transaction_type="VENDOR_BILL_CREATED",
+            user=user,
+            message=f"Vendor bill {vendor_bill['number']} {'posted' if normalized_status == 'POSTED' else 'created as draft'} for corporate {corporate_id}",
+            state_name="Success",
+            extra={
+                "vendor_bill_id": vendor_bill["id"],
+                "status": normalized_status,
+                "total": float(total),
+                "line_count": len(validated_lines)
+            },
+            request=request
+        )
 
         return ResponseProvider(
             message=f"Vendor bill {'posted' if normalized_status == 'POSTED' else 'created as draft'} successfully",
@@ -345,42 +325,20 @@ def create_vendor_bill(request):
         ).success()
 
     except Exception as e:
+        TransactionLogBase.log(
+            transaction_type="VENDOR_BILL_CREATION_FAILED",
+            user=user,
+            message=str(e),
+            state_name="Failed",
+            request=request
+        )
         return ResponseProvider(message="An error occurred while creating vendor bill", code=500).exception()
 
 @csrf_exempt
 def update_vendor_bill(request):
     """
-    Update an existing vendor bill for the user's corporate, including its lines, set status to DRAFT or POSTED,
-    and ensure purchase order is specified by number and is POSTED.
-
-    Expected data:
-    - id: UUID of the vendor bill
-    - vendor: UUID of the vendor
-    - corporate_id: UUID of the corporate
-    - purchase_order: Purchase order number (e.g., 'PO-123', optional)
-    - date: Date of the vendor bill (YYYY-MM-DD)
-    - number: Vendor bill number (unique)
-    - due_date: Due date of the vendor bill (YYYY-MM-DD)
-    - created_by: UUID of the user creating/updating the vendor bill
-    - comments: Comments (optional)
-    - terms: Payment terms (optional)
-    - status: DRAFT or POSTED
-    - sub_total: Total before taxes and discounts
-    - tax_total: Total tax amount
-    - total_discount: Total discount amount
-    - total: Final total amount
-    - lines: List of dictionaries, each containing fields for VendorBillLine
-      - id: UUID of the line (optional, for updates)
-      - description
-      - quantity
-      - unit_price
-      - discount
-      - taxable_id
-      - amount
-      - sub_total
-      - tax_amount
-      - total
-      - purchase_order_line: UUID of the purchase order line (optional)
+    Update an existing vendor bill for the user's corporate, including its lines,
+    set status to DRAFT or POSTED, and update journal entries accordingly.
     """
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
@@ -393,7 +351,9 @@ def update_vendor_bill(request):
 
     try:
         registry = ServiceRegistry()
+        accounting_service = AccountingService(registry)
 
+        # Get user's corporate association
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
@@ -403,14 +363,15 @@ def update_vendor_bill(request):
             return ResponseProvider(message="User has no corporate association", code=400).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
-        if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
-        required_fields = ["id", "vendor", "date", "number", "due_date", "created_by", "status"]
+        # Validate required fields
+        required_fields = ["id", "vendor", "date", "number", "due_date"]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
+                                        code=400).bad_request()
 
+        # Get existing vendor bill
         vendor_bills = registry.database(
             model_name="VendorBill",
             operation="filter",
@@ -418,8 +379,11 @@ def update_vendor_bill(request):
         )
         if not vendor_bills:
             return ResponseProvider(message="Vendor bill not found", code=404).bad_request()
-        vendor_bill_id = vendor_bills[0]["id"]
 
+        existing_vendor_bill = vendor_bills[0]
+        vendor_bill_id = existing_vendor_bill["id"]
+
+        # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
@@ -428,52 +392,32 @@ def update_vendor_bill(request):
         if not vendors:
             return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
 
-        created_by_users = registry.database(
-            model_name="CorporateUser",
-            operation="filter",
-            data={"id": data["created_by"], "corporate_id": corporate_id, "is_active": True}
-        )
-        if not created_by_users:
-            return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
-
-        purchase_order_id = None
-        purchase_order_input = data.get("purchase_order")
-        if purchase_order_input:
-            purchase_orders = registry.database(
-                model_name="PurchaseOrder",
-                operation="filter",
-                data={"number": purchase_order_input, "corporate_id": corporate_id, "status": "POSTED"}
-            )
-            if not purchase_orders:
-                return ResponseProvider(
-                    message=f"Purchase order {purchase_order_input} not found or not in POSTED status for this corporate",
-                    code=404
-                ).bad_request()
-            purchase_order_id = purchase_orders[0]["id"]
-
+        # Normalize status
         normalized_status = str(data.get("status", "DRAFT")).upper()
         if normalized_status not in {"DRAFT", "POSTED"}:
             return ResponseProvider(message="Invalid status. Must be 'DRAFT' or 'POSTED'", code=400).bad_request()
 
-        # Initialize totals
+        # Process lines
+        submitted_lines = data.get("lines", [])
+        if not submitted_lines:
+            return ResponseProvider(message="At least one vendor bill line is required", code=400).bad_request()
+
+        # Calculate totals
         sub_total = Decimal('0.00')
         tax_total = Decimal('0.00')
         total_discount = Decimal('0.00')
         total = Decimal('0.00')
 
-        submitted_lines = data.get("lines", [])
-        if not submitted_lines:
-            return ResponseProvider(message="At least one vendor bill line is required", code=400).bad_request()
-
         for line_data in submitted_lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id", "amount", "sub_total", "tax_amount", "total"]
+            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Vendor bill line field {field.replace('_', ' ').title()} is required",
                         code=400).bad_request()
 
-            taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
+            taxable_id = normalize_taxable_id(line_data.get("taxable_id"), registry)
+            tax_rate_value = Decimal('0')
             if taxable_id:
                 tax_rates = registry.database(
                     model_name="TaxRate",
@@ -483,62 +427,38 @@ def update_vendor_bill(request):
                 if not tax_rates:
                     return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
                 tax_rate_value = get_tax_rate_value(tax_rates[0])
-            else:
-                tax_rate_value = Decimal('0')
-
-            purchase_order_line_id = line_data.get("purchase_order_line")
-            if purchase_order_line_id and purchase_order_id:
-                po_lines = registry.database(
-                    model_name="PurchaseOrderLine",
-                    operation="filter",
-                    data={"id": purchase_order_line_id, "purchase_order_id": purchase_order_id}
-                )
-                if not po_lines:
-                    return ResponseProvider(message=f"Purchase order line {purchase_order_line_id} not found", code=404).bad_request()
 
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
             discount = to_decimal(line_data["discount"])
-            line_subtotal = to_decimal(line_data["amount"])
-            line_taxable_amount = to_decimal(line_data["sub_total"])
-            line_tax_amount = to_decimal(line_data["tax_amount"])
-            line_total = to_decimal(line_data["total"])
 
-            # Validate calculations
-            expected_subtotal = qty * unit_price
-            expected_taxable_amount = expected_subtotal - discount
-            expected_tax_amount = expected_taxable_amount * tax_rate_value
-            expected_total = expected_taxable_amount + expected_tax_amount
-
-            if abs(line_subtotal - expected_subtotal) > Decimal('0.01') or \
-               abs(line_taxable_amount - expected_taxable_amount) > Decimal('0.01') or \
-               abs(line_tax_amount - expected_tax_amount) > Decimal('0.01') or \
-               abs(line_total - expected_total) > Decimal('0.01'):
-                return ResponseProvider(message=f"Invalid calculations for line: {line_data['description']}", code=400).bad_request()
+            line_subtotal = qty * unit_price
+            line_taxable_amount = line_subtotal - discount
+            line_tax_amount = line_taxable_amount * tax_rate_value
+            line_total = line_taxable_amount + line_tax_amount
 
             sub_total += line_subtotal
             tax_total += line_tax_amount
             total_discount += discount
             total += line_total
 
+        # Update vendor bill and lines within transaction
         with transaction.atomic():
+            # Update vendor bill
             vendor_bill_data = {
-                "id": data["id"],
                 "vendor_id": data["vendor"],
-                "corporate_id": corporate_id,
-                "purchase_order_id": purchase_order_id,
                 "date": data["date"],
                 "number": data["number"],
                 "due_date": data["due_date"],
                 "comments": data.get("comments", ""),
                 "terms": data.get("terms", ""),
-                "created_by_id": data["created_by"],
                 "status": normalized_status,
                 "sub_total": float(sub_total),
                 "tax_total": float(tax_total),
                 "total_discount": float(total_discount),
                 "total": float(total),
             }
+
             vendor_bill = registry.database(
                 model_name="VendorBill",
                 operation="update",
@@ -546,14 +466,16 @@ def update_vendor_bill(request):
                 data=vendor_bill_data
             )
 
+            # Handle line updates
             existing_lines = registry.database(
                 model_name="VendorBillLine",
                 operation="filter",
-                data={"vendor_bill_id": vendor_bill["id"]}
+                data={"vendor_bill_id": vendor_bill_id}
             )
-            existing_line_ids = {line["id"] for line in existing_lines if line.get("id")}
+            existing_line_ids = {line["id"] for line in existing_lines}
             submitted_line_ids = {line.get("id") for line in submitted_lines if line.get("id")}
 
+            # Delete removed lines
             for line in existing_lines:
                 if line["id"] not in submitted_line_ids:
                     registry.database(
@@ -562,8 +484,9 @@ def update_vendor_bill(request):
                         instance_id=line["id"]
                     )
 
+            # Create or update lines
             for line_data in submitted_lines:
-                taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
+                taxable_id = normalize_taxable_id(line_data.get("taxable_id"), registry)
                 tax_rate_value = Decimal('0')
                 if taxable_id:
                     tax_rates = registry.database(
@@ -573,22 +496,30 @@ def update_vendor_bill(request):
                     )
                     tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
 
+                qty = to_decimal(line_data["quantity"])
+                unit_price = to_decimal(line_data["unit_price"])
+                discount = to_decimal(line_data["discount"])
+
+                line_subtotal = qty * unit_price
+                line_taxable_amount = line_subtotal - discount
+                line_tax_amount = line_taxable_amount * tax_rate_value
+                line_total = line_taxable_amount + line_tax_amount
+
                 line_payload = {
-                    "vendor_bill_id": vendor_bill["id"],
+                    "vendor_bill_id": vendor_bill_id,
                     "purchase_order_line_id": line_data.get("purchase_order_line"),
                     "description": line_data["description"],
-                    "quantity": float(line_data["quantity"]),
-                    "unit_price": float(line_data["unit_price"]),
-                    "amount": float(line_data["amount"]),
-                    "discount": float(line_data["discount"]),
+                    "quantity": float(qty),
+                    "unit_price": float(unit_price),
+                    "amount": float(line_subtotal),
+                    "discount": float(discount),
                     "taxable_id": taxable_id,
-                    "tax_amount": float(line_data["tax_amount"]),
-                    "sub_total": float(line_data["sub_total"]),
-                    "total": float(line_data["total"]),
+                    "tax_amount": float(line_tax_amount),
+                    "sub_total": float(line_taxable_amount),
+                    "total": float(line_total),
                 }
 
                 if line_data.get("id") in existing_line_ids:
-                    line_payload["id"] = line_data["id"]
                     registry.database(
                         model_name="VendorBillLine",
                         operation="update",
@@ -602,67 +533,155 @@ def update_vendor_bill(request):
                         data=line_payload
                     )
 
-        def tax_display(taxable_id_value):
-            if not taxable_id_value:
-                return "Exempt (0%)"
-            tr = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id_value}
-            )
-            return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
+            # Handle journal entry updates
+            if normalized_status == "POSTED":
+                # Delete old journal entry if exists
+                if existing_vendor_bill.get("journal_entry_id"):
+                    old_je_lines = registry.database(
+                        model_name="JournalEntryLine",
+                        operation="filter",
+                        data={"journal_entry_id": existing_vendor_bill["journal_entry_id"]}
+                    )
+                    for line in old_je_lines:
+                        registry.database(
+                            model_name="JournalEntryLine",
+                            operation="delete",
+                            instance_id=line["id"]
+                        )
+                    registry.database(
+                        model_name="JournalEntry",
+                        operation="delete",
+                        instance_id=existing_vendor_bill["journal_entry_id"]
+                    )
 
-        db_lines = registry.database(
-            model_name="VendorBillLine",
-            operation="filter",
-            data={"vendor_bill_id": vendor_bill["id"]}
+                # Create new journal entry
+                journal_entry = accounting_service.create_vendor_bill_journal_entry(vendor_bill_id, user)
+                registry.database(
+                    model_name="VendorBill",
+                    operation="update",
+                    instance_id=vendor_bill_id,
+                    data={"journal_entry_id": journal_entry["id"]}
+                )
+                vendor_bill["journal_entry_id"] = journal_entry["id"]
+
+            elif normalized_status == "DRAFT" and existing_vendor_bill.get("journal_entry_id"):
+                # If changing from POSTED to DRAFT, remove journal entry
+                old_je_lines = registry.database(
+                    model_name="JournalEntryLine",
+                    operation="filter",
+                    data={"journal_entry_id": existing_vendor_bill["journal_entry_id"]}
+                )
+                for line in old_je_lines:
+                    registry.database(
+                        model_name="JournalEntryLine",
+                        operation="delete",
+                        instance_id=line["id"]
+                    )
+                registry.database(
+                    model_name="JournalEntry",
+                    operation="delete",
+                    instance_id=existing_vendor_bill["journal_entry_id"]
+                )
+                registry.database(
+                    model_name="VendorBill",
+                    operation="update",
+                    instance_id=vendor_bill_id,
+                    data={"journal_entry_id": None}
+                )
+
+        # Log success
+        TransactionLogBase.log(
+            transaction_type="VENDOR_BILL_UPDATED",
+            user=user,
+            message=f"Vendor bill {vendor_bill['number']} updated with status {normalized_status} for corporate {corporate_id}",
+            state_name="Success",
+            extra={
+                "vendor_bill_id": vendor_bill_id,
+                "status": normalized_status,
+                "total": float(total),
+                "line_count": len(submitted_lines)
+            },
+            request=request
         )
-        vendor_bill["lines"] = [
-            {
-                "id": str(line.get("id", "")),
-                "description": line.get("description", ""),
-                "quantity": float(line.get("quantity", 0)),
-                "unit_price": float(line.get("unit_price", 0)),
-                "amount": float(line.get("amount", 0)),
-                "discount": float(line.get("discount", 0)),
-                "taxable_id": str(line.get("taxable_id", "")),
-                "tax_amount": float(line.get("tax_amount", 0)),
-                "sub_total": float(line.get("sub_total", 0)),
-                "total": float(line.get("total", 0)),
-                "purchase_order_line": str(line.get("purchase_order_line_id", "")),
-                "taxable": {
-                    "id": str(line.get("taxable_id", "")),
-                    "code": tax_display(line.get("taxable_id")),
-                    "label": tax_display(line.get("taxable_id"))
-                } if line.get("taxable_id") else {
-                    "id": "exempt",
-                    "code": "exempt",
-                    "label": "Exempt (0%)"
-                }
-            }
-            for line in db_lines
-        ]
 
-        return ResponseProvider(
-            message=f"Vendor bill {'posted' if normalized_status == 'POSTED' else 'updated as draft'} successfully",
-            data=vendor_bill,
-            code=200
-        ).success()
+        # Return updated vendor bill with lines
+        return get_vendor_bill_response(vendor_bill_id, registry)
 
     except Exception as e:
+        TransactionLogBase.log(
+            transaction_type="VENDOR_BILL_UPDATE_FAILED",
+            user=user,
+            message=str(e),
+            state_name="Failed",
+            request=request
+        )
         return ResponseProvider(message="An error occurred while updating vendor bill", code=500).exception()
+
+
+def get_vendor_bill_response(vendor_bill_id, registry):
+    """Helper function to format vendor bill response with lines"""
+    vendor_bills = registry.database(
+        model_name="VendorBill",
+        operation="filter",
+        data={"id": vendor_bill_id}
+    )
+
+    if not vendor_bills:
+        return ResponseProvider(message="Vendor bill not found", code=404).bad_request()
+
+    vendor_bill = vendor_bills[0]
+
+    def get_tax_display(taxable_id_value):
+        if not taxable_id_value:
+            return {"id": "", "code": "exempt", "label": "Exempt (0%)"}
+        tax_rates = registry.database(
+            model_name="TaxRate",
+            operation="filter",
+            data={"id": taxable_id_value}
+        )
+        if tax_rates:
+            tax_rate = tax_rates[0]
+            return {
+                "id": str(taxable_id_value),
+                "code": tax_rate.get("name", "exempt"),
+                "label": f"{tax_rate.get('name', 'exempt').replace('_', ' ').title()} ({float(get_tax_rate_value(tax_rate) * 100):.0f}%)"
+            }
+        return {"id": str(taxable_id_value), "code": "exempt", "label": "Exempt (0%)"}
+
+    vendor_bill_lines = registry.database(
+        model_name="VendorBillLine",
+        operation="filter",
+        data={"vendor_bill_id": vendor_bill_id}
+    )
+
+    vendor_bill["lines"] = [
+        {
+            "id": str(line["id"]),
+            "description": line["description"],
+            "quantity": float(line["quantity"]),
+            "unit_price": float(line["unit_price"]),
+            "amount": float(line["amount"]),
+            "discount": float(line["discount"]),
+            "taxable_id": str(line.get("taxable_id", "")),
+            "tax_amount": float(line["tax_amount"]),
+            "sub_total": float(line["sub_total"]),
+            "total": float(line["total"]),
+            "purchase_order_line": str(line.get("purchase_order_line_id", "")),
+            "taxable": get_tax_display(line.get("taxable_id"))
+        }
+        for line in vendor_bill_lines
+    ]
+
+    return ResponseProvider(
+        message="Vendor bill retrieved successfully",
+        data=vendor_bill,
+        code=200
+    ).success()
+
 
 @csrf_exempt
 def list_vendor_bills(request):
-    """
-    List all vendor bills for the user's corporate, categorized by status.
-
-    Returns:
-    - 200: List of vendor bills with total count and status counts
-    - 400: Bad request (missing corporate)
-    - 401: Unauthorized (user not authenticated)
-    - 500: Internal server error
-    """
+    """List all vendor bills for the user's corporate, categorized by status."""
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
@@ -693,15 +712,22 @@ def list_vendor_bills(request):
             data={"corporate_id": corporate_id}
         )
 
-        def tax_display(taxable_id_value):
+        def get_tax_display(taxable_id_value):
             if not taxable_id_value:
-                return "Exempt (0%)"
-            tr = registry.database(
+                return {"id": "", "code": "exempt", "label": "Exempt (0%)"}
+            tax_rates = registry.database(
                 model_name="TaxRate",
                 operation="filter",
                 data={"id": taxable_id_value}
             )
-            return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
+            if tax_rates:
+                tax_rate = tax_rates[0]
+                return {
+                    "id": str(taxable_id_value),
+                    "code": tax_rate.get("name", "exempt"),
+                    "label": f"{tax_rate.get('name', 'exempt').replace('_', ' ').title()} ({float(get_tax_rate_value(tax_rate) * 100):.0f}%)"
+                }
+            return {"id": str(taxable_id_value), "code": "exempt", "label": "Exempt (0%)"}
 
         serialized_vendor_bills = []
         for vb in vendor_bills:
@@ -710,23 +736,6 @@ def list_vendor_bills(request):
                 operation="filter",
                 data={"vendor_bill_id": vb["id"]}
             )
-            vb_total = sum(float(line.get("total", 0)) for line in lines)
-            created_by_id = vb.get("created_by_id")
-            created_by_name = str(created_by_id)
-            if created_by_id:
-                user_data = registry.database(
-                    model_name="CustomUser",
-                    operation="filter",
-                    data={"id": created_by_id}
-                )
-                if user_data:
-                    user = user_data[0]
-                    first_name = user.get("first_name", "")
-                    last_name = user.get("last_name", "")
-                    username = user.get("username", "")
-                    created_by_name = (
-                        f"{first_name} {last_name}".strip() or username or str(created_by_id)
-                    )
 
             serialized_vendor_bills.append({
                 "id": str(vb["id"]),
@@ -735,36 +744,28 @@ def list_vendor_bills(request):
                 "date": vb["date"],
                 "due_date": vb["due_date"],
                 "status": vb["status"],
-                "created_by": created_by_id,
                 "purchase_order": str(vb.get("purchase_order_id", "")),
-                "comments": vb["comments"],
-                "terms": vb["terms"],
-                "total": float(vb_total),
+                "comments": vb.get("comments", ""),
+                "terms": vb.get("terms", ""),
                 "sub_total": float(vb.get("sub_total", 0)),
                 "tax_total": float(vb.get("tax_total", 0)),
                 "total_discount": float(vb.get("total_discount", 0)),
+                "total": float(vb.get("total", 0)),
+                "has_journal_entry": bool(vb.get("journal_entry_id")),
                 "lines": [
                     {
-                        "id": str(line.get("id", "")),
-                        "description": line.get("description", ""),
-                        "quantity": float(line.get("quantity", 0)),
-                        "unit_price": float(line.get("unit_price", 0)),
-                        "amount": float(line.get("amount", 0)),
-                        "discount": float(line.get("discount", 0)),
+                        "id": str(line["id"]),
+                        "description": line["description"],
+                        "quantity": float(line["quantity"]),
+                        "unit_price": float(line["unit_price"]),
+                        "amount": float(line["amount"]),
+                        "discount": float(line["discount"]),
                         "taxable_id": str(line.get("taxable_id", "")),
-                        "tax_amount": float(line.get("tax_amount", 0)),
-                        "sub_total": float(line.get("sub_total", 0)),
-                        "total": float(line.get("total", 0)),
+                        "tax_amount": float(line["tax_amount"]),
+                        "sub_total": float(line["sub_total"]),
+                        "total": float(line["total"]),
                         "purchase_order_line": str(line.get("purchase_order_line_id", "")),
-                        "taxable": {
-                            "id": str(line.get("taxable_id", "")),
-                            "code": tax_display(line.get("taxable_id")),
-                            "label": tax_display(line.get("taxable_id"))
-                        } if line.get("taxable_id") else {
-                            "id": "exempt",
-                            "code": "exempt",
-                            "label": "Exempt (0%)"
-                        }
+                        "taxable": get_tax_display(line.get("taxable_id"))
                     }
                     for line in lines
                 ]
@@ -772,7 +773,7 @@ def list_vendor_bills(request):
 
         statuses = [vb["status"] for vb in vendor_bills]
         status_counts = dict(Counter(statuses))
-        total = len(vendor_bills)
+        total_count = len(vendor_bills)
 
         all_statuses = {"DRAFT": 0, "POSTED": 0, "PAID": 0, "PARTIALLY_PAID": 0, "OVERDUE": 0, "CANCELLED": 0}
         all_statuses.update(status_counts)
@@ -780,16 +781,16 @@ def list_vendor_bills(request):
         TransactionLogBase.log(
             transaction_type="VENDOR_BILL_LIST_SUCCESS",
             user=user,
-            message=f"Retrieved {total} vendor bills for corporate {corporate_id}",
+            message=f"Retrieved {total_count} vendor bills for corporate {corporate_id}",
             state_name="Success",
-            extra={"status_counts": all_statuses},
+            extra={"status_counts": all_statuses, "corporate_id": corporate_id},
             request=request
         )
 
         return ResponseProvider(
             data={
                 "vendor_bills": serialized_vendor_bills,
-                "total": total,
+                "total": total_count,
                 "status_counts": all_statuses
             },
             message="Vendor bills retrieved successfully",
@@ -808,19 +809,7 @@ def list_vendor_bills(request):
 
 @csrf_exempt
 def get_vendor_bill(request):
-    """
-    Get a single vendor bill by ID for the user's corporate, including its lines.
-
-    Expected data:
-    - id: UUID of the vendor bill
-
-    Returns:
-    - 200: Vendor bill retrieved successfully with lines
-    - 400: Bad request (missing ID or invalid corporate)
-    - 401: Unauthorized (user not authenticated)
-    - 404: Vendor bill not found for this corporate
-    - 500: Internal server error
-    """
+    """Get a single vendor bill by ID for the user's corporate, including its lines."""
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
@@ -855,66 +844,18 @@ def get_vendor_bill(request):
             data={"id": vendor_bill_id, "corporate_id": corporate_id}
         )
         if not vendor_bills:
-            return ResponseProvider(message="Vendor bill not found for this corporate", code=404).bad_request()
-
-        vendor_bill = vendor_bills[0]
-        lines = registry.database(
-            model_name="VendorBillLine",
-            operation="filter",
-            data={"vendor_bill_id": vendor_bill_id}
-        )
-
-        def tax_display(taxable_id_value):
-            if not taxable_id_value:
-                return "Exempt (0%)"
-            tr = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id_value}
-            )
-            return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
-
-        vendor_bill["lines"] = [
-            {
-                "id": str(line.get("id", "")),
-                "description": line.get("description", ""),
-                "quantity": float(line.get("quantity", 0)),
-                "unit_price": float(line.get("unit_price", 0)),
-                "amount": float(line.get("amount", 0)),
-                "discount": float(line.get("discount", 0)),
-                "taxable_id": str(line.get("taxable_id", "")),
-                "tax_amount": float(line.get("tax_amount", 0)),
-                "sub_total": float(line.get("sub_total", 0)),
-                "total": float(line.get("total", 0)),
-                "purchase_order_line": str(line.get("purchase_order_line_id", "")),
-                "taxable": {
-                    "id": str(line.get("taxable_id", "")),
-                    "code": tax_display(line.get("taxable_id")),
-                    "label": tax_display(line.get("taxable_id"))
-                } if line.get("taxable_id") else {
-                    "id": "exempt",
-                    "code": "exempt",
-                    "label": "Exempt (0%)"
-                }
-            }
-            for line in lines
-        ]
-        vendor_bill["total"] = float(sum(to_decimal(line.get("total", 0)) for line in lines))
+            return ResponseProvider(message="Vendor bill not found or not associated with this corporate", code=404).bad_request()
 
         TransactionLogBase.log(
             transaction_type="VENDOR_BILL_GET_SUCCESS",
             user=user,
-            message=f"Vendor bill {vendor_bill_id} retrieved for corporate {corporate_id}",
+            message=f"Retrieved vendor bill {vendor_bill_id} for corporate {corporate_id}",
             state_name="Success",
-            extra={"vendor_bill_id": vendor_bill_id, "line_count": len(lines)},
+            extra={"vendor_bill_id": vendor_bill_id, "corporate_id": corporate_id},
             request=request
         )
 
-        return ResponseProvider(
-            message="Vendor bill retrieved successfully",
-            data=vendor_bill,
-            code=200
-        ).success()
+        return get_vendor_bill_response(vendor_bill_id, registry)
 
     except Exception as e:
         TransactionLogBase.log(
@@ -926,20 +867,13 @@ def get_vendor_bill(request):
         )
         return ResponseProvider(message="An error occurred while retrieving vendor bill", code=500).exception()
 
+
 @csrf_exempt
 def delete_vendor_bill(request):
     """
-    Soft delete a vendor bill by setting is_active to False for both the vendor bill and its lines.
-
-    Expected data:
-    - id: UUID of the vendor bill
-
-    Returns:
-    - 200: Vendor bill deleted successfully
-    - 400: Bad request (missing ID or invalid data)
-    - 401: Unauthorized (user not authenticated)
-    - 404: Vendor bill not found for this corporate
-    - 500: Internal server error
+    Delete a vendor bill for the user's corporate. If the bill is posted, delete associated journal entries.
+    Only allows deletion if the bill is in DRAFT or POSTED status (for POSTED, reverses accounting impact by deleting journal).
+    Does not allow deletion if already PAID, PARTIALLY_PAID, OVERDUE, or CANCELLED.
     """
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
@@ -975,41 +909,72 @@ def delete_vendor_bill(request):
             data={"id": vendor_bill_id, "corporate_id": corporate_id}
         )
         if not vendor_bills:
-            return ResponseProvider(message="Vendor bill not found for this corporate", code=404).bad_request()
+            return ResponseProvider(message="Vendor bill not found or not associated with this corporate", code=404).bad_request()
+
+        vendor_bill = vendor_bills[0]
+        current_status = vendor_bill["status"]
+
+        if current_status in {"PAID", "PARTIALLY_PAID", "OVERDUE", "CANCELLED"}:
+            return ResponseProvider(
+                message=f"Cannot delete vendor bill in {current_status} status. Consider cancelling instead.",
+                code=400
+            ).bad_request()
 
         with transaction.atomic():
-            registry.database(
-                model_name="VendorBill",
-                operation="delete",
-                instance_id=vendor_bill_id,
-                data={"id": vendor_bill_id}
-            )
+            # Delete associated journal entry if exists (for POSTED bills)
+            if vendor_bill.get("journal_entry_id"):
+                je_lines = registry.database(
+                    model_name="JournalEntryLine",
+                    operation="filter",
+                    data={"journal_entry_id": vendor_bill["journal_entry_id"]}
+                )
+                for line in je_lines:
+                    registry.database(
+                        model_name="JournalEntryLine",
+                        operation="delete",
+                        instance_id=line["id"]
+                    )
+                registry.database(
+                    model_name="JournalEntry",
+                    operation="delete",
+                    instance_id=vendor_bill["journal_entry_id"]
+                )
 
-            lines = registry.database(
+            # Delete vendor bill lines
+            vb_lines = registry.database(
                 model_name="VendorBillLine",
                 operation="filter",
                 data={"vendor_bill_id": vendor_bill_id}
             )
-            for line in lines:
+            for line in vb_lines:
                 registry.database(
                     model_name="VendorBillLine",
                     operation="delete",
-                    instance_id=line["id"],
-                    data={"id": line["id"]}
+                    instance_id=line["id"]
                 )
+
+            # Delete the vendor bill
+            registry.database(
+                model_name="VendorBill",
+                operation="delete",
+                instance_id=vendor_bill_id
+            )
 
         TransactionLogBase.log(
             transaction_type="VENDOR_BILL_DELETED",
             user=user,
-            message=f"Vendor bill {vendor_bill_id} soft-deleted",
-            state_name="Completed",
-            extra={"vendor_bill_id": vendor_bill_id, "line_count": len(lines)},
+            message=f"Vendor bill {vendor_bill['number']} deleted for corporate {corporate_id}",
+            state_name="Success",
+            extra={
+                "vendor_bill_id": vendor_bill_id,
+                "previous_status": current_status,
+                "corporate_id": corporate_id
+            },
             request=request
         )
 
         return ResponseProvider(
             message="Vendor bill deleted successfully",
-            data={"vendor_bill_id": vendor_bill_id},
             code=200
         ).success()
 
@@ -1049,6 +1014,7 @@ def convert_purchase_order_to_vendor_bill(request):
 
     try:
         registry = ServiceRegistry()
+        accounting_service = AccountingService(registry)
 
         corporate_users = registry.database(
             model_name="CorporateUser",
@@ -1160,6 +1126,8 @@ def convert_purchase_order_to_vendor_bill(request):
                     operation="create",
                     data=line_data
                 )
+
+            # If we want to post it immediately, but the code sets "DRAFT", so no journal yet
 
         TransactionLogBase.log(
             transaction_type="PURCHASE_ORDER_CONVERTED_TO_VENDOR_BILL",

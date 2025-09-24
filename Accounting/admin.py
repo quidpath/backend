@@ -2,7 +2,10 @@ from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.forms.models import BaseInlineFormSet
 
-from Accounting.models.accounts import Account, AccountType, AccountSubType
+from Accounting.models.accounts import (
+    Account, AccountType, AccountSubType,
+    JournalEntry, JournalEntryLine
+)
 from Accounting.models.customer import Customer
 from Accounting.models.sales import (
     Quotation, QuotationLine,
@@ -12,25 +15,35 @@ from Accounting.models.sales import (
 )
 from Accounting.models.vendor import Vendor
 
-# Inlines
+
+# === Inlines ===
 class QuotationLineInline(admin.TabularInline):
     model = QuotationLine
     extra = 1
+
 
 class ProformaInvoiceLineInline(admin.TabularInline):
     model = ProformaInvoiceLine
     extra = 1
 
+
 class InvoiceLineInline(admin.TabularInline):
     model = InvoiceLine
     extra = 1
+
 
 class PurchaseOrderLineInline(admin.TabularInline):
     model = PurchaseOrderLine
     extra = 1
 
+
 class VendorBillLineInline(admin.TabularInline):
     model = VendorBillLine
+    extra = 1
+
+
+class JournalEntryLineInline(admin.TabularInline):
+    model = JournalEntryLine
     extra = 1
 
 
@@ -52,8 +65,24 @@ class AccountSubTypeAdmin(admin.ModelAdmin):
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
     list_display = ('id', 'code', 'name', 'corporate', 'account_type', 'account_sub_type', 'is_active')
-    search_fields = ('code', 'name', 'account_type__name', 'account_sub_type__name', 'corporate__name')
+    search_fields = ('code', 'name', 'account_type__name', 'account_sub_type__name', 'corporate')
     list_filter = ('account_type', 'account_sub_type', 'corporate', 'is_active')
+
+
+# === Journals ===
+@admin.register(JournalEntry)
+class JournalEntryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'date', 'corporate', 'is_posted')
+    search_fields = ('reference', 'description', 'corporate__name')
+    list_filter = ('date', 'is_posted', 'corporate')
+    inlines = [JournalEntryLineInline]
+
+
+@admin.register(JournalEntryLine)
+class JournalEntryLineAdmin(admin.ModelAdmin):
+    list_display = ('id', 'journal_entry', 'account', 'debit', 'credit', 'description')
+    search_fields = ('journal_entry__reference', 'account__name')
+    list_filter = ('account',)
 
 
 # === Customers & Vendors ===
@@ -98,7 +127,7 @@ class ProformaInvoiceAdmin(admin.ModelAdmin):
 @admin.register(Invoices)
 class InvoicesAdmin(admin.ModelAdmin):
     list_display = ('id', 'number', 'customer', 'date', 'status', 'due_date', 'salesperson')
-    search_fields = ('number', 'customer__first_name', 'customer__last_name', 'customer__company_name')
+    search_fields = ('number', 'date', 'status')
     list_filter = ('status', 'date', 'due_date')
     inlines = [InvoiceLineInline]
 

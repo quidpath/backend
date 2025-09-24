@@ -45,14 +45,19 @@ def get_profile(request):
             base64.b64decode(clean_data, validate=True)
             return True
         except Exception as e:
-            print(f"Base64 validation failed: {e}")
+            TransactionLogBase.log(
+                transaction_type="BASE_64_RETREIVAL_FAILED",
+                user=user,
+                message=str(e),
+                state_name="Failed",
+                request=request,
+            )
             return False
 
     def convert_file_to_base64(file_path: str) -> str:
         """Convert file to base64 data URL"""
         try:
             if not os.path.exists(file_path):
-                print(f"File does not exist: {file_path}")
                 return ""
 
             with open(file_path, 'rb') as file:
@@ -71,7 +76,13 @@ def get_profile(request):
 
                 return f"data:{content_type};base64,{encoded}"
         except Exception as e:
-            print(f"Failed to convert file to base64: {e}")
+            TransactionLogBase.log(
+                transaction_type="BASE_64_FILE_CONVERSION_FAILED",
+                user=user,
+                message=str(e),
+                state_name="Failed",
+                request=request,
+            )
             return ""
 
     def process_logo_data(logo_value: str) -> str:
@@ -80,7 +91,6 @@ def get_profile(request):
             return ""
 
         logo_str = str(logo_value)
-        print(f"Processing logo: {logo_str[:100]}")
 
         # Case 1: Already a valid data URL
         if logo_str.startswith('data:image/'):
@@ -98,7 +108,13 @@ def get_profile(request):
                 encoded = base64.b64encode(logo_str.encode('utf-8')).decode('utf-8')
                 return f"data:image/svg+xml;base64,{encoded}"
             except Exception as e:
-                print(f"Failed to encode SVG: {e}")
+                TransactionLogBase.log(
+                    transaction_type="SVG_ENCODE_FAILED",
+                    user=user,
+                    message=str(e),
+                    state_name="Failed",
+                    request=request,
+                )
                 return ""
 
         # Case 4: URL
@@ -110,7 +126,13 @@ def get_profile(request):
                     content_type = response.headers.get('content-type', 'image/png')
                     return f"data:{content_type};base64,{encoded}"
             except requests.RequestException as e:
-                print(f"Failed to fetch URL {logo_str}: {e}")
+                TransactionLogBase.log(
+                    transaction_type="URL_FETCH_FAILED",
+                    user=user,
+                    message=str(e),
+                    state_name="Failed",
+                    request=request,
+                )
             return ""
 
         # Case 5: Local absolute path
@@ -122,7 +144,6 @@ def get_profile(request):
             full_path = os.path.join(settings.MEDIA_ROOT, logo_str.lstrip("/"))
             return convert_file_to_base64(full_path)
 
-        print(f"Could not process logo: {logo_str[:50]}")
         return ""
 
     if corporate_user:
@@ -145,10 +166,15 @@ def get_profile(request):
                         os.path.join(settings.MEDIA_ROOT, str(corp.logo))
                     )
             except Exception as e:
-                print(f"Error processing corporate logo: {e}")
+                TransactionLogBase.log(
+                    transaction_type="PROCESSING_LOGO_DATA_FAILED",
+                    user=user,
+                    message=str(e),
+                    state_name="Failed",
+                    request=request,
+                )
                 logo_data = ""
 
-            print(f"Final logo data length: {len(logo_data)} characters")
 
         corporate = {
             "id": corp.id if corp else None,
