@@ -1,11 +1,13 @@
 #!/bin/sh
 set -e
 
-echo "Running migrations..."
-python manage.py migrate
+echo "DEBUG: which python"
+which python || echo "python not in PATH"
 
-echo "Collecting static files..."
-python manage.py collectstatic --noinput
+echo "DEBUG: which python3"
+which python3 || echo "python3 not in PATH"
 
-echo "Starting Gunicorn..."
-gunicorn quidpath_backend.wsgi:application --bind 0.0.0.0:$PORT
+ls -l /usr/local/bin | grep python || echo "No python binaries here"
+
+echo "Exiting early for debug"
+exit 1
