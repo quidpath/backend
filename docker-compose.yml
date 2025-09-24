@@ -5,7 +5,7 @@ services:
     container_name: django-backend
     build:
       context: .
-      dockerfile: Dockerfile.prod
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
