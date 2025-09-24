@@ -1,13 +1,36 @@
-#!/bin/sh
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "DEBUG: which python"
-which python || echo "python not in PATH"
+echo "🚀 Starting Container"
 
-echo "DEBUG: which python3"
-which python3 || echo "python3 not in PATH"
+# Ensure we're in the app directory
+cd "$(dirname "$0")" || exit 1
 
-ls -l /usr/local/bin | grep python || echo "No python binaries here"
+# Load environment variables from .env if present
+if [ -f .env ]; then
+  echo "📄 Loading environment variables from .env"
+  set -o allexport
+  source .env
+  set +o allexport
+fi
 
-echo "Exiting early for debug"
-exit 1
+# Pick the best python available
+PYTHON=$(command -v python3 || command -v python)
+
+if [ -z "$PYTHON" ]; then
+  echo "❌ No Python interpreter found in PATH"
+  exit 1
+fi
+
+echo "🐍 Using Python at: $PYTHON"
+
+echo "📦 Running migrations..."
+$PYTHON manage.py migrate --noinput
+
+echo "🌱 Collecting static files..."
+$PYTHON manage.py collectstatic --noinput
+
+echo "🟢 Starting Gunicorn server..."
+exec $PYTHON -m gunicorn "${DJANGO_WSGI_MODULE:-myproject.wsgi}:application" \
+    --bind 0.0.0.0:${PORT:-8000} \
+    --workers ${WORKERS:-3}
