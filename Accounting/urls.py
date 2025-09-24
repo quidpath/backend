@@ -11,6 +11,8 @@ from Accounting.views.chart_of_accounts import create_account, list_accounts, ge
 from Accounting.views.customer_view import (
     create_customer, list_customers, update_customer, delete_customer, get_tax_rate
 )
+from Accounting.views.fetch_reports import get_balance_sheet, get_income_statement, get_profit_and_loss, \
+    get_cash_flow_statement
 from Accounting.views.invoice import (
     save_invoice_draft, list_invoices, get_invoice,
     update_invoice, delete_invoice, create_and_post_invoice
@@ -21,8 +23,11 @@ from Accounting.views.lpo import (
     list_purchase_orders, get_purchase_order, update_purchase_order,
     delete_purchase_order, save_purchase_order_draft, create_and_post_purchase_order
 )
+from Accounting.views.reports import generate_profit_loss_report, generate_income_statement_report, \
+    generate_balance_sheet_report, generate_cash_flow_report, retrieve_financial_report, download_financial_report
+
 from Accounting.views.vendor_view import (
-    create_vendor, list_vendors, update_vendor, delete_vendor
+    create_vendor, list_vendors, update_vendor, delete_vendor, get_vendor, search_vendors
 )
 from Accounting.views.vendor_bill import (
     create_vendor_bill, update_vendor_bill, list_vendor_bills,
@@ -40,8 +45,10 @@ urlpatterns = [
     # Vendor Endpoints
     path('vendor/create/', create_vendor, name='create_vendor'),
     path('vendor/list/', list_vendors, name='list_vendors'),
+    path('vendor/get/', get_vendor, name='get_vendor'),
     path('vendor/update/', update_vendor, name='update_vendor'),
     path('vendor/delete/', delete_vendor, name='delete_vendor'),
+    path('vendor/search/', search_vendors, name='search_vendors'),
 
     # Quotation Endpoints
     path("quotation/save-draft/", save_quotation_draft, name="save_quotation_draft"),
@@ -105,4 +112,16 @@ urlpatterns = [
     path('journal/get/',get_journal_entry, name='get_journal_entry'),
     path('journal/update/',update_journal_entry, name='update_journal_entry'),
     path('journal/delete/',delete_journal_entry, name='delete_journal_entry'),
+
+    path('generate-pl/', generate_profit_loss_report, name='generate-pl'),
+    path('generate-income-statement/', generate_income_statement_report, name='generate-income-statement'),
+    path('generate-bs/', generate_balance_sheet_report, name='generate-bs'),
+    path('generate-cash-flow/', generate_cash_flow_report, name='generate-cash-flow'),
+    path('retrieve-report/', retrieve_financial_report, name='retrieve-report'),
+    path('download-report/', download_financial_report, name='download-report'),
+
+    path("reports/balance-sheet/", get_balance_sheet, name="get_balance_sheet"),
+    path("reports/income-statement/",get_income_statement, name="get_income_statement"),
+    path("reports/profit-and-loss/", get_profit_and_loss, name="get_profit_and_loss"),
+    path("reports/cash-flow-statement/", get_cash_flow_statement, name="get_cash_flow_statement"),
 ]

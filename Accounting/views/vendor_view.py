@@ -1,7 +1,7 @@
 import traceback
-
 from django.views.decorators.csrf import csrf_exempt
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
+from django.db.models import Q
 
 from Accounting.models.vendor import Vendor
 from quidpath_backend.core.utils.registry import ServiceRegistry
@@ -19,6 +19,11 @@ def create_vendor(request):
 
     if not category or not corporate_id:
         return ResponseProvider(message="Category and corporate ID are required", code=400).bad_request()
+
+    # Validate category against CATEGORY_CHOICES
+    valid_categories = [choice[0] for choice in Vendor.CATEGORY_CHOICES]
+    if category not in valid_categories:
+        return ResponseProvider(message=f"Invalid category. Must be one of: {', '.join(valid_categories)}", code=400).bad_request()
 
     try:
         corporate = Corporate.objects.get(id=corporate_id)
@@ -43,9 +48,28 @@ def create_vendor(request):
             is_active=data.get("is_active", True),
             notes=data.get("notes")
         )
-        vendor.clean()  # run validation
+        vendor.clean()  # Run model validation
         vendor.save()
-        return ResponseProvider(message="Vendor created successfully", data={"id": str(vendor.id)}).success()
+        vendor_data = {
+            "id": str(vendor.id),
+            "category": vendor.category,
+            "company_name": vendor.company_name,
+            "first_name": vendor.first_name,
+            "last_name": vendor.last_name,
+            "email": vendor.email,
+            "phone": vendor.phone,
+            "address": vendor.address,
+            "city": vendor.city,
+            "state": vendor.state,
+            "zip_code": vendor.zip_code,
+            "country": vendor.country,
+            "tax_id": vendor.tax_id,
+            "is_active": vendor.is_active,
+            "notes": vendor.notes,
+            "created_at": vendor.created_at.isoformat() if hasattr(vendor, 'created_at') else None,
+            "updated_at": vendor.updated_at.isoformat() if hasattr(vendor, 'updated_at') else None,
+        }
+        return ResponseProvider(message="Vendor created successfully", data=vendor_data).success()
     except ValidationError as e:
         return ResponseProvider(message=str(e), code=400).bad_request()
     except Exception as e:
@@ -90,14 +114,16 @@ def list_vendors(request):
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"corporate_id": corporate_id}
+            data={"corporate_id": corporate_id, "is_active": True}
         )
 
         serialized_vendors = [
             {
                 "id": str(vendor["id"]),
-                "name": vendor.get("name", ""),
+                "category": vendor.get("category", ""),
                 "company_name": vendor.get("company_name", ""),
+                "first_name": vendor.get("first_name", ""),
+                "last_name": vendor.get("last_name", ""),
                 "email": vendor.get("email", ""),
                 "phone": vendor.get("phone", ""),
                 "address": vendor.get("address", ""),
@@ -107,7 +133,9 @@ def list_vendors(request):
                 "country": vendor.get("country", ""),
                 "tax_id": vendor.get("tax_id", ""),
                 "is_active": vendor.get("is_active", True),
-                "notes": vendor.get("notes", "")
+                "notes": vendor.get("notes", ""),
+                "created_at": vendor.get("created_at", None),
+                "updated_at": vendor.get("updated_at", None),
             }
             for vendor in vendors
         ]
@@ -120,6 +148,7 @@ def list_vendors(request):
 
     except Exception as e:
         return ResponseProvider(message=str(e), code=500).exception()
+
 
 @csrf_exempt
 def get_vendor(request):
@@ -173,6 +202,12 @@ def update_vendor(request):
         return ResponseProvider(message="Vendor not found", code=404).bad_request()
 
     try:
+        # Validate category if provided
+        if "category" in data:
+            valid_categories = [choice[0] for choice in Vendor.CATEGORY_CHOICES]
+            if data["category"] not in valid_categories:
+                return ResponseProvider(message=f"Invalid category. Must be one of: {', '.join(valid_categories)}", code=400).bad_request()
+
         for field in [
             "category", "company_name", "first_name", "last_name", "email", "phone",
             "address", "city", "state", "zip_code", "country", "tax_id", "is_active", "notes"
@@ -180,9 +215,28 @@ def update_vendor(request):
             if field in data:
                 setattr(vendor, field, data.get(field))
 
-        vendor.clean()  # validation
+        vendor.clean()  # Run model validation
         vendor.save()
-        return ResponseProvider(message="Vendor updated successfully").success()
+        vendor_data = {
+            "id": str(vendor.id),
+            "category": vendor.category,
+            "company_name": vendor.company_name,
+            "first_name": vendor.first_name,
+            "last_name": vendor.last_name,
+            "email": vendor.email,
+            "phone": vendor.phone,
+            "address": vendor.address,
+            "city": vendor.city,
+            "state": vendor.state,
+            "zip_code": vendor.zip_code,
+            "country": vendor.country,
+            "tax_id": vendor.tax_id,
+            "is_active": vendor.is_active,
+            "notes": vendor.notes,
+            "created_at": vendor.created_at.isoformat() if hasattr(vendor, 'created_at') else None,
+            "updated_at": vendor.updated_at.isoformat() if hasattr(vendor, 'updated_at') else None,
+        }
+        return ResponseProvider(message="Vendor updated successfully", data=vendor_data).success()
     except ValidationError as e:
         return ResponseProvider(message=str(e), code=400).bad_request()
     except Exception as e:
@@ -228,15 +282,13 @@ def search_vendors(request):
         return ResponseProvider(message="Corporate not found", code=404).bad_request()
 
     try:
-        from django.db.models import Q
-
         vendors = Vendor.objects.filter(
             Q(corporate=corporate) & Q(is_active=True) & (
-                    Q(company_name__icontains=search_term) |
-                    Q(first_name__icontains=search_term) |
-                    Q(last_name__icontains=search_term) |
-                    Q(email__icontains=search_term) |
-                    Q(phone__icontains=search_term)
+                Q(company_name__icontains=search_term) |
+                Q(first_name__icontains=search_term) |
+                Q(last_name__icontains=search_term) |
+                Q(email__icontains=search_term) |
+                Q(phone__icontains=search_term)
             )
         )
 
@@ -257,6 +309,8 @@ def search_vendors(request):
                 "tax_id": v.tax_id,
                 "is_active": v.is_active,
                 "notes": v.notes,
+                "created_at": v.created_at.isoformat() if hasattr(v, 'created_at') else None,
+                "updated_at": v.updated_at.isoformat() if hasattr(v, 'updated_at') else None,
             }
             for v in vendors
         ]
