@@ -3,8 +3,16 @@ set -euo pipefail
 
 echo "🚀 Starting Container"
 
-# Ensure we're in the app directory
-cd "$(dirname "$0")" || exit 1
+# Detect manage.py directory automatically
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [ ! -f "$APP_DIR/manage.py" ]; then
+  echo "❌ manage.py not found in $APP_DIR"
+  echo "👉 Set APP_DIR correctly inside start.sh"
+  exit 1
+fi
+
+cd "$APP_DIR"
 
 # Load environment variables from .env if present
 if [ -f .env ]; then
@@ -31,6 +39,6 @@ echo "🌱 Collecting static files..."
 $PYTHON manage.py collectstatic --noinput
 
 echo "🟢 Starting Gunicorn server..."
-exec $PYTHON -m gunicorn "${DJANGO_WSGI_MODULE:-myproject.wsgi}:application" \
+exec $PYTHON -m gunicorn "${DJANGO_WSGI_MODULE:-quidpath_backend.wsgi}:application" \
     --bind 0.0.0.0:${PORT:-8000} \
     --workers ${WORKERS:-3}
