@@ -18,4 +18,5 @@ if DATABASE_URL:
         "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
     }
 else:
+    print("📡 DEBUG: DATABASE_URL env var is ->", repr(DATABASE_URL))
     raise Exception("❌ DATABASE_URL not set! Cannot connect to DB.")
