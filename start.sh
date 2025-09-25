@@ -31,7 +31,11 @@ fi
 
 echo "🐍 Using Python at: $PYTHON"
 
+echo "📦 Running makemigrations..."
+$PYTHON manage.py makemigrations --noinput
+
 echo "📦 Running migrations..."
+$PYTHON manage.py migrate Authentication --noinput
 $PYTHON manage.py migrate --noinput
 
 echo "🌱 Collecting static files..."
