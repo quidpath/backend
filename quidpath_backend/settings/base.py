@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "Banking",
     "Accounting",
     "Payments",
+    "Tazama",
 ]
 
 MIDDLEWARE = [
@@ -138,7 +139,7 @@ AUTH_USER_MODEL = "Authentication.CustomUser"
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "https://quidpath-phi.vercel.app"
+    "https://quidpath-erp-frontend-production.up.railway.app"
 ]
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",

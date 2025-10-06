@@ -9,3 +9,14 @@ dj-database-url
 gunicorn
 whitenoise
 requests
+torch
+torchvision
+pandas
+numpy
+scikit-learn
+plotly
+fpdf2
+openpyxl
+xlrd
+matplotlib
+

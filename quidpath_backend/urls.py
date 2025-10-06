@@ -26,5 +26,6 @@ urlpatterns = [
     path('', include('Banking.urls')),
     path('', include('Accounting.urls')),
     path('', include('Payments.urls')),
+    path('', include('Tazama.urls')),
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
