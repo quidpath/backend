@@ -14,6 +14,7 @@ services:
           echo 'Waiting for Postgres to be ready...';
           sleep 2;
         done;
+        python manage.py makemigrations &&
         python manage.py migrate &&
         gunicorn quidpath_backend.wsgi:application --bind 0.0.0.0:8000
       "
