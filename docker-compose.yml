@@ -9,10 +9,17 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: quidpath_backend.settings.prod
     command: >
-      sh -c "python manage.py migrate &&
-             gunicorn quidpath_backend.wsgi:application --bind 0.0.0.0:8000"
+      sh -c "
+        until pg_isready -h db -U devuser; do
+          echo 'Waiting for Postgres to be ready...';
+          sleep 2;
+        done;
+        python manage.py migrate &&
+        gunicorn quidpath_backend.wsgi:application --bind 0.0.0.0:8000
+      "
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - backend_net
 
@@ -28,6 +35,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
