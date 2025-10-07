@@ -19,7 +19,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build & Push
+      - name: Build & Push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -41,9 +41,10 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Deploy to Server via SSM
+      - name: Deploy to EC2 via SSM
         id: ssm-deploy
         run: |
+          echo "🚀 Sending deployment command to EC2..."
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids i-03491863fe1f5abce \
             --document-name "AWS-RunShellScript" \
@@ -63,19 +64,47 @@ jobs:
                 "echo ---- Deployment finished successfully ----"
               ]
             }' \
-            --output text \
-            --query 'Command.CommandId')
+            --query "Command.CommandId" \
+            --output text)
           echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
+          echo "✅ SSM Command ID: $COMMAND_ID"
         shell: bash
 
-      - name: Check SSM Command Status
+      - name: Wait for SSM Command to finish
         run: |
-          aws ssm wait command-executed \
-            --instance-id i-03491863fe1f5abce \
-            --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
-            --region ${{ secrets.AWS_REGION }}
-          echo "Command executed successfully. Details:"
+          echo "⏳ Waiting for EC2 deployment to complete..."
+          MAX_ATTEMPTS=90   # 90 attempts × 10 seconds = 15 minutes
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            STATUS=$(aws ssm list-commands \
+              --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
+              --query "Commands[0].Status" \
+              --output text \
+              --region ${{ secrets.AWS_REGION }})
+            
+            echo "Attempt $i/$MAX_ATTEMPTS → Status: $STATUS"
+            
+            if [[ "$STATUS" == "Success" ]]; then
+              echo "✅ Command executed successfully!"
+              aws ssm list-command-invocations \
+                --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
+                --details \
+                --region ${{ secrets.AWS_REGION }}
+              exit 0
+            elif [[ "$STATUS" == "Failed" || "$STATUS" == "Cancelled" ]]; then
+              echo "❌ Command failed or cancelled!"
+              aws ssm list-command-invocations \
+                --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
+                --details \
+                --region ${{ secrets.AWS_REGION }}
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          echo "❌ Timeout: Command did not complete within 15 minutes."
           aws ssm list-command-invocations \
             --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
             --details \
             --region ${{ secrets.AWS_REGION }}
+          exit 1
