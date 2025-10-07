@@ -44,50 +44,27 @@ jobs:
       - name: Deploy to EC2 via SSM
         id: ssm-deploy
         run: |
-          echo "🚀 Sending deployment command to EC2..."
+          echo "🚀 Triggering deployment on EC2..."
+          
           COMMAND_ID=$(aws ssm send-command \
-            --instance-ids i-03491863fe1f5abce \
+            --instance-ids "i-03491863fe1f5abce" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploying latest Django backend" \
-            --parameters '{
-              "commands": [
-                "echo ---- Starting Deployment ----",
-                "cd /home/ubuntu/quidpath-erp-backend || { echo Directory not found; exit 1; }",
-                "echo ---- Directory OK ----",
-                "sudo systemctl start docker || true",
-                "docker --version || { echo Docker not found; exit 1; }",
-
-                "if ! docker compose version >/dev/null 2>&1; then echo Installing Docker Compose plugin...; fi",
-                "sudo apt-get update -y",
-                "sudo apt-get install -y ca-certificates curl gnupg",
-                "sudo install -m 0755 -d /etc/apt/keyrings",
-                "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg",
-                "echo 'deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable' | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null",
-                "sudo apt-get update -y",
-                "sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
-                "docker compose version",
-
-                "echo ---- Pulling latest image ----",
-                "sudo docker compose pull backend || { echo Failed to pull image; exit 1; }",
-
-                "echo ---- Restarting container ----",
-                "sudo docker compose up -d --no-deps backend || { echo Failed to start container; exit 1; }",
-
-                "echo ---- Deployment finished successfully ----"
-              ]
-            }' \
+            --comment "Deploy Django Backend - Build #${{ github.run_number }}" \
+            --parameters 'commands=["bash /home/ubuntu/deploy.sh"]' \
             --query "Command.CommandId" \
             --output text \
             --region ${{ secrets.AWS_REGION }})
+          
           echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
           echo "✅ SSM Command ID: $COMMAND_ID"
         shell: bash
 
-
-      - name: Wait for SSM Command to finish
+      - name: Wait for deployment to complete
         run: |
           echo "⏳ Waiting for EC2 deployment to complete..."
-          MAX_ATTEMPTS=90   # 90 attempts × 10 seconds = 15 minutes
+          MAX_ATTEMPTS=60
+          SLEEP_INTERVAL=10
+          
           for i in $(seq 1 $MAX_ATTEMPTS); do
             STATUS=$(aws ssm list-commands \
               --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
@@ -95,30 +72,50 @@ jobs:
               --output text \
               --region ${{ secrets.AWS_REGION }})
 
-            echo "Attempt $i/$MAX_ATTEMPTS → Status: $STATUS"
+            echo "⏱️  Attempt $i/$MAX_ATTEMPTS → Status: $STATUS"
 
-            if [[ "$STATUS" == "Success" ]]; then
-              echo "✅ Command executed successfully!"
-              aws ssm list-command-invocations \
-                --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
-                --details \
-                --region ${{ secrets.AWS_REGION }}
-              exit 0
-            elif [[ "$STATUS" == "Failed" || "$STATUS" == "Cancelled" ]]; then
-              echo "❌ Command failed or cancelled!"
-              aws ssm list-command-invocations \
-                --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
-                --details \
-                --region ${{ secrets.AWS_REGION }}
-              exit 1
-            fi
+            case "$STATUS" in
+              "Success")
+                echo "✅ Deployment completed successfully!"
+                echo ""
+                echo "📋 Deployment Output:"
+                aws ssm get-command-invocation \
+                  --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
+                  --instance-id "i-03491863fe1f5abce" \
+                  --query 'StandardOutputContent' \
+                  --output text \
+                  --region ${{ secrets.AWS_REGION }}
+                exit 0
+                ;;
+              "Failed")
+                echo "❌ Deployment failed!"
+                echo ""
+                echo "📋 Error Output:"
+                aws ssm get-command-invocation \
+                  --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
+                  --instance-id "i-03491863fe1f5abce" \
+                  --query 'StandardErrorContent' \
+                  --output text \
+                  --region ${{ secrets.AWS_REGION }}
+                echo ""
+                echo "📋 Standard Output:"
+                aws ssm get-command-invocation \
+                  --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
+                  --instance-id "i-03491863fe1f5abce" \
+                  --query 'StandardOutputContent' \
+                  --output text \
+                  --region ${{ secrets.AWS_REGION }}
+                exit 1
+                ;;
+              "Cancelled"|"TimedOut")
+                echo "❌ Deployment $STATUS"
+                exit 1
+                ;;
+            esac
 
-            sleep 10
+            sleep $SLEEP_INTERVAL
           done
 
-          echo "❌ Timeout: Command did not complete within 15 minutes."
-          aws ssm list-command-invocations \
-            --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
-            --details \
-            --region ${{ secrets.AWS_REGION }}
+          echo "❌ Timeout: Deployment did not complete within $((MAX_ATTEMPTS * SLEEP_INTERVAL / 60)) minutes"
           exit 1
+        shell: bash
