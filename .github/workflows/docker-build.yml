@@ -45,18 +45,33 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Deploy to Server via SSM
-        id: ssm-command
-        uses: peterkimzz/aws-ssm-send-command@v1.0.1  # Reliable action for this
-        with:
-          instance-ids: i-03491863fe1f5abce
-          region: ${{ secrets.AWS_REGION }}
-          working-directory: /home/ubuntu/quidpath-erp-backend  # Adjust if needed
-          command: |  # Your script as multi-line
-            docker-compose pull django-backend
-            docker-compose up -d --no-deps django-backend
-          comment: Deploying latest Django backend
-
-      - name: Check SSM Command Status  # Optional: Wait and log output
+        id: ssm-deploy
         run: |
-          aws ssm wait command-invoked --command-id "${{ steps.ssm-command.outputs.command-id }}" --instance-id <your-instance-id>
-          aws ssm list-command-invocations --command-id "${{ steps.ssm-command.outputs.command-id }}" --details
+          cd ~/quidpath-erp-backend || echo "Directory change failed, assuming default working dir"
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids i-03491863fe1f5abce \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploying latest Django backend" \
+            --parameters '{
+              "commands": [
+                "cd ~/quidpath-erp-backend",
+                "docker-compose pull django-backend",
+                "docker-compose up -d --no-deps django-backend"
+              ]
+            }' \
+            --output text \
+            --query 'Command.CommandId')
+          echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Check SSM Command Status  # Wait and log output
+        run: |
+          aws ssm wait command-executed \
+            --instance-id i-03491863fe1f5abce \
+            --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
+            --region ${{ secrets.AWS_REGION }}
+          echo "Command executed successfully. Details:"
+          aws ssm list-command-invocations \
+            --command-id ${{ steps.ssm-deploy.outputs.command_id }} \
+            --details \
+            --region ${{ secrets.AWS_REGION }}
