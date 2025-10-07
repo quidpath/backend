@@ -10,18 +10,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ✅ Checkout code
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # ✅ Login to Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # ✅ Build and push Docker image
       - name: Build & Push
         uses: docker/build-push-action@v5
         with:
@@ -32,9 +29,9 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: build-and-push  # Run after build succeeds
+    needs: build-and-push
     permissions:
-      id-token: write  # For OIDC
+      id-token: write
       contents: read
 
     steps:
@@ -47,16 +44,15 @@ jobs:
       - name: Deploy to Server via SSM
         id: ssm-deploy
         run: |
-          cd ~/quidpath-erp-backend || echo "Directory change failed, assuming default working dir"
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids i-03491863fe1f5abce \
             --document-name "AWS-RunShellScript" \
             --comment "Deploying latest Django backend" \
             --parameters '{
               "commands": [
-                "cd ~/quidpath-erp-backend",
-                "docker-compose pull django-backend",
-                "docker-compose up -d --no-deps django-backend"
+                "cd ~/quidpath-erp-backend || exit 1",
+                "docker-compose pull django-backend || exit 1",
+                "docker-compose up -d --no-deps django-backend || exit 1"
               ]
             }' \
             --output text \
@@ -64,7 +60,7 @@ jobs:
           echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Check SSM Command Status  # Wait and log output
+      - name: Check SSM Command Status
         run: |
           aws ssm wait command-executed \
             --instance-id i-03491863fe1f5abce \
