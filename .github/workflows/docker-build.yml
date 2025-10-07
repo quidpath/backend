@@ -108,3 +108,4 @@ jobs:
             --details \
             --region ${{ secrets.AWS_REGION }}
           exit 1
+
