@@ -63,7 +63,7 @@ jobs:
                 "sudo docker compose up -d --no-deps backend || { echo Failed to start container; exit 1; }",
                 "echo ---- Deployment finished successfully ----"
               ]
-            }' \
+            }'\
             --query "Command.CommandId" \
             --output text \
             --region ${{ secrets.AWS_REGION }})
