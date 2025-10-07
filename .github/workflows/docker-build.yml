@@ -51,8 +51,8 @@ jobs:
             --parameters '{
               "commands": [
                 "cd ~/quidpath-erp-backend || exit 1",
-                "docker-compose pull django-backend || exit 1",
-                "docker-compose up -d --no-deps django-backend || exit 1"
+                "docker-compose pull || exit 1",
+                "docker-compose up -d --no-deps || exit 1"
               ]
             }' \
             --output text \
