@@ -50,16 +50,23 @@ jobs:
             --comment "Deploying latest Django backend" \
             --parameters '{
               "commands": [
-                "cd /home/ubuntu/quidpath-erp-backend || { echo Failed to cd; exit 1; }",
-                "sudo docker compose pull backend || { echo Failed to pull image; exit 1; }",
-                "sudo docker compose up -d --no-deps backend || { echo Failed to start container; exit 1; }"
+                "echo ---- Starting Deployment ----",
+                "cd /home/ubuntu/quidpath-erp-backend || { echo Directory not found; exit 1; }",
+                "echo ---- Directory OK ----",
+                "sudo systemctl start docker || true",
+                "docker --version || { echo Docker not found; exit 1; }",
+                "sudo docker compose version || sudo docker-compose version || { echo Docker Compose not found; exit 1; }",
+                "echo ---- Pulling latest image ----",
+                "sudo docker compose pull backend || sudo docker-compose pull backend || { echo Failed to pull image; exit 1; }",
+                "echo ---- Restarting container ----",
+                "sudo docker compose up -d --no-deps backend || sudo docker-compose up -d --no-deps backend || { echo Failed to start container; exit 1; }",
+                "echo ---- Deployment finished successfully ----"
               ]
             }' \
             --output text \
             --query 'Command.CommandId')
           echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
         shell: bash
-
 
       - name: Check SSM Command Status
         run: |
