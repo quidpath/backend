@@ -56,11 +56,25 @@ jobs:
                 "echo ---- Directory OK ----",
                 "sudo systemctl start docker || true",
                 "docker --version || { echo Docker not found; exit 1; }",
-                "if ! docker compose version >/dev/null 2>&1; then echo Installing docker compose plugin...; sudo apt-get update -y && sudo apt-get install -y docker-compose-plugin && docker compose version; fi",
+
+                "if ! docker compose version >/dev/null 2>&1; then \
+                   echo Installing Docker Compose plugin...; \
+                   sudo apt-get update -y && \
+                   sudo apt-get install -y ca-certificates curl gnupg && \
+                   sudo install -m 0755 -d /etc/apt/keyrings && \
+                   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+                   echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+                   sudo apt-get update -y && \
+                   sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin && \
+                   docker compose version; \
+                 fi",
+
                 "echo ---- Pulling latest image ----",
-                "sudo docker compose pull backend || sudo docker-compose pull backend || { echo Failed to pull image; exit 1; }",
+                "sudo docker compose pull backend || { echo Failed to pull image; exit 1; }",
+
                 "echo ---- Restarting container ----",
-                "sudo docker compose up -d --no-deps backend || sudo docker-compose up -d --no-deps backend || { echo Failed to start container; exit 1; }",
+                "sudo docker compose up -d --no-deps backend || { echo Failed to start container; exit 1; }",
+
                 "echo ---- Deployment finished successfully ----"
               ]
             }' \
@@ -80,9 +94,9 @@ jobs:
               --query "Commands[0].Status" \
               --output text \
               --region ${{ secrets.AWS_REGION }})
-            
+
             echo "Attempt $i/$MAX_ATTEMPTS → Status: $STATUS"
-            
+
             if [[ "$STATUS" == "Success" ]]; then
               echo "✅ Command executed successfully!"
               aws ssm list-command-invocations \
