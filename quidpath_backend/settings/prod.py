@@ -1,8 +1,8 @@
-# settings/prod.py
 from .base import *
 import os
-import dj_database_url
+import logging
 
+logger = logging.getLogger(__name__)
 print("Using Production Settings")
 
 # Security Settings
@@ -22,13 +22,19 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # Database config
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise Exception("❌ DATABASE_URL not set! Cannot connect to DB.")
-
 DATABASES = {
-    "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("POSTGRES_DB", "devdb"),
+        "USER": os.getenv("POSTGRES_USER", "devuser"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "devpass"),
+        "HOST": os.getenv("POSTGRES_HOST", "db"),
+        "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        "CONN_MAX_AGE": 600,
+    }
 }
+
+logger.info(f"Database config: {DATABASES}")
 
 # Static files (CRITICAL for admin CSS/JS)
 STATIC_URL = "/static/"
