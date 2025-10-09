@@ -85,3 +85,4 @@ volumes:
       type: none
       o: bind
       device: /mnt/ebs/postgres_data
+
