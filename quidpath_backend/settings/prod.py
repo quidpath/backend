@@ -6,13 +6,9 @@ logger = logging.getLogger(__name__)
 print("Using Production Settings")
 
 # Security Settings
+# This correctly uses the ALLOWED_HOSTS variable from your .env file
 DEBUG = False
-ALLOWED_HOSTS = [
-    'api.quidpath.com',
-    '13.61.244.11',  # Your EC2 IP
-    'localhost',
-    '127.0.0.1',
-]
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
 
 # IMPORTANT: Set these for admin to work
 CSRF_TRUSTED_ORIGINS = [
@@ -21,20 +17,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://13.61.244.11',
 ]
 
-# Database config
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "devdb"),
-        "USER": os.getenv("POSTGRES_USER", "devuser"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "devpass"),
-        "HOST": os.getenv("POSTGRES_HOST", "db"),
-        "PORT": os.getenv("POSTGRES_PORT", "5432"),
-        "CONN_MAX_AGE": 600,
-    }
-}
-
-logger.info(f"Database config: {DATABASES}")
+# The DATABASES block has been removed to avoid conflict with base.py
 
 # Static files (CRITICAL for admin CSS/JS)
 STATIC_URL = "/static/"
@@ -50,7 +33,7 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_BROWSER_XSS_FILTER = True
-SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_CONTENT_TYPE_NOSNIF = True
 
 # CORS - be more restrictive in production
 CORS_ALLOW_ALL_ORIGINS = False

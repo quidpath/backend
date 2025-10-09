@@ -10,7 +10,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      # ✅ CORRECTED: Added the database name flag "-d ${POSTGRES_DB}"
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,17 +27,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      - DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod
-      - POSTGRES_DB=devdb
-      - POSTGRES_USER=devuser
-      - POSTGRES_PASSWORD=devpass
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-      - SECRET_KEY=${SECRET_KEY}
-      - DEBUG=${DEBUG:-False}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
     env_file:
+      # ✅ CLEANUP: Relying completely on the .env file is cleaner
       - .env
     volumes:
       - /mnt/ebs/media:/app/media
@@ -74,7 +66,7 @@ services:
     volumes:
       - /mnt/ebs/certbot/conf:/etc/letsencrypt
       - /mnt/ebs/certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait ${!}; done;'"
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     networks:
       - quidpath_network
 
@@ -89,4 +81,3 @@ volumes:
       type: none
       o: bind
       device: /mnt/ebs/postgres_data
-
