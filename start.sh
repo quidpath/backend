@@ -44,4 +44,4 @@ $PYTHON manage.py collectstatic --noinput
 echo "🟢 Starting Gunicorn server..."
 exec $PYTHON -m gunicorn "quidpath_backend.wsgi:application" \
     --bind 0.0.0.0:${PORT:-8000} \
-    --workers ${WORKERS:-3}
+    --workers ${WORKERS:-2}
