@@ -19,7 +19,7 @@ services:
       - quidpath_network
 
   backend:
-    image: .
+    build: .
     container_name: django-backend
     restart: unless-stopped
     ports:
