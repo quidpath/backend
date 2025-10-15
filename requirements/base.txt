@@ -9,7 +9,6 @@ dj-database-url
 gunicorn
 whitenoise
 requests
---index-url https://download.pytorch.org/whl/cpu
 torch
 torchvision
 pandas
@@ -20,3 +19,4 @@ fpdf2
 openpyxl
 xlrd
 matplotlib
+
