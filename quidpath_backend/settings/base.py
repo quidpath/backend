@@ -138,8 +138,11 @@ AUTH_USER_MODEL = "Authentication.CustomUser"
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
+    "https://quidpath.com",
+    "https://www.quidpath.com",
     "http://localhost:3000",
     "https://quidpath-erp-frontend-production.up.railway.app"
+
 ]
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",

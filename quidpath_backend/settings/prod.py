@@ -38,8 +38,11 @@ SECURE_CONTENT_TYPE_NOSNIF = True
 # CORS - be more restrictive in production
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
-    "https://quidpath-erp-frontend-production.up.railway.app",
-    "https://app.quidpath.com",  # Add your frontend domain
+    "https://quidpath.com",
+    "https://www.quidpath.com",
+    "http://localhost:3000",
+    "https://quidpath-erp-frontend-production.up.railway.app"
+# Add your frontend domain
 ]
 CORS_ALLOW_CREDENTIALS = True
 
