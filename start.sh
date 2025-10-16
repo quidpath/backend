@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 echo "🚀 Starting Container"
@@ -13,15 +13,15 @@ fi
 
 cd "$APP_DIR"
 
-# Load env file if it exists
+# ✅ Load environment variables from .env if it exists
 if [ -f .env ]; then
   echo "📄 Loading environment variables from .env"
   set -o allexport
-  source .env
+  . .env
   set +o allexport
 fi
 
-# Detect Python
+# ✅ Detect Python interpreter
 PYTHON=$(command -v python3 || command -v python)
 
 if [ -z "$PYTHON" ]; then
@@ -35,13 +35,14 @@ echo "📦 Running makemigrations..."
 $PYTHON manage.py makemigrations --noinput
 
 echo "📦 Running migrations..."
-$PYTHON manage.py migrate Authentication --noinput
+$PYTHON manage.py migrate Authentication --noinput || true
 $PYTHON manage.py migrate --noinput
 
 echo "🌱 Collecting static files..."
 $PYTHON manage.py collectstatic --noinput
 
 echo "🟢 Starting Gunicorn server..."
-exec $PYTHON -m gunicorn "quidpath_backend.wsgi:application" \
+exec gunicorn quidpath_backend.wsgi:application \
     --bind 0.0.0.0:${PORT:-8000} \
-    --workers ${WORKERS:-2}
+    --workers ${WORKERS:-2} \
+    --timeout 120
