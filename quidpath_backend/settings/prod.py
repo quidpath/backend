@@ -1,62 +1,92 @@
+# settings/prod.py
 from .base import *
 import os
 import logging
+from corsheaders.defaults import default_headers
 
 logger = logging.getLogger(__name__)
 print("Using Production Settings")
 
-# Security Settings
-# This correctly uses the ALLOWED_HOSTS variable from your .env file
+# ====================================
+# 🔒 SECURITY SETTINGS
+# ====================================
 DEBUG = False
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
 
-# IMPORTANT: Set these for admin to work
+# Load allowed hosts from environment (comma-separated)
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "api.quidpath.com,quidpath.com,www.quidpath.com").split(",")
+
+# ====================================
+# 🧩 CSRF & CORS CONFIGURATION
+# ====================================
 CSRF_TRUSTED_ORIGINS = [
-    'https://api.quidpath.com',
-    'https://www.api.quidpath.com',
-    'http://13.61.244.11',
+    "https://api.quidpath.com",
+    "https://quidpath.com",
+    "https://www.quidpath.com",
 ]
 
-# The DATABASES block has been removed to avoid conflict with base.py
-
-# Static files (CRITICAL for admin CSS/JS)
-STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-
-# Media files
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
-
-# Security settings for production
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_BROWSER_XSS_FILTER = True
-SECURE_CONTENT_TYPE_NOSNIF = True
-
-# CORS - be more restrictive in production
+# CORS configuration
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     "https://quidpath.com",
     "https://www.quidpath.com",
-    "http://localhost:3000",
-    "https://quidpath-erp-frontend-production.up.railway.app"
-# Add your frontend domain
 ]
-CORS_ALLOW_CREDENTIALS = True
 
-# Logging for debugging
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "authorization",
+    "content-type",
+]
+
+# ====================================
+# ⚙️ STATIC & MEDIA FILES
+# ====================================
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# ====================================
+# 🧱 SECURITY MIDDLEWARE HEADERS
+# ====================================
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# ====================================
+# 📜 LOGGING CONFIGURATION
+# ====================================
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-        },
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
     },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
     },
 }
+
+# ====================================
+# 💾 DATABASE (Handled in base.py)
+# ====================================
+# Using dj_database_url from base.py
+# No need to redefine DATABASES here
+
+# ====================================
+# 📧 EMAIL SETTINGS (Inherited from base)
+# ====================================
+# SMTP configs come from base.py (.env provides credentials)
+
+# ====================================
+# ✅ NOTES
+# ====================================
+# - Ensure your Amplify frontend uses:
+#     NEXT_PUBLIC_API_BASE_URL=https://api.quidpath.com/
+# - Ensure ALLOWED_HOSTS includes api.quidpath.com, quidpath.com, and www.quidpath.com
+# - Restart backend after saving this file:
+#     docker compose restart backend
