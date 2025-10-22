@@ -99,7 +99,6 @@ def login_user(request):
         "organisation_id": corporate_id,
         "role": role or ("superuser" if user.is_superuser else None),
     })
-    response["Authorization"] = f"Bearer {access_token}"
     return response
 
 @csrf_exempt

@@ -13,25 +13,40 @@ print("Using Production Settings")
 DEBUG = False
 
 # Load allowed hosts from environment (comma-separated)
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "api.quidpath.com,quidpath.com,www.quidpath.com").split(",")
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "api.quidpath.com").split(",")
 
 # ====================================
 # 🧩 CSRF & CORS CONFIGURATION
 # ====================================
 CSRF_TRUSTED_ORIGINS = [
-    "https://api.quidpath.com",
     "https://quidpath.com",
     "https://www.quidpath.com",
 ]
 
-# CORS configuration
-CORS_ALLOW_ALL_ORIGINS = False
+# --- CORS CONFIGURATION ---
+CORS_ALLOW_ALL_ORIGINS = False  # GOOD: Override base.py
+
+# These are the *only* origins that can make browser requests
 CORS_ALLOWED_ORIGINS = [
     "https://quidpath.com",
     "https://www.quidpath.com",
+    # You might want to add your Amplify preview/dev URLs here too
 ]
 
+# This is vital for sending credentials (like JWT tokens)
 CORS_ALLOW_CREDENTIALS = True
+
+# Explicitly allow the methods your frontend uses
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
+
+# Headers your frontend is allowed to send
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
     "content-type",
