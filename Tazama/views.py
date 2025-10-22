@@ -295,6 +295,11 @@ def analyze_financial_data(request):
                 request=request,
             )
 
+            # Get optimization analysis if available
+            optimization_analysis = {}
+            if hasattr(request_obj, 'optimization_analysis'):
+                optimization_analysis = request_obj.optimization_analysis
+
             return ResponseProvider(
                 data={
                     "analysis_id": request_obj.id,
@@ -302,6 +307,7 @@ def analyze_financial_data(request):
                     "recommendations": request_obj.recommendations,
                     "risk_assessment": request_obj.risk_assessment,
                     "confidence_scores": request_obj.confidence_scores,
+                    "optimization_analysis": optimization_analysis,
                     "processing_time": request_obj.processing_time_seconds,
                     "model_used": {
                         "id": request_obj.model_used.id,

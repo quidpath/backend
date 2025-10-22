@@ -38,7 +38,7 @@ class TazamaReportGenerator:
             raise ValueError(f"Unsupported format: {format_type}")
 
     def generate_html_report(self, analysis_request):
-        """Generate comprehensive HTML report with professional styling"""
+        """Generate comprehensive HTML report with professional styling and optimization insights"""
 
         # Generate visualizations
         charts = self._generate_charts(analysis_request)
@@ -48,6 +48,7 @@ class TazamaReportGenerator:
         recommendations = analysis_request.recommendations or {}
         risk_assessment = analysis_request.risk_assessment or {}
         confidence_scores = analysis_request.confidence_scores or {}
+        optimization_analysis = getattr(analysis_request, 'optimization_analysis', {})
 
         # Format metric values
         def format_metric(value):
@@ -65,6 +66,9 @@ class TazamaReportGenerator:
 
         # Build risk assessment HTML
         risk_html, risk_factors_html = self._build_risk_html(risk_assessment)
+        
+        # Build optimization analysis HTML
+        optimization_html = self._build_optimization_html(optimization_analysis)
 
         # Get risk factors count
         risk_factors = risk_assessment.get('risk_factors', [])
@@ -151,6 +155,9 @@ class TazamaReportGenerator:
             </div>
             ''' if risk_factors_html else ''}
         </div>
+
+        <!-- Financial Optimization Analysis -->
+        {optimization_html}
 
         <!-- Footer -->
         <div class="footer">
@@ -603,6 +610,136 @@ class TazamaReportGenerator:
                 """
 
         return risk_html, risk_factors_html
+
+    def _build_optimization_html(self, optimization_analysis):
+        """Build HTML for optimization analysis section"""
+        if not optimization_analysis or optimization_analysis.get('error'):
+            return ""
+        
+        optimization_html = """
+        <div class="section">
+            <h2 class="section-title">Financial Optimization Analysis</h2>
+        """
+        
+        # Executive Summary
+        exec_summary = optimization_analysis.get('executive_summary', {})
+        if exec_summary:
+            optimization_html += f"""
+            <div class="optimization-summary">
+                <h3>Optimization Summary</h3>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <h3>Optimization Score</h3>
+                        </div>
+                        <div class="metric-value">{optimization_analysis.get('optimization_score', 0)}/100</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <h3>Total Potential</h3>
+                        </div>
+                        <div class="metric-value">${exec_summary.get('total_optimization_potential', 0):,.0f}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <h3>Priority Level</h3>
+                        </div>
+                        <div class="metric-value">{exec_summary.get('implementation_priority', 'MEDIUM')}</div>
+                    </div>
+                </div>
+            </div>
+            """
+        
+        # Cash Flow Optimization
+        cash_optimization = optimization_analysis.get('cash_flow_optimization', {})
+        if cash_optimization:
+            optimization_html += """
+            <div class="optimization-category">
+                <h3>Cash Flow Optimization</h3>
+            """
+            
+            for category, recommendations in cash_optimization.items():
+                if isinstance(recommendations, list) and recommendations:
+                    optimization_html += f"""
+                    <div class="recommendation-category">
+                        <h4>{category.replace('_', ' ').title()}</h4>
+                    """
+                    
+                    for rec in recommendations[:3]:  # Show top 3
+                        if isinstance(rec, dict):
+                            optimization_html += f"""
+                            <div class="recommendation-card">
+                                <div class="recommendation-header">
+                                    <span class="priority-badge">{rec.get('priority', 'MEDIUM')}</span>
+                                    <h4>{rec.get('action', 'N/A')}</h4>
+                                </div>
+                                <p class="recommendation-description">{rec.get('description', '')}</p>
+                                <div class="recommendation-footer">
+                                    <span><strong>Impact:</strong> {rec.get('potential_impact', 'N/A')}</span>
+                                    <span><strong>Timeline:</strong> {rec.get('timeline', 'N/A')}</span>
+                                </div>
+                            </div>
+                            """
+                    
+                    optimization_html += "</div>"
+            
+            optimization_html += "</div>"
+        
+        # Cost Optimization
+        cost_optimization = optimization_analysis.get('cost_optimization', {})
+        if cost_optimization:
+            optimization_html += """
+            <div class="optimization-category">
+                <h3>Cost Optimization</h3>
+            """
+            
+            savings_potential = cost_optimization.get('total_savings_potential', {})
+            if savings_potential:
+                optimization_html += f"""
+                <div class="savings-summary">
+                    <h4>Savings Potential</h4>
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h3>Annual Savings</h3>
+                            </div>
+                            <div class="metric-value">${savings_potential.get('total_annual_savings', 0):,.0f}</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <h3>Savings %</h3>
+                            </div>
+                            <div class="metric-value">{savings_potential.get('savings_percentage', 0):.1f}%</div>
+                        </div>
+                    </div>
+                </div>
+                """
+            
+            optimization_html += "</div>"
+        
+        # Implementation Roadmap
+        roadmap = optimization_analysis.get('implementation_roadmap', {})
+        if roadmap:
+            optimization_html += """
+            <div class="implementation-roadmap">
+                <h3>Implementation Roadmap</h3>
+            """
+            
+            for phase, details in roadmap.items():
+                if isinstance(details, dict):
+                    optimization_html += f"""
+                    <div class="roadmap-phase">
+                        <h4>{phase.replace('_', ' ').title()}</h4>
+                        <p><strong>Timeline:</strong> {details.get('timeline', 'N/A')}</p>
+                        <p><strong>Success Metrics:</strong> {', '.join(details.get('success_metrics', []))}</p>
+                        <p><strong>Resources Required:</strong> {details.get('resources_required', 'N/A')}</p>
+                    </div>
+                    """
+            
+            optimization_html += "</div>"
+        
+        optimization_html += "</div>"
+        return optimization_html
 
     def _generate_charts(self, analysis_request):
         """Generate visualization charts"""

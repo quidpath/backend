@@ -419,16 +419,24 @@ class UnifiedFinancialModels:
 
 
 class EnhancedFinancialOptimizer:
-    """Enhanced optimizer for comprehensive financial analysis"""
+    """Enhanced optimizer for comprehensive financial analysis with advanced optimization"""
 
     def __init__(self, models, feature_columns, target_columns):
         self.models = models
         self.feature_columns = feature_columns
         self.target_columns = target_columns
         self.processor = FinancialDataProcessor()
+        
+        # Import optimization services
+        try:
+            from Tazama.Services.FinancialOptimizationService import AdvancedFinancialOptimizationService
+            self.optimization_service = AdvancedFinancialOptimizationService()
+        except ImportError:
+            self.optimization_service = None
+            logger.warning("FinancialOptimizationService not available")
 
     def analyze_income_statement(self, income_data):
-        """Comprehensive analysis of income statement data"""
+        """Comprehensive analysis of income statement data with advanced optimization"""
         # Process input data
         processed_data = self._process_input_data(income_data)
 
@@ -440,13 +448,25 @@ class EnhancedFinancialOptimizer:
 
         # Generate risk assessment
         risk_assessment = self._assess_financial_risks(processed_data, predictions)
+        
+        # Advanced optimization analysis
+        optimization_analysis = {}
+        if self.optimization_service:
+            try:
+                optimization_analysis = self.optimization_service.comprehensive_financial_optimization(
+                    income_data, predictions
+                )
+            except Exception as e:
+                logger.error(f"Optimization analysis failed: {e}")
+                optimization_analysis = {'error': str(e)}
 
         return {
             'predictions': predictions,
             'recommendations': recommendations,
             'risk_assessment': risk_assessment,
             'input_analysis': self._analyze_input_quality(processed_data),
-            'confidence_scores': self._calculate_confidence_scores(processed_data, predictions)
+            'confidence_scores': self._calculate_confidence_scores(processed_data, predictions),
+            'optimization_analysis': optimization_analysis
         }
 
     def _process_input_data(self, data):
