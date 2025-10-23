@@ -34,7 +34,7 @@ class EnhancedFinancialDataService:
             'total_operating_expenses', 'operating_income', 'net_income'
         ]
     
-    def process_csv_upload(self, upload_record: FinancialDataUpload) -> Tuple[bool, str]:
+    def process_csv_upload(self, upload_record: FinancialDataUpload) -> tuple[bool, str]:
         """
         Process uploaded financial file using intelligent extraction
         
