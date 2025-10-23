@@ -19,6 +19,7 @@ from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from .Services.TazamaService import FinancialDataService, TazamaAnalysisService, DashboardService, ModelTrainingService
+from .Services.EnhancedFinancialDataService import EnhancedFinancialDataService
 from .core.TazamaCore import FinancialDataProcessor
 from .core.report_generator import TazamaReportGenerator
 
@@ -101,9 +102,9 @@ def upload_financial_data(request):
             file_size=uploaded_file.size
         )
 
-        # Process the file
-        data_service = FinancialDataService()
-        success, message = data_service.process_csv_upload(upload_record)
+        # Process the file using enhanced intelligent extraction
+        enhanced_data_service = EnhancedFinancialDataService()
+        success, message = enhanced_data_service.process_csv_upload(upload_record)
 
         if success:
             TransactionLogBase.log(
@@ -431,6 +432,7 @@ def get_financial_dashboard(request):
                 'date': analysis.created_at.date().isoformat(),
                 'datetime': analysis.created_at.isoformat(),
                 'predictions': analysis.predictions or {},
+                'input_data': analysis.input_data or {},  # ✅ ADD: Include actual cash figures
                 'recommendations_count': len(analysis.recommendations.get('immediate_actions', [])) if analysis.recommendations else 0,
                 'risk_level': analysis.risk_assessment.get('overall_risk', 'LOW') if analysis.risk_assessment else 'LOW',
                 'risk_factors_count': len(analysis.risk_assessment.get('risk_factors', [])) if analysis.risk_assessment else 0,
@@ -1064,7 +1066,7 @@ def get_model_performance(request):
 @csrf_exempt
 def validate_financial_data(request):
     """
-    Validate financial data before processing
+    Enhanced financial data validation with intelligent checks
     """
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
@@ -1074,68 +1076,85 @@ def validate_financial_data(request):
     try:
         financial_data = data.get('financial_data', {})
 
-        # Required fields validation
-        required_fields = [
-            'totalRevenue', 'costOfRevenue', 'grossProfit',
-            'totalOperatingExpenses', 'operatingIncome', 'netIncome'
-        ]
-
-        validation_errors = []
-        warnings = []
-
-        # Check required fields
-        for field in required_fields:
-            if field not in financial_data:
-                validation_errors.append(f"Missing required field: {field}")
-            elif not isinstance(financial_data[field], (int, float)):
-                try:
-                    float(financial_data[field])
-                except (ValueError, TypeError):
-                    validation_errors.append(f"Invalid numeric value for {field}")
-
-        # Business logic validation
-        if not validation_errors:
-            revenue = float(financial_data.get('totalRevenue', 0))
-            cost = float(financial_data.get('costOfRevenue', 0))
-            gross = float(financial_data.get('grossProfit', 0))
-            expenses = float(financial_data.get('totalOperatingExpenses', 0))
-            operating = float(financial_data.get('operatingIncome', 0))
-            net = float(financial_data.get('netIncome', 0))
-
-            # Consistency checks
-            if revenue > 0:
-                if abs((revenue - cost) - gross) > 0.01:
-                    warnings.append("Gross profit calculation may be inconsistent")
-
-                if abs((gross - expenses) - operating) > 0.01:
-                    warnings.append("Operating income calculation may be inconsistent")
-
-                # Ratio warnings
-                if cost / revenue > 0.9:
-                    warnings.append("Cost of revenue is very high (>90% of revenue)")
-
-                if expenses / revenue > 0.8:
-                    warnings.append("Operating expenses are very high (>80% of revenue)")
-
-                if net < 0 and abs(net) > revenue * 0.2:
-                    warnings.append("Large net loss detected (>20% of revenue)")
-
-        is_valid = len(validation_errors) == 0
+        # Use enhanced validation service
+        enhanced_service = EnhancedFinancialDataService()
+        validation_result = enhanced_service.validate_financial_data(financial_data)
 
         return ResponseProvider(
-            data={
-                "is_valid": is_valid,
-                "validation_errors": validation_errors,
-                "warnings": warnings,
-                "data_quality_score": max(0, 100 - len(validation_errors) * 25 - len(warnings) * 5)
-            },
-            message="Data validation completed",
+            data=validation_result,
+            message="Enhanced data validation completed",
             code=200
         ).success()
 
     except Exception as e:
         return ResponseProvider(
-            message="An error occurred during data validation",
+            message="An error occurred during enhanced data validation",
+            code=500
+        ).exception()
+
+
+@csrf_exempt
+def test_intelligent_extraction(request):
+    """
+    Test intelligent data extraction with sample data
+    """
+    data, metadata = get_clean_data(request)
+    user = metadata.get("user")
+    if not user:
+        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+
+    try:
+        # Get test file path or sample data
+        test_file_path = data.get('test_file_path')
+        sample_data = data.get('sample_data')
+        
+        if not test_file_path and not sample_data:
+            return ResponseProvider(
+                message="Either test_file_path or sample_data must be provided",
+                code=400
+            ).bad_request()
+
+        # Use enhanced service for testing
+        enhanced_service = EnhancedFinancialDataService()
+        
+        if test_file_path:
+            # Test with actual file
+            from Tazama.Services.IntelligentDataExtractor import IntelligentDataExtractor
+            extractor = IntelligentDataExtractor()
+            extraction_result = extractor.extract_financial_data(test_file_path)
+        else:
+            # Test with sample data
+            extraction_result = {
+                'success': True,
+                'extracted_data': {
+                    'test_sheet': {
+                        'metrics': sample_data,
+                        'confidence': 0.9
+                    }
+                },
+                'confidence': 0.9,
+                'extraction_method': 'sample_data'
+            }
+
+        return ResponseProvider(
+            data={
+                "extraction_result": extraction_result,
+                "test_timestamp": timezone.now().isoformat(),
+                "enhanced_features": [
+                    "Fuzzy string matching",
+                    "Pattern recognition", 
+                    "Context-aware extraction",
+                    "Multi-language support",
+                    "Intelligent validation"
+                ]
+            },
+            message="Intelligent extraction test completed",
+            code=200
+        ).success()
+
+    except Exception as e:
+        return ResponseProvider(
+            message=f"Intelligent extraction test failed: {str(e)}",
             code=500
         ).exception()
 

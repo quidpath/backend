@@ -19,4 +19,7 @@ urlpatterns = [
     path('train-model/', views.train_model, name='train_model'),
     path('get-training-status/', views.get_training_status, name='get_training_status'),
     path('get-model-performance/', views.get_model_performance, name='get_model_performance'),
+    
+    # Intelligent data extraction
+    path('test-intelligent-extraction/', views.test_intelligent_extraction, name='test_intelligent_extraction'),
 ]
