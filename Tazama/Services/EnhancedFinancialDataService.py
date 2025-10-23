@@ -521,7 +521,8 @@ class EnhancedFinancialDataService:
                 # Create analysis request with model
                 analysis_request = TazamaAnalysisRequest.objects.create(
                     corporate=upload_record.corporate,
-                    user=upload_record.uploaded_by,
+                    requested_by=upload_record.uploaded_by,
+                    request_type='single_prediction',
                     input_data=financial_data,
                     model_used=available_model,
                     status='pending'

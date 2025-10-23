@@ -188,7 +188,8 @@ class CompleteAnalysisPipeline:
                 # Create analysis request with model
                 analysis_request = TazamaAnalysisRequest.objects.create(
                     corporate=upload_record.corporate,
-                    user=upload_record.uploaded_by,
+                    requested_by=upload_record.uploaded_by,
+                    request_type='single_prediction',
                     input_data=financial_data,
                     model_used=available_model,
                     status='pending'
@@ -242,18 +243,28 @@ class CompleteAnalysisPipeline:
             logger.info(f"Step 4: Generating and storing results for {upload_record.file_name}")
             self.pipeline_status['results'] = 'processing'
             
-            # Create analysis request record
-            analysis_request = TazamaAnalysisRequest.objects.create(
-                corporate=upload_record.corporate,
-                user=upload_record.uploaded_by,
-                input_data=analysis_result.get('input_data', {}),
-                predictions=analysis_result.get('predictions', {}),
-                recommendations=analysis_result.get('recommendations', {}),
-                risk_assessment=analysis_result.get('risk_assessment', {}),
-                confidence_scores=analysis_result.get('confidence_scores', {}),
-                processing_time_seconds=analysis_result.get('processing_time', 0),
-                status='completed'
-            )
+            # Get the existing analysis request or create a new one if fallback was used
+            analysis_request = None
+            if analysis_result.get('analysis_id'):
+                try:
+                    analysis_request = TazamaAnalysisRequest.objects.get(id=analysis_result['analysis_id'])
+                except TazamaAnalysisRequest.DoesNotExist:
+                    analysis_request = None
+            
+            if not analysis_request:
+                # Create analysis request record for fallback analysis
+                analysis_request = TazamaAnalysisRequest.objects.create(
+                    corporate=upload_record.corporate,
+                    requested_by=upload_record.uploaded_by,
+                    request_type='single_prediction',
+                    input_data=analysis_result.get('input_data', {}),
+                    predictions=analysis_result.get('predictions', {}),
+                    recommendations=analysis_result.get('recommendations', {}),
+                    risk_assessment=analysis_result.get('risk_assessment', {}),
+                    confidence_scores=analysis_result.get('confidence_scores', {}),
+                    processing_time_seconds=analysis_result.get('processing_time', 0),
+                    status='completed'
+                )
             
             # Generate comprehensive report
             report_result = self._generate_comprehensive_report(upload_record, analysis_request, analysis_result)
