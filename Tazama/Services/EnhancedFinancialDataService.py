@@ -673,56 +673,1113 @@ class EnhancedFinancialDataService:
                 'error': str(e)
             }
     
-    def analyze_date_sensitive_projection(self, financial_data: Dict[str, Any], statement_date: date) -> Dict[str, Any]:
+    def analyze_intelligent_date_driven_projection(self, financial_data: Dict[str, Any], statement_date: date, corporate_id: int = None) -> Dict[str, Any]:
         """
-        Perform date-sensitive analysis to generate appropriate projections
-        based on the statement period (quarterly or yearly)
+        Perform intelligent date-driven analysis that generates comprehensive projections
+        and recommendations based on the actual statement date and historical patterns
         
         Args:
             financial_data: Dictionary containing financial data
             statement_date: Date of the financial statement
+            corporate_id: Corporate ID for historical data analysis
             
         Returns:
-            Dictionary with date-sensitive projections and recommendations
+            Dictionary with intelligent date-driven projections and recommendations
         """
         try:
-            logger.info(f"Performing date-sensitive analysis for statement dated: {statement_date}")
+            logger.info(f"Performing intelligent date-driven analysis for statement dated: {statement_date}")
             
-            # Determine if this is a quarterly or yearly statement
-            period_type = self._determine_statement_period(statement_date)
+            # Comprehensive statement date analysis
+            date_analysis = self._analyze_statement_date_intelligence(statement_date)
             
-            # Generate appropriate projections based on period type
-            if period_type == 'quarterly':
-                projections = self._generate_quarterly_projections(financial_data, statement_date)
-            elif period_type == 'yearly':
-                projections = self._generate_yearly_projections(financial_data, statement_date)
-            else:
-                projections = self._generate_default_projections(financial_data, statement_date)
+            # Get historical patterns for this corporate
+            historical_patterns = self._get_historical_patterns(corporate_id, statement_date) if corporate_id else {}
             
-            # Generate time-sensitive recommendations
-            recommendations = self._generate_time_sensitive_recommendations(
-                financial_data, statement_date, period_type, projections
+            # Generate intelligent projections based on date analysis
+            intelligent_projections = self._generate_intelligent_projections(
+                financial_data, statement_date, date_analysis, historical_patterns
             )
             
-            # Calculate model accuracy and handle overfitting/underfitting
-            model_validation = self._validate_model_accuracy(financial_data, projections)
+            # Generate intelligent KPI predictions
+            kpi_predictions = self._generate_intelligent_kpi_predictions(
+                financial_data, statement_date, date_analysis, historical_patterns
+            )
+            
+            # Generate cost optimization recommendations
+            cost_optimization = self._generate_intelligent_cost_optimization(
+                financial_data, statement_date, date_analysis, historical_patterns
+            )
+            
+            # Generate decision-making intelligence
+            decision_intelligence = self._generate_decision_making_intelligence(
+                financial_data, statement_date, date_analysis, intelligent_projections
+            )
+            
+            # Calculate intelligent confidence scores
+            confidence_analysis = self._calculate_intelligent_confidence(
+                financial_data, intelligent_projections, historical_patterns
+            )
             
             return {
                 'success': True,
-                'period_type': period_type,
                 'statement_date': statement_date.isoformat(),
-                'projections': projections,
-                'recommendations': recommendations,
-                'model_validation': model_validation,
-                'confidence_scores': self._calculate_confidence_scores(projections, model_validation)
+                'date_analysis': date_analysis,
+                'intelligent_projections': intelligent_projections,
+                'kpi_predictions': kpi_predictions,
+                'cost_optimization': cost_optimization,
+                'decision_intelligence': decision_intelligence,
+                'confidence_analysis': confidence_analysis,
+                'historical_insights': historical_patterns,
+                'analysis_timestamp': datetime.now().isoformat()
             }
             
         except Exception as e:
-            logger.error(f"Error in date-sensitive analysis: {str(e)}")
+            logger.error(f"Error in intelligent date-driven analysis: {str(e)}")
             return {
                 'success': False,
                 'error': str(e)
             }
+    
+    def _analyze_statement_date_intelligence(self, statement_date: date) -> Dict[str, Any]:
+        """
+        Perform comprehensive analysis of the statement date to determine
+        the most appropriate analysis approach and projections
+        """
+        try:
+            # Determine fiscal year and quarter
+            fiscal_year = self._determine_fiscal_year(statement_date)
+            quarter = self._get_quarter_from_date(statement_date)
+            
+            # Determine statement type and period
+            statement_type = self._determine_statement_type(statement_date)
+            period_type = self._determine_period_type(statement_date)
+            
+            # Calculate time-based factors
+            time_factors = self._calculate_time_factors(statement_date)
+            
+            # Determine seasonal patterns
+            seasonal_analysis = self._analyze_seasonal_patterns(statement_date)
+            
+            # Calculate business cycle position
+            business_cycle = self._determine_business_cycle_position(statement_date)
+            
+            return {
+                'fiscal_year': fiscal_year,
+                'quarter': quarter,
+                'statement_type': statement_type,
+                'period_type': period_type,
+                'time_factors': time_factors,
+                'seasonal_analysis': seasonal_analysis,
+                'business_cycle': business_cycle,
+                'is_year_end': statement_date.month == 12 and statement_date.day >= 25,
+                'is_quarter_end': statement_date.month in [3, 6, 9, 12] and statement_date.day >= 25,
+                'days_since_year_start': (statement_date - date(statement_date.year, 1, 1)).days,
+                'days_until_year_end': (date(statement_date.year, 12, 31) - statement_date).days
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing statement date intelligence: {str(e)}")
+            return {}
+    
+    def _determine_fiscal_year(self, statement_date: date) -> int:
+        """Determine fiscal year based on statement date"""
+        # Most companies use calendar year, but this could be customized
+        return statement_date.year
+    
+    def _get_quarter_from_date(self, statement_date: date) -> int:
+        """Get quarter number from date"""
+        return (statement_date.month - 1) // 3 + 1
+    
+    def _determine_statement_type(self, statement_date: date) -> str:
+        """Determine the type of financial statement based on date"""
+        if statement_date.month == 12 and statement_date.day >= 25:
+            return 'annual'
+        elif statement_date.month in [3, 6, 9, 12] and statement_date.day >= 25:
+            return 'quarterly'
+        else:
+            return 'interim'
+    
+    def _determine_period_type(self, statement_date: date) -> str:
+        """Determine the period type for projections"""
+        if statement_date.month == 12 and statement_date.day >= 25:
+            return 'yearly'
+        elif statement_date.month in [3, 6, 9, 12] and statement_date.day >= 25:
+            return 'quarterly'
+        else:
+            return 'quarterly'  # Default to quarterly for interim statements
+    
+    def _calculate_time_factors(self, statement_date: date) -> Dict[str, Any]:
+        """Calculate various time-based factors that affect projections"""
+        return {
+            'month_of_year': statement_date.month,
+            'quarter_of_year': (statement_date.month - 1) // 3 + 1,
+            'is_holiday_season': statement_date.month in [11, 12, 1],
+            'is_summer_season': statement_date.month in [6, 7, 8],
+            'is_fiscal_year_end': statement_date.month == 12,
+            'is_fiscal_quarter_end': statement_date.month in [3, 6, 9, 12],
+            'business_days_remaining': self._calculate_business_days_remaining(statement_date),
+            'seasonal_multiplier': self._get_seasonal_multiplier(statement_date)
+        }
+    
+    def _analyze_seasonal_patterns(self, statement_date: date) -> Dict[str, Any]:
+        """Analyze seasonal patterns that affect business performance"""
+        month = statement_date.month
+        quarter = (month - 1) // 3 + 1
+        
+        seasonal_patterns = {
+            'Q1': {'revenue_factor': 0.95, 'expense_factor': 1.05, 'description': 'Post-holiday recovery period'},
+            'Q2': {'revenue_factor': 1.0, 'expense_factor': 1.0, 'description': 'Steady growth period'},
+            'Q3': {'revenue_factor': 0.90, 'expense_factor': 1.10, 'description': 'Summer slowdown period'},
+            'Q4': {'revenue_factor': 1.15, 'expense_factor': 1.05, 'description': 'Holiday season boost'}
+        }
+        
+        return seasonal_patterns.get(f'Q{quarter}', seasonal_patterns['Q2'])
+    
+    def _determine_business_cycle_position(self, statement_date: date) -> Dict[str, Any]:
+        """Determine the position in the business cycle"""
+        # This would ideally use economic indicators, but for now use seasonal patterns
+        month = statement_date.month
+        
+        if month in [1, 2, 3]:
+            return {'phase': 'recovery', 'growth_expectation': 0.05, 'description': 'Post-holiday recovery phase'}
+        elif month in [4, 5, 6]:
+            return {'phase': 'growth', 'growth_expectation': 0.08, 'description': 'Strong growth phase'}
+        elif month in [7, 8, 9]:
+            return {'phase': 'slowdown', 'growth_expectation': 0.03, 'description': 'Summer slowdown phase'}
+        else:
+            return {'phase': 'acceleration', 'growth_expectation': 0.10, 'description': 'Year-end acceleration phase'}
+    
+    def _get_historical_patterns(self, corporate_id: int, statement_date: date) -> Dict[str, Any]:
+        """Get historical patterns for the corporate entity"""
+        try:
+            if not corporate_id:
+                return {}
+            
+            # Get historical data for the same period in previous years
+            historical_data = ProcessedFinancialData.objects.filter(
+                corporate_id=corporate_id,
+                period_date__month=statement_date.month,
+                period_date__year__lt=statement_date.year
+            ).order_by('-period_date')
+            
+            if not historical_data.exists():
+                return {}
+            
+            # Calculate historical growth patterns
+            patterns = {
+                'revenue_growth_history': [],
+                'profit_growth_history': [],
+                'seasonal_consistency': 0.0,
+                'year_over_year_growth': 0.0,
+                'volatility_score': 0.0
+            }
+            
+            # Analyze historical patterns
+            for i, record in enumerate(historical_data[:3]):  # Last 3 years
+                if i > 0:
+                    prev_record = historical_data[i-1]
+                    if prev_record.total_revenue > 0:
+                        revenue_growth = (record.total_revenue - prev_record.total_revenue) / prev_record.total_revenue
+                        patterns['revenue_growth_history'].append(revenue_growth)
+                    
+                    if prev_record.net_income > 0:
+                        profit_growth = (record.net_income - prev_record.net_income) / prev_record.net_income
+                        patterns['profit_growth_history'].append(profit_growth)
+            
+            # Calculate average growth rates
+            if patterns['revenue_growth_history']:
+                patterns['avg_revenue_growth'] = sum(patterns['revenue_growth_history']) / len(patterns['revenue_growth_history'])
+            if patterns['profit_growth_history']:
+                patterns['avg_profit_growth'] = sum(patterns['profit_growth_history']) / len(patterns['profit_growth_history'])
+            
+            return patterns
+            
+        except Exception as e:
+            logger.error(f"Error getting historical patterns: {str(e)}")
+            return {}
+    
+    def _generate_intelligent_projections(self, financial_data: Dict[str, Any], statement_date: date, date_analysis: Dict[str, Any], historical_patterns: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate intelligent projections based on date analysis and historical patterns"""
+        try:
+            # Extract current financial metrics
+            revenue = financial_data.get('totalRevenue', 0)
+            cost_of_revenue = financial_data.get('costOfRevenue', 0)
+            gross_profit = financial_data.get('grossProfit', 0)
+            operating_expenses = financial_data.get('totalOperatingExpenses', 0)
+            operating_income = financial_data.get('operatingIncome', 0)
+            net_income = financial_data.get('netIncome', 0)
+            
+            # Calculate intelligent growth rates based on date analysis
+            growth_rates = self._calculate_intelligent_growth_rates(
+                financial_data, date_analysis, historical_patterns
+            )
+            
+            # Generate projections for next period
+            next_period = self._calculate_next_period(statement_date, date_analysis)
+            
+            projections = {
+                'next_period': {
+                    'period': next_period['label'],
+                    'start_date': next_period['start_date'],
+                    'end_date': next_period['end_date'],
+                    'projected_revenue': self._project_intelligent_revenue(revenue, growth_rates, date_analysis),
+                    'projected_cost_of_revenue': self._project_intelligent_cost_of_revenue(cost_of_revenue, growth_rates, date_analysis),
+                    'projected_gross_profit': self._project_intelligent_gross_profit(gross_profit, growth_rates, date_analysis),
+                    'projected_operating_expenses': self._project_intelligent_operating_expenses(operating_expenses, growth_rates, date_analysis),
+                    'projected_operating_income': self._project_intelligent_operating_income(operating_income, growth_rates, date_analysis),
+                    'projected_net_income': self._project_intelligent_net_income(net_income, growth_rates, date_analysis)
+                },
+                'growth_rates': growth_rates,
+                'confidence_factors': self._calculate_projection_confidence(date_analysis, historical_patterns),
+                'risk_factors': self._identify_projection_risks(date_analysis, growth_rates)
+            }
+            
+            return projections
+            
+        except Exception as e:
+            logger.error(f"Error generating intelligent projections: {str(e)}")
+            return {}
+    
+    def _calculate_intelligent_growth_rates(self, financial_data: Dict[str, Any], date_analysis: Dict[str, Any], historical_patterns: Dict[str, Any]) -> Dict[str, float]:
+        """Calculate intelligent growth rates based on date analysis and historical patterns"""
+        # Base growth rates
+        base_rates = {
+            'revenue_growth': 0.05,
+            'cost_growth': 0.03,
+            'gross_profit_growth': 0.06,
+            'expense_growth': 0.02,
+            'operating_income_growth': 0.08,
+            'net_income_growth': 0.10
+        }
+        
+        # Adjust based on historical patterns
+        if historical_patterns.get('avg_revenue_growth'):
+            base_rates['revenue_growth'] = historical_patterns['avg_revenue_growth']
+        if historical_patterns.get('avg_profit_growth'):
+            base_rates['net_income_growth'] = historical_patterns['avg_profit_growth']
+        
+        # Adjust based on seasonal analysis
+        seasonal_factor = date_analysis.get('seasonal_analysis', {}).get('revenue_factor', 1.0)
+        base_rates['revenue_growth'] *= seasonal_factor
+        
+        # Adjust based on business cycle
+        business_cycle = date_analysis.get('business_cycle', {})
+        cycle_growth = business_cycle.get('growth_expectation', 0.05)
+        base_rates['revenue_growth'] = (base_rates['revenue_growth'] + cycle_growth) / 2
+        
+        return base_rates
+    
+    def _calculate_next_period(self, statement_date: date, date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate the next period based on statement date and analysis"""
+        period_type = date_analysis.get('period_type', 'quarterly')
+        
+        if period_type == 'yearly':
+            next_year = statement_date.year + 1
+            return {
+                'label': f'FY {next_year}',
+                'start_date': date(next_year, 1, 1).isoformat(),
+                'end_date': date(next_year, 12, 31).isoformat(),
+                'type': 'yearly'
+            }
+        else:
+            # Calculate next quarter
+            current_quarter = date_analysis.get('quarter', 1)
+            next_quarter = current_quarter + 1
+            next_year = statement_date.year
+            
+            if next_quarter > 4:
+                next_quarter = 1
+                next_year += 1
+            
+            # Calculate quarter dates
+            quarter_start_month = (next_quarter - 1) * 3 + 1
+            quarter_end_month = next_quarter * 3
+            
+            return {
+                'label': f'Q{next_quarter} {next_year}',
+                'start_date': date(next_year, quarter_start_month, 1).isoformat(),
+                'end_date': date(next_year, quarter_end_month, calendar.monthrange(next_year, quarter_end_month)[1]).isoformat(),
+                'type': 'quarterly'
+            }
+    
+    def _project_intelligent_revenue(self, current_revenue: float, growth_rates: Dict[str, float], date_analysis: Dict[str, Any]) -> float:
+        """Project revenue using intelligent analysis"""
+        base_growth = growth_rates.get('revenue_growth', 0.05)
+        seasonal_factor = date_analysis.get('seasonal_analysis', {}).get('revenue_factor', 1.0)
+        return current_revenue * (1 + base_growth) * seasonal_factor
+    
+    def _project_intelligent_cost_of_revenue(self, current_cost: float, growth_rates: Dict[str, float], date_analysis: Dict[str, Any]) -> float:
+        """Project cost of revenue using intelligent analysis"""
+        base_growth = growth_rates.get('cost_growth', 0.03)
+        return current_cost * (1 + base_growth)
+    
+    def _project_intelligent_gross_profit(self, current_gross_profit: float, growth_rates: Dict[str, float], date_analysis: Dict[str, Any]) -> float:
+        """Project gross profit using intelligent analysis"""
+        base_growth = growth_rates.get('gross_profit_growth', 0.06)
+        return current_gross_profit * (1 + base_growth)
+    
+    def _project_intelligent_operating_expenses(self, current_expenses: float, growth_rates: Dict[str, float], date_analysis: Dict[str, Any]) -> float:
+        """Project operating expenses using intelligent analysis"""
+        base_growth = growth_rates.get('expense_growth', 0.02)
+        seasonal_factor = date_analysis.get('seasonal_analysis', {}).get('expense_factor', 1.0)
+        return current_expenses * (1 + base_growth) * seasonal_factor
+    
+    def _project_intelligent_operating_income(self, current_operating_income: float, growth_rates: Dict[str, float], date_analysis: Dict[str, Any]) -> float:
+        """Project operating income using intelligent analysis"""
+        base_growth = growth_rates.get('operating_income_growth', 0.08)
+        return current_operating_income * (1 + base_growth)
+    
+    def _project_intelligent_net_income(self, current_net_income: float, growth_rates: Dict[str, float], date_analysis: Dict[str, Any]) -> float:
+        """Project net income using intelligent analysis"""
+        base_growth = growth_rates.get('net_income_growth', 0.10)
+        return current_net_income * (1 + base_growth)
+    
+    def _calculate_projection_confidence(self, date_analysis: Dict[str, Any], historical_patterns: Dict[str, Any]) -> Dict[str, float]:
+        """Calculate confidence factors for projections"""
+        confidence = {
+            'overall': 0.8,
+            'revenue': 0.85,
+            'costs': 0.80,
+            'profit': 0.75
+        }
+        
+        # Adjust based on historical data availability
+        if historical_patterns:
+            confidence['overall'] += 0.1
+            confidence['revenue'] += 0.05
+        
+        # Adjust based on statement type
+        statement_type = date_analysis.get('statement_type', 'interim')
+        if statement_type == 'annual':
+            confidence['overall'] += 0.05
+        elif statement_type == 'quarterly':
+            confidence['overall'] += 0.02
+        
+        return confidence
+    
+    def _identify_projection_risks(self, date_analysis: Dict[str, Any], growth_rates: Dict[str, float]) -> List[Dict[str, Any]]:
+        """Identify risks in projections"""
+        risks = []
+        
+        # Check for unrealistic growth rates
+        if growth_rates.get('revenue_growth', 0) > 0.5:
+            risks.append({
+                'type': 'unrealistic_growth',
+                'severity': 'high',
+                'description': 'Revenue growth rate is unusually high',
+                'recommendation': 'Review and validate growth assumptions'
+            })
+        
+        # Check for seasonal risks
+        seasonal_analysis = date_analysis.get('seasonal_analysis', {})
+        if seasonal_analysis.get('revenue_factor', 1.0) < 0.8:
+            risks.append({
+                'type': 'seasonal_risk',
+                'severity': 'medium',
+                'description': 'Projected period is in a historically low-revenue season',
+                'recommendation': 'Consider seasonal adjustments and contingency planning'
+            })
+        
+        return risks
+    
+    def _generate_intelligent_kpi_predictions(self, financial_data: Dict[str, Any], statement_date: date, date_analysis: Dict[str, Any], historical_patterns: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate intelligent KPI predictions based on statement date and analysis"""
+        try:
+            # Extract current financial metrics
+            revenue = financial_data.get('totalRevenue', 0)
+            cost_of_revenue = financial_data.get('costOfRevenue', 0)
+            gross_profit = financial_data.get('grossProfit', 0)
+            operating_expenses = financial_data.get('totalOperatingExpenses', 0)
+            operating_income = financial_data.get('operatingIncome', 0)
+            net_income = financial_data.get('netIncome', 0)
+            
+            # Calculate current KPIs
+            current_kpis = {
+                'profit_margin': net_income / revenue if revenue > 0 else 0,
+                'operating_margin': operating_income / revenue if revenue > 0 else 0,
+                'gross_margin': gross_profit / revenue if revenue > 0 else 0,
+                'cost_revenue_ratio': cost_of_revenue / revenue if revenue > 0 else 0,
+                'expense_ratio': operating_expenses / revenue if revenue > 0 else 0,
+                'revenue_growth_rate': 0,  # Would need historical data
+                'profit_growth_rate': 0    # Would need historical data
+            }
+            
+            # Generate intelligent KPI projections
+            kpi_projections = {
+                'profitability_kpis': {
+                    'projected_profit_margin': self._project_kpi_improvement(current_kpis['profit_margin'], 'profit_margin', date_analysis),
+                    'projected_operating_margin': self._project_kpi_improvement(current_kpis['operating_margin'], 'operating_margin', date_analysis),
+                    'projected_gross_margin': self._project_kpi_improvement(current_kpis['gross_margin'], 'gross_margin', date_analysis)
+                },
+                'efficiency_kpis': {
+                    'projected_cost_revenue_ratio': self._project_kpi_improvement(current_kpis['cost_revenue_ratio'], 'cost_revenue_ratio', date_analysis),
+                    'projected_expense_ratio': self._project_kpi_improvement(current_kpis['expense_ratio'], 'expense_ratio', date_analysis)
+                },
+                'growth_kpis': {
+                    'projected_revenue_growth': self._calculate_projected_growth_rate('revenue', date_analysis, historical_patterns),
+                    'projected_profit_growth': self._calculate_projected_growth_rate('profit', date_analysis, historical_patterns)
+                },
+                'benchmark_analysis': self._generate_benchmark_analysis(current_kpis, date_analysis),
+                'kpi_trends': self._analyze_kpi_trends(current_kpis, date_analysis)
+            }
+            
+            return kpi_projections
+            
+        except Exception as e:
+            logger.error(f"Error generating intelligent KPI predictions: {str(e)}")
+            return {}
+    
+    def _project_kpi_improvement(self, current_kpi: float, kpi_type: str, date_analysis: Dict[str, Any]) -> float:
+        """Project KPI improvement based on date analysis"""
+        # Base improvement rates by KPI type
+        improvement_rates = {
+            'profit_margin': 0.02,      # 2% improvement
+            'operating_margin': 0.015,   # 1.5% improvement
+            'gross_margin': 0.01,        # 1% improvement
+            'cost_revenue_ratio': -0.01, # 1% reduction (negative improvement)
+            'expense_ratio': -0.005      # 0.5% reduction
+        }
+        
+        base_improvement = improvement_rates.get(kpi_type, 0.01)
+        
+        # Adjust based on seasonal factors
+        seasonal_factor = date_analysis.get('seasonal_analysis', {}).get('revenue_factor', 1.0)
+        if kpi_type in ['profit_margin', 'operating_margin', 'gross_margin']:
+            base_improvement *= seasonal_factor
+        
+        return current_kpi + base_improvement
+    
+    def _calculate_projected_growth_rate(self, metric_type: str, date_analysis: Dict[str, Any], historical_patterns: Dict[str, Any]) -> float:
+        """Calculate projected growth rate for a specific metric"""
+        # Base growth rates
+        base_growth = {
+            'revenue': 0.05,
+            'profit': 0.08
+        }
+        
+        growth_rate = base_growth.get(metric_type, 0.05)
+        
+        # Adjust based on historical patterns
+        if historical_patterns:
+            if metric_type == 'revenue' and historical_patterns.get('avg_revenue_growth'):
+                growth_rate = historical_patterns['avg_revenue_growth']
+            elif metric_type == 'profit' and historical_patterns.get('avg_profit_growth'):
+                growth_rate = historical_patterns['avg_profit_growth']
+        
+        # Adjust based on business cycle
+        business_cycle = date_analysis.get('business_cycle', {})
+        cycle_growth = business_cycle.get('growth_expectation', 0.05)
+        growth_rate = (growth_rate + cycle_growth) / 2
+        
+        return growth_rate
+    
+    def _generate_benchmark_analysis(self, current_kpis: Dict[str, float], date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate benchmark analysis for KPIs"""
+        # Industry benchmarks (these would ideally come from external data)
+        industry_benchmarks = {
+            'profit_margin': 0.10,      # 10%
+            'operating_margin': 0.15,    # 15%
+            'gross_margin': 0.30,        # 30%
+            'cost_revenue_ratio': 0.60,  # 60%
+            'expense_ratio': 0.20        # 20%
+        }
+        
+        benchmark_analysis = {}
+        for kpi, current_value in current_kpis.items():
+            if kpi in industry_benchmarks:
+                benchmark = industry_benchmarks[kpi]
+                performance = 'above' if current_value > benchmark else 'below'
+                gap = abs(current_value - benchmark)
+                
+                benchmark_analysis[kpi] = {
+                    'current_value': current_value,
+                    'industry_benchmark': benchmark,
+                    'performance': performance,
+                    'gap': gap,
+                    'improvement_potential': gap if performance == 'below' else 0
+                }
+        
+        return benchmark_analysis
+    
+    def _analyze_kpi_trends(self, current_kpis: Dict[str, float], date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze KPI trends and patterns"""
+        trends = {}
+        
+        for kpi, value in current_kpis.items():
+            if kpi in ['profit_margin', 'operating_margin', 'gross_margin']:
+                if value > 0.15:
+                    trends[kpi] = {'trend': 'excellent', 'description': 'Strong profitability metrics'}
+                elif value > 0.10:
+                    trends[kpi] = {'trend': 'good', 'description': 'Healthy profitability metrics'}
+                elif value > 0.05:
+                    trends[kpi] = {'trend': 'fair', 'description': 'Moderate profitability metrics'}
+                else:
+                    trends[kpi] = {'trend': 'poor', 'description': 'Weak profitability metrics'}
+            elif kpi in ['cost_revenue_ratio', 'expense_ratio']:
+                if value < 0.50:
+                    trends[kpi] = {'trend': 'excellent', 'description': 'Very efficient cost management'}
+                elif value < 0.70:
+                    trends[kpi] = {'trend': 'good', 'description': 'Good cost management'}
+                elif value < 0.85:
+                    trends[kpi] = {'trend': 'fair', 'description': 'Moderate cost management'}
+                else:
+                    trends[kpi] = {'trend': 'poor', 'description': 'Inefficient cost management'}
+        
+        return trends
+    
+    def _generate_intelligent_cost_optimization(self, financial_data: Dict[str, Any], statement_date: date, date_analysis: Dict[str, Any], historical_patterns: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate intelligent cost optimization recommendations based on statement date"""
+        try:
+            # Extract cost-related metrics
+            cost_of_revenue = financial_data.get('costOfRevenue', 0)
+            operating_expenses = financial_data.get('totalOperatingExpenses', 0)
+            revenue = financial_data.get('totalRevenue', 0)
+            
+            # Calculate cost ratios
+            cost_revenue_ratio = cost_of_revenue / revenue if revenue > 0 else 0
+            expense_ratio = operating_expenses / revenue if revenue > 0 else 0
+            
+            # Generate cost optimization recommendations
+            cost_optimization = {
+                'cost_analysis': {
+                    'cost_of_revenue_ratio': cost_revenue_ratio,
+                    'operating_expense_ratio': expense_ratio,
+                    'total_cost_ratio': cost_revenue_ratio + expense_ratio,
+                    'cost_efficiency_score': self._calculate_cost_efficiency_score(cost_revenue_ratio, expense_ratio)
+                },
+                'optimization_opportunities': self._identify_cost_optimization_opportunities(
+                    cost_revenue_ratio, expense_ratio, date_analysis
+                ),
+                'seasonal_cost_adjustments': self._calculate_seasonal_cost_adjustments(date_analysis),
+                'cost_reduction_targets': self._calculate_cost_reduction_targets(
+                    cost_of_revenue, operating_expenses, date_analysis
+                ),
+                'implementation_timeline': self._create_cost_optimization_timeline(date_analysis)
+            }
+            
+            return cost_optimization
+            
+        except Exception as e:
+            logger.error(f"Error generating intelligent cost optimization: {str(e)}")
+            return {}
+    
+    def _calculate_cost_efficiency_score(self, cost_revenue_ratio: float, expense_ratio: float) -> float:
+        """Calculate cost efficiency score"""
+        # Lower ratios are better, so we invert them
+        cost_score = max(0, 1 - cost_revenue_ratio)
+        expense_score = max(0, 1 - expense_ratio)
+        
+        return (cost_score + expense_score) / 2
+    
+    def _identify_cost_optimization_opportunities(self, cost_revenue_ratio: float, expense_ratio: float, date_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Identify specific cost optimization opportunities"""
+        opportunities = []
+        
+        # Cost of revenue optimization
+        if cost_revenue_ratio > 0.70:
+            opportunities.append({
+                'category': 'Cost of Revenue',
+                'priority': 'HIGH',
+                'description': 'Cost of revenue is high (>70%). Focus on supplier negotiations and operational efficiency.',
+                'potential_savings': f'${(cost_revenue_ratio - 0.60) * 1000000:,.0f} potential savings',
+                'timeline': '3-6 months',
+                'implementation_difficulty': 'Medium'
+            })
+        
+        # Operating expense optimization
+        if expense_ratio > 0.25:
+            opportunities.append({
+                'category': 'Operating Expenses',
+                'priority': 'HIGH',
+                'description': 'Operating expenses are high (>25%). Review overhead costs and operational efficiency.',
+                'potential_savings': f'${(expense_ratio - 0.20) * 1000000:,.0f} potential savings',
+                'timeline': '2-4 months',
+                'implementation_difficulty': 'Low'
+            })
+        
+        # Seasonal cost adjustments
+        seasonal_analysis = date_analysis.get('seasonal_analysis', {})
+        if seasonal_analysis.get('expense_factor', 1.0) > 1.05:
+            opportunities.append({
+                'category': 'Seasonal Optimization',
+                'priority': 'MEDIUM',
+                'description': 'Expenses are seasonally high. Consider seasonal workforce adjustments.',
+                'potential_savings': 'Variable based on seasonal adjustments',
+                'timeline': '1-3 months',
+                'implementation_difficulty': 'Low'
+            })
+        
+        return opportunities
+    
+    def _calculate_seasonal_cost_adjustments(self, date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate seasonal cost adjustments"""
+        seasonal_analysis = date_analysis.get('seasonal_analysis', {})
+        business_cycle = date_analysis.get('business_cycle', {})
+        
+        return {
+            'seasonal_factors': seasonal_analysis,
+            'business_cycle_impact': business_cycle,
+            'recommended_adjustments': {
+                'workforce': self._get_workforce_adjustments(date_analysis),
+                'inventory': self._get_inventory_adjustments(date_analysis),
+                'marketing': self._get_marketing_adjustments(date_analysis)
+            }
+        }
+    
+    def _get_workforce_adjustments(self, date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Get workforce adjustment recommendations"""
+        quarter = date_analysis.get('quarter', 1)
+        
+        adjustments = {
+            1: {'action': 'Maintain current workforce', 'reason': 'Post-holiday recovery period'},
+            2: {'action': 'Consider hiring for growth', 'reason': 'Strong growth period'},
+            3: {'action': 'Optimize workforce efficiency', 'reason': 'Summer slowdown period'},
+            4: {'action': 'Prepare for year-end push', 'reason': 'Holiday season preparation'}
+        }
+        
+        return adjustments.get(quarter, adjustments[2])
+    
+    def _get_inventory_adjustments(self, date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Get inventory adjustment recommendations"""
+        quarter = date_analysis.get('quarter', 1)
+        
+        adjustments = {
+            1: {'action': 'Reduce excess inventory', 'reason': 'Clear post-holiday inventory'},
+            2: {'action': 'Build inventory for growth', 'reason': 'Prepare for strong demand'},
+            3: {'action': 'Optimize inventory levels', 'reason': 'Summer demand management'},
+            4: {'action': 'Stock up for holiday season', 'reason': 'Prepare for peak demand'}
+        }
+        
+        return adjustments.get(quarter, adjustments[2])
+    
+    def _get_marketing_adjustments(self, date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Get marketing adjustment recommendations"""
+        quarter = date_analysis.get('quarter', 1)
+        
+        adjustments = {
+            1: {'action': 'Focus on retention marketing', 'reason': 'Post-holiday customer retention'},
+            2: {'action': 'Increase acquisition marketing', 'reason': 'Growth period marketing push'},
+            3: {'action': 'Optimize marketing spend', 'reason': 'Summer efficiency focus'},
+            4: {'action': 'Holiday season marketing', 'reason': 'Peak season marketing campaign'}
+        }
+        
+        return adjustments.get(quarter, adjustments[2])
+    
+    def _calculate_cost_reduction_targets(self, cost_of_revenue: float, operating_expenses: float, date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate specific cost reduction targets"""
+        # Calculate realistic reduction targets based on current costs
+        cost_reduction_targets = {
+            'cost_of_revenue_reduction': {
+                'current': cost_of_revenue,
+                'target_reduction_percent': 0.05,  # 5% reduction
+                'target_amount': cost_of_revenue * 0.05,
+                'timeline': '6 months'
+            },
+            'operating_expense_reduction': {
+                'current': operating_expenses,
+                'target_reduction_percent': 0.03,  # 3% reduction
+                'target_amount': operating_expenses * 0.03,
+                'timeline': '3 months'
+            },
+            'total_potential_savings': (cost_of_revenue * 0.05) + (operating_expenses * 0.03)
+        }
+        
+        return cost_reduction_targets
+    
+    def _create_cost_optimization_timeline(self, date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Create implementation timeline for cost optimization"""
+        quarter = date_analysis.get('quarter', 1)
+        
+        timeline = {
+            'immediate_actions': {
+                'timeline': '0-30 days',
+                'actions': [
+                    'Review current cost structure',
+                    'Identify quick wins',
+                    'Set up cost tracking systems'
+                ]
+            },
+            'short_term_goals': {
+                'timeline': '1-3 months',
+                'actions': [
+                    'Implement supplier negotiations',
+                    'Optimize operational processes',
+                    'Reduce unnecessary expenses'
+                ]
+            },
+            'long_term_strategy': {
+                'timeline': '3-12 months',
+                'actions': [
+                    'Strategic cost restructuring',
+                    'Technology optimization',
+                    'Long-term supplier partnerships'
+                ]
+            }
+        }
+        
+        return timeline
+    
+    def _generate_decision_making_intelligence(self, financial_data: Dict[str, Any], statement_date: date, date_analysis: Dict[str, Any], projections: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate intelligent decision-making recommendations"""
+        try:
+            # Extract key financial metrics
+            revenue = financial_data.get('totalRevenue', 0)
+            net_income = financial_data.get('netIncome', 0)
+            operating_income = financial_data.get('operatingIncome', 0)
+            
+            # Calculate key ratios
+            profit_margin = net_income / revenue if revenue > 0 else 0
+            operating_margin = operating_income / revenue if revenue > 0 else 0
+            
+            # Generate decision intelligence
+            decision_intelligence = {
+                'strategic_recommendations': self._generate_strategic_recommendations(
+                    financial_data, date_analysis, projections
+                ),
+                'investment_opportunities': self._identify_investment_opportunities(
+                    financial_data, date_analysis
+                ),
+                'risk_assessment': self._assess_business_risks(
+                    financial_data, date_analysis, projections
+                ),
+                'growth_strategies': self._recommend_growth_strategies(
+                    financial_data, date_analysis, projections
+                ),
+                'operational_improvements': self._recommend_operational_improvements(
+                    financial_data, date_analysis
+                ),
+                'financial_health_score': self._calculate_financial_health_score(
+                    financial_data, date_analysis
+                )
+            }
+            
+            return decision_intelligence
+            
+        except Exception as e:
+            logger.error(f"Error generating decision-making intelligence: {str(e)}")
+            return {}
+    
+    def _generate_strategic_recommendations(self, financial_data: Dict[str, Any], date_analysis: Dict[str, Any], projections: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Generate strategic recommendations based on analysis"""
+        recommendations = []
+        
+        # Revenue-based recommendations
+        revenue = financial_data.get('totalRevenue', 0)
+        if revenue > 0:
+            if revenue < 1000000:  # Less than $1M
+                recommendations.append({
+                    'category': 'Growth Strategy',
+                    'priority': 'HIGH',
+                    'title': 'Scale Revenue Operations',
+                    'description': 'Focus on scaling revenue operations to reach $1M+ annual revenue',
+                    'expected_impact': 'Increase revenue by 50-100%',
+                    'timeline': '6-12 months',
+                    'implementation_difficulty': 'Medium'
+                })
+            elif revenue < 10000000:  # Less than $10M
+                recommendations.append({
+                    'category': 'Market Expansion',
+                    'priority': 'MEDIUM',
+                    'title': 'Expand Market Reach',
+                    'description': 'Consider expanding into new markets or customer segments',
+                    'expected_impact': 'Increase market share by 20-30%',
+                    'timeline': '12-18 months',
+                    'implementation_difficulty': 'High'
+                })
+        
+        # Profitability-based recommendations
+        profit_margin = financial_data.get('netIncome', 0) / revenue if revenue > 0 else 0
+        if profit_margin < 0.05:
+            recommendations.append({
+                'category': 'Profitability',
+                'priority': 'HIGH',
+                'title': 'Improve Profitability',
+                'description': 'Focus on cost optimization and revenue enhancement to improve profit margins',
+                'expected_impact': 'Increase profit margin by 3-5%',
+                'timeline': '3-6 months',
+                'implementation_difficulty': 'Medium'
+            })
+        
+        # Seasonal recommendations
+        seasonal_analysis = date_analysis.get('seasonal_analysis', {})
+        if seasonal_analysis.get('revenue_factor', 1.0) < 0.9:
+            recommendations.append({
+                'category': 'Seasonal Strategy',
+                'priority': 'MEDIUM',
+                'title': 'Seasonal Revenue Optimization',
+                'description': 'Develop strategies to offset seasonal revenue fluctuations',
+                'expected_impact': 'Stabilize revenue throughout the year',
+                'timeline': '6-12 months',
+                'implementation_difficulty': 'High'
+            })
+        
+        return recommendations
+    
+    def _identify_investment_opportunities(self, financial_data: Dict[str, Any], date_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Identify investment opportunities based on financial position"""
+        opportunities = []
+        
+        revenue = financial_data.get('totalRevenue', 0)
+        net_income = financial_data.get('netIncome', 0)
+        
+        # Technology investment
+        if revenue > 500000:  # More than $500K revenue
+            opportunities.append({
+                'category': 'Technology',
+                'title': 'Technology Infrastructure Investment',
+                'description': 'Invest in technology infrastructure to improve operational efficiency',
+                'investment_amount': f'${min(revenue * 0.05, 50000):,.0f}',
+                'expected_roi': '15-25%',
+                'payback_period': '12-18 months',
+                'risk_level': 'Low'
+            })
+        
+        # Market expansion investment
+        if net_income > 100000:  # Profitable company
+            opportunities.append({
+                'category': 'Market Expansion',
+                'title': 'Market Expansion Investment',
+                'description': 'Invest in market expansion and customer acquisition',
+                'investment_amount': f'${min(net_income * 0.3, 100000):,.0f}',
+                'expected_roi': '20-40%',
+                'payback_period': '18-24 months',
+                'risk_level': 'Medium'
+            })
+        
+        # Operational efficiency investment
+        if revenue > 1000000:  # More than $1M revenue
+            opportunities.append({
+                'category': 'Operations',
+                'title': 'Operational Efficiency Investment',
+                'description': 'Invest in operational efficiency improvements and automation',
+                'investment_amount': f'${min(revenue * 0.03, 75000):,.0f}',
+                'expected_roi': '25-35%',
+                'payback_period': '6-12 months',
+                'risk_level': 'Low'
+            })
+        
+        return opportunities
+    
+    def _assess_business_risks(self, financial_data: Dict[str, Any], date_analysis: Dict[str, Any], projections: Dict[str, Any]) -> Dict[str, Any]:
+        """Assess business risks based on financial position and projections"""
+        risks = {
+            'financial_risks': [],
+            'operational_risks': [],
+            'market_risks': [],
+            'overall_risk_level': 'LOW'
+        }
+        
+        # Financial risks
+        revenue = financial_data.get('totalRevenue', 0)
+        net_income = financial_data.get('netIncome', 0)
+        
+        if net_income < 0:
+            risks['financial_risks'].append({
+                'risk': 'Negative Profitability',
+                'severity': 'HIGH',
+                'description': 'Company is currently unprofitable',
+                'mitigation': 'Focus on cost reduction and revenue enhancement'
+            })
+            risks['overall_risk_level'] = 'HIGH'
+        
+        if revenue < 500000:
+            risks['financial_risks'].append({
+                'risk': 'Low Revenue Base',
+                'severity': 'MEDIUM',
+                'description': 'Revenue base is below $500K',
+                'mitigation': 'Focus on revenue growth and market expansion'
+            })
+        
+        # Operational risks
+        cost_of_revenue = financial_data.get('costOfRevenue', 0)
+        if cost_of_revenue / revenue > 0.8 if revenue > 0 else False:
+            risks['operational_risks'].append({
+                'risk': 'High Cost Structure',
+                'severity': 'MEDIUM',
+                'description': 'Cost of revenue is very high (>80%)',
+                'mitigation': 'Review supplier contracts and operational efficiency'
+            })
+        
+        # Market risks
+        seasonal_analysis = date_analysis.get('seasonal_analysis', {})
+        if seasonal_analysis.get('revenue_factor', 1.0) < 0.8:
+            risks['market_risks'].append({
+                'risk': 'Seasonal Revenue Volatility',
+                'severity': 'MEDIUM',
+                'description': 'Revenue is highly seasonal',
+                'mitigation': 'Develop strategies to reduce seasonal dependence'
+            })
+        
+        return risks
+    
+    def _recommend_growth_strategies(self, financial_data: Dict[str, Any], date_analysis: Dict[str, Any], projections: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Recommend growth strategies based on current position"""
+        strategies = []
+        
+        revenue = financial_data.get('totalRevenue', 0)
+        net_income = financial_data.get('netIncome', 0)
+        
+        # Revenue-based growth strategies
+        if revenue < 1000000:
+            strategies.append({
+                'strategy': 'Revenue Scaling',
+                'description': 'Focus on scaling revenue operations through improved sales processes',
+                'expected_growth': '50-100%',
+                'timeline': '6-12 months',
+                'investment_required': 'Low to Medium'
+            })
+        elif revenue < 10000000:
+            strategies.append({
+                'strategy': 'Market Expansion',
+                'description': 'Expand into new markets or customer segments',
+                'expected_growth': '20-50%',
+                'timeline': '12-18 months',
+                'investment_required': 'Medium to High'
+            })
+        
+        # Profitability-based strategies
+        if net_income / revenue < 0.10 if revenue > 0 else True:
+            strategies.append({
+                'strategy': 'Profitability Improvement',
+                'description': 'Focus on improving profit margins through cost optimization',
+                'expected_growth': '15-30%',
+                'timeline': '3-6 months',
+                'investment_required': 'Low'
+            })
+        
+        return strategies
+    
+    def _recommend_operational_improvements(self, financial_data: Dict[str, Any], date_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Recommend operational improvements"""
+        improvements = []
+        
+        # Cost structure improvements
+        cost_of_revenue = financial_data.get('costOfRevenue', 0)
+        operating_expenses = financial_data.get('totalOperatingExpenses', 0)
+        revenue = financial_data.get('totalRevenue', 0)
+        
+        if cost_of_revenue / revenue > 0.70 if revenue > 0 else False:
+            improvements.append({
+                'area': 'Cost Management',
+                'improvement': 'Optimize Cost of Revenue',
+                'description': 'Review supplier contracts and operational efficiency',
+                'expected_impact': 'Reduce cost of revenue by 5-10%',
+                'timeline': '3-6 months'
+            })
+        
+        if operating_expenses / revenue > 0.25 if revenue > 0 else False:
+            improvements.append({
+                'area': 'Operating Efficiency',
+                'improvement': 'Streamline Operations',
+                'description': 'Improve operational efficiency and reduce overhead',
+                'expected_impact': 'Reduce operating expenses by 3-5%',
+                'timeline': '2-4 months'
+            })
+        
+        return improvements
+    
+    def _calculate_financial_health_score(self, financial_data: Dict[str, Any], date_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate overall financial health score"""
+        revenue = financial_data.get('totalRevenue', 0)
+        net_income = financial_data.get('netIncome', 0)
+        operating_income = financial_data.get('operatingIncome', 0)
+        
+        # Calculate individual scores
+        profitability_score = min(100, max(0, (net_income / revenue) * 1000)) if revenue > 0 else 0
+        operational_score = min(100, max(0, (operating_income / revenue) * 1000)) if revenue > 0 else 0
+        revenue_score = min(100, max(0, revenue / 1000000 * 100))  # Scale based on $1M revenue
+        
+        # Calculate overall score
+        overall_score = (profitability_score + operational_score + revenue_score) / 3
+        
+        # Determine health level
+        if overall_score >= 80:
+            health_level = 'Excellent'
+        elif overall_score >= 60:
+            health_level = 'Good'
+        elif overall_score >= 40:
+            health_level = 'Fair'
+        else:
+            health_level = 'Poor'
+        
+        return {
+            'overall_score': overall_score,
+            'health_level': health_level,
+            'profitability_score': profitability_score,
+            'operational_score': operational_score,
+            'revenue_score': revenue_score,
+            'recommendations': self._get_health_improvement_recommendations(overall_score)
+        }
+    
+    def _get_health_improvement_recommendations(self, score: float) -> List[str]:
+        """Get recommendations based on financial health score"""
+        if score >= 80:
+            return ['Maintain current performance', 'Consider expansion opportunities']
+        elif score >= 60:
+            return ['Focus on profitability improvement', 'Optimize operational efficiency']
+        elif score >= 40:
+            return ['Address cost structure issues', 'Improve revenue generation']
+        else:
+            return ['Urgent financial restructuring needed', 'Focus on survival strategies']
+    
+    def _calculate_intelligent_confidence(self, financial_data: Dict[str, Any], projections: Dict[str, Any], historical_patterns: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate intelligent confidence scores"""
+        confidence = {
+            'overall_confidence': 0.8,
+            'projection_confidence': 0.75,
+            'recommendation_confidence': 0.85,
+            'risk_assessment_confidence': 0.80
+        }
+        
+        # Adjust based on data quality
+        if financial_data.get('totalRevenue', 0) > 0:
+            confidence['overall_confidence'] += 0.05
+        
+        # Adjust based on historical data
+        if historical_patterns:
+            confidence['overall_confidence'] += 0.1
+            confidence['projection_confidence'] += 0.15
+        
+        # Adjust based on projection quality
+        if projections.get('risk_factors'):
+            risk_count = len(projections['risk_factors'])
+            confidence['projection_confidence'] -= risk_count * 0.05
+        
+        return confidence
+    
+    def _calculate_business_days_remaining(self, statement_date: date) -> int:
+        """Calculate business days remaining in the year"""
+        year_end = date(statement_date.year, 12, 31)
+        business_days = 0
+        current_date = statement_date
+        
+        while current_date <= year_end:
+            if current_date.weekday() < 5:  # Monday to Friday
+                business_days += 1
+            current_date += timedelta(days=1)
+        
+        return business_days
+    
+    def _get_seasonal_multiplier(self, statement_date: date) -> float:
+        """Get seasonal multiplier based on statement date"""
+        month = statement_date.month
+        
+        seasonal_multipliers = {
+            1: 0.95,   # January - post-holiday
+            2: 0.90,   # February - winter
+            3: 1.00,   # March - spring
+            4: 1.05,   # April - growth
+            5: 1.10,   # May - strong
+            6: 1.00,   # June - steady
+            7: 0.95,   # July - summer
+            8: 0.90,   # August - vacation
+            9: 1.00,   # September - back to business
+            10: 1.05,  # October - growth
+            11: 1.10,  # November - pre-holiday
+            12: 1.20   # December - holiday season
+        }
+        
+        return seasonal_multipliers.get(month, 1.0)
     
     def _determine_statement_period(self, statement_date: date) -> str:
         """
