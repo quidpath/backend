@@ -175,16 +175,49 @@ class CompleteAnalysisPipeline:
                 'researchDevelopment': float(latest_data.research_development)
             }
             
-            # Import and use the analysis service
-            from .TazamaService import TazamaAnalysisService
-            analysis_service = TazamaAnalysisService()
+            # Check if there's an available model
+            available_model = TazamaMLModel.objects.filter(
+                is_active=True,
+                model_type='traditional'
+            ).first()
             
-            # Perform the analysis
-            analysis_result = analysis_service.analyze_financial_data(
-                financial_data=financial_data,
-                corporate=upload_record.corporate,
-                user=upload_record.uploaded_by
-            )
+            if not available_model:
+                # Create a fallback analysis without ML model
+                analysis_result = self._perform_fallback_analysis(financial_data)
+            else:
+                # Create analysis request with model
+                analysis_request = TazamaAnalysisRequest.objects.create(
+                    corporate=upload_record.corporate,
+                    user=upload_record.uploaded_by,
+                    input_data=financial_data,
+                    model_used=available_model,
+                    status='pending'
+                )
+                
+                # Import and use the analysis service
+                from .TazamaService import TazamaAnalysisService
+                analysis_service = TazamaAnalysisService()
+                
+                # Perform the analysis using the correct method
+                success, message = analysis_service.run_analysis(analysis_request.id)
+                
+                if success:
+                    # Refresh the analysis request to get updated data
+                    analysis_request.refresh_from_db()
+                    analysis_result = {
+                        'success': True,
+                        'predictions': analysis_request.predictions,
+                        'recommendations': analysis_request.recommendations,
+                        'risk_assessment': analysis_request.risk_assessment,
+                        'confidence_scores': analysis_request.confidence_scores,
+                        'processing_time': analysis_request.processing_time_seconds,
+                        'analysis_id': analysis_request.id
+                    }
+                else:
+                    analysis_result = {
+                        'success': False,
+                        'error': message
+                    }
             
             if analysis_result['success']:
                 self.pipeline_status['analysis'] = 'completed'
@@ -350,6 +383,100 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             'failed_step': failed_step,
             'timestamp': timezone.now().isoformat()
         }
+    
+    def _perform_fallback_analysis(self, financial_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Perform fallback analysis when no ML model is available
+        Uses basic financial calculations and heuristics
+        """
+        try:
+            logger.info("Performing fallback analysis without ML model")
+            
+            # Extract financial metrics
+            revenue = financial_data.get('totalRevenue', 0)
+            cost = financial_data.get('costOfRevenue', 0)
+            gross_profit = financial_data.get('grossProfit', 0)
+            expenses = financial_data.get('totalOperatingExpenses', 0)
+            operating_income = financial_data.get('operatingIncome', 0)
+            net_income = financial_data.get('netIncome', 0)
+            
+            # Calculate basic ratios
+            predictions = {}
+            if revenue > 0:
+                predictions['profit_margin'] = net_income / revenue
+                predictions['operating_margin'] = operating_income / revenue
+                predictions['gross_margin'] = gross_profit / revenue
+                predictions['cost_revenue_ratio'] = cost / revenue
+                predictions['expense_ratio'] = expenses / revenue
+            else:
+                predictions = {
+                    'profit_margin': 0.0,
+                    'operating_margin': 0.0,
+                    'gross_margin': 0.0,
+                    'cost_revenue_ratio': 0.0,
+                    'expense_ratio': 0.0
+                }
+            
+            # Generate basic recommendations
+            recommendations = {
+                'immediate_actions': [],
+                'cost_optimization': [],
+                'revenue_enhancement': [],
+                'profitability_improvements': []
+            }
+            
+            if predictions['profit_margin'] < 0.05:
+                recommendations['immediate_actions'].append({
+                    'action': 'Review Profitability',
+                    'description': 'Profit margin is below 5%. Consider cost reduction or revenue enhancement.',
+                    'priority': 'HIGH'
+                })
+            
+            if predictions['cost_revenue_ratio'] > 0.7:
+                recommendations['cost_optimization'].append({
+                    'action': 'Optimize Cost Structure',
+                    'description': 'Cost of revenue is high. Review supplier contracts and operational efficiency.',
+                    'priority': 'MEDIUM'
+                })
+            
+            # Generate risk assessment
+            risk_assessment = {
+                'overall_risk': 'LOW',
+                'profitability_risk': 'LOW',
+                'operational_risk': 'LOW',
+                'risk_factors': []
+            }
+            
+            if predictions['profit_margin'] < 0:
+                risk_assessment['overall_risk'] = 'HIGH'
+                risk_assessment['profitability_risk'] = 'HIGH'
+                risk_assessment['risk_factors'].append('Negative profit margin detected')
+            
+            # Calculate confidence scores
+            confidence_scores = {
+                'overall': 0.7,  # Lower confidence for fallback analysis
+                'profit_margin': 0.8,
+                'operating_margin': 0.8,
+                'cost_revenue_ratio': 0.9
+            }
+            
+            return {
+                'success': True,
+                'predictions': predictions,
+                'recommendations': recommendations,
+                'risk_assessment': risk_assessment,
+                'confidence_scores': confidence_scores,
+                'processing_time': 0.1,  # Fast fallback processing
+                'analysis_id': None,  # No analysis request created
+                'method': 'fallback'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in fallback analysis: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
     def get_pipeline_status(self) -> Dict[str, Any]:
         """Get current pipeline status"""
