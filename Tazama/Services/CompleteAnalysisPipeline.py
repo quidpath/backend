@@ -1,0 +1,360 @@
+# CompleteAnalysisPipeline.py - End-to-End Analysis Pipeline
+"""
+Complete analysis pipeline that handles the entire workflow from data extraction
+to financial analysis and results generation.
+"""
+
+import logging
+from typing import Dict, List, Optional, Any, Tuple
+from datetime import datetime
+from django.utils import timezone
+
+from Tazama.models import (
+    FinancialDataUpload, ProcessedFinancialData, TazamaAnalysisRequest,
+    FinancialReport, TazamaMLModel
+)
+from OrgAuth.models import CorporateUser, Corporate
+from .IntelligentDataExtractor import IntelligentDataExtractor
+from .EnhancedFinancialDataService import EnhancedFinancialDataService
+
+logger = logging.getLogger(__name__)
+
+
+class CompleteAnalysisPipeline:
+    """
+    Complete analysis pipeline that handles the entire workflow:
+    1. Intelligent data extraction
+    2. Data validation and cleaning
+    3. Automatic financial analysis
+    4. Results generation and storage
+    """
+    
+    def __init__(self):
+        self.intelligent_extractor = IntelligentDataExtractor()
+        self.enhanced_data_service = EnhancedFinancialDataService()
+        self.pipeline_status = {
+            'extraction': 'pending',
+            'validation': 'pending', 
+            'analysis': 'pending',
+            'results': 'pending'
+        }
+    
+    def process_complete_workflow(self, upload_record: FinancialDataUpload) -> Dict[str, Any]:
+        """
+        Process complete workflow from file upload to analysis results
+        
+        Args:
+            upload_record: FinancialDataUpload instance
+            
+        Returns:
+            Complete workflow results
+        """
+        try:
+            logger.info(f"Starting complete analysis pipeline for {upload_record.file_name}")
+            
+            # Step 1: Intelligent Data Extraction
+            extraction_result = self._perform_intelligent_extraction(upload_record)
+            if not extraction_result['success']:
+                return self._create_error_result('extraction', extraction_result['error'])
+            
+            # Step 2: Data Validation and Storage
+            validation_result = self._perform_data_validation(upload_record, extraction_result)
+            if not validation_result['success']:
+                return self._create_error_result('validation', validation_result['error'])
+            
+            # Step 3: Automatic Financial Analysis
+            analysis_result = self._perform_financial_analysis(upload_record, validation_result)
+            if not analysis_result['success']:
+                return self._create_error_result('analysis', analysis_result['error'])
+            
+            # Step 4: Results Generation and Storage
+            results_result = self._generate_and_store_results(upload_record, analysis_result)
+            if not results_result['success']:
+                return self._create_error_result('results', results_result['error'])
+            
+            # Complete workflow summary
+            return self._create_success_result(upload_record, {
+                'extraction': extraction_result,
+                'validation': validation_result,
+                'analysis': analysis_result,
+                'results': results_result
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in complete analysis pipeline: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'pipeline_status': self.pipeline_status
+            }
+    
+    def _perform_intelligent_extraction(self, upload_record: FinancialDataUpload) -> Dict[str, Any]:
+        """Step 1: Perform intelligent data extraction"""
+        try:
+            logger.info(f"Step 1: Performing intelligent extraction for {upload_record.file_name}")
+            self.pipeline_status['extraction'] = 'processing'
+            
+            file_path = upload_record.file_path.path
+            extraction_result = self.intelligent_extractor.extract_financial_data(
+                file_path, 
+                file_type='auto'
+            )
+            
+            if extraction_result['success']:
+                self.pipeline_status['extraction'] = 'completed'
+                logger.info(f"Intelligent extraction completed with {extraction_result['confidence']:.2%} confidence")
+            else:
+                self.pipeline_status['extraction'] = 'failed'
+                logger.error(f"Intelligent extraction failed: {extraction_result.get('error')}")
+            
+            return extraction_result
+            
+        except Exception as e:
+            logger.error(f"Error in intelligent extraction: {str(e)}")
+            self.pipeline_status['extraction'] = 'failed'
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _perform_data_validation(self, upload_record: FinancialDataUpload, extraction_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Step 2: Perform data validation and storage"""
+        try:
+            logger.info(f"Step 2: Performing data validation for {upload_record.file_name}")
+            self.pipeline_status['validation'] = 'processing'
+            
+            # Store extracted data using enhanced service
+            storage_result = self.enhanced_data_service._store_intelligent_extraction(
+                upload_record, 
+                extraction_result
+            )
+            
+            if storage_result['success']:
+                self.pipeline_status['validation'] = 'completed'
+                logger.info(f"Data validation and storage completed: {storage_result['rows_processed']} records")
+            else:
+                self.pipeline_status['validation'] = 'failed'
+                logger.error(f"Data validation failed: {storage_result['error']}")
+            
+            return storage_result
+            
+        except Exception as e:
+            logger.error(f"Error in data validation: {str(e)}")
+            self.pipeline_status['validation'] = 'failed'
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _perform_financial_analysis(self, upload_record: FinancialDataUpload, validation_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Step 3: Perform financial analysis"""
+        try:
+            logger.info(f"Step 3: Performing financial analysis for {upload_record.file_name}")
+            self.pipeline_status['analysis'] = 'processing'
+            
+            # Get the latest processed financial data
+            latest_data = ProcessedFinancialData.objects.filter(
+                corporate=upload_record.corporate,
+                upload=upload_record
+            ).order_by('-created_at').first()
+            
+            if not latest_data:
+                return {
+                    'success': False,
+                    'error': 'No processed data found for analysis'
+                }
+            
+            # Prepare financial data for analysis
+            financial_data = {
+                'totalRevenue': float(latest_data.total_revenue),
+                'costOfRevenue': float(latest_data.cost_of_revenue),
+                'grossProfit': float(latest_data.gross_profit),
+                'totalOperatingExpenses': float(latest_data.total_operating_expenses),
+                'operatingIncome': float(latest_data.operating_income),
+                'netIncome': float(latest_data.net_income),
+                'researchDevelopment': float(latest_data.research_development)
+            }
+            
+            # Import and use the analysis service
+            from .TazamaService import TazamaAnalysisService
+            analysis_service = TazamaAnalysisService()
+            
+            # Perform the analysis
+            analysis_result = analysis_service.analyze_financial_data(
+                financial_data=financial_data,
+                corporate=upload_record.corporate,
+                user=upload_record.uploaded_by
+            )
+            
+            if analysis_result['success']:
+                self.pipeline_status['analysis'] = 'completed'
+                logger.info(f"Financial analysis completed successfully")
+            else:
+                self.pipeline_status['analysis'] = 'failed'
+                logger.error(f"Financial analysis failed: {analysis_result.get('error')}")
+            
+            return analysis_result
+            
+        except Exception as e:
+            logger.error(f"Error in financial analysis: {str(e)}")
+            self.pipeline_status['analysis'] = 'failed'
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _generate_and_store_results(self, upload_record: FinancialDataUpload, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Step 4: Generate and store analysis results"""
+        try:
+            logger.info(f"Step 4: Generating and storing results for {upload_record.file_name}")
+            self.pipeline_status['results'] = 'processing'
+            
+            # Create analysis request record
+            analysis_request = TazamaAnalysisRequest.objects.create(
+                corporate=upload_record.corporate,
+                user=upload_record.uploaded_by,
+                input_data=analysis_result.get('input_data', {}),
+                predictions=analysis_result.get('predictions', {}),
+                recommendations=analysis_result.get('recommendations', {}),
+                risk_assessment=analysis_result.get('risk_assessment', {}),
+                confidence_scores=analysis_result.get('confidence_scores', {}),
+                processing_time_seconds=analysis_result.get('processing_time', 0),
+                status='completed'
+            )
+            
+            # Generate comprehensive report
+            report_result = self._generate_comprehensive_report(upload_record, analysis_request, analysis_result)
+            
+            if report_result['success']:
+                self.pipeline_status['results'] = 'completed'
+                logger.info(f"Results generation completed successfully")
+            else:
+                self.pipeline_status['results'] = 'failed'
+                logger.error(f"Results generation failed: {report_result['error']}")
+            
+            return {
+                'success': True,
+                'analysis_id': analysis_request.id,
+                'analysis_request': analysis_request,
+                'report_result': report_result,
+                'message': 'Complete analysis pipeline finished successfully'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in results generation: {str(e)}")
+            self.pipeline_status['results'] = 'failed'
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _generate_comprehensive_report(self, upload_record: FinancialDataUpload, analysis_request: TazamaAnalysisRequest, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate comprehensive analysis report"""
+        try:
+            # Create financial report
+            report = FinancialReport.objects.create(
+                corporate=upload_record.corporate,
+                analysis_request=analysis_request,
+                report_type='comprehensive_analysis',
+                title=f"Financial Analysis Report - {upload_record.file_name}",
+                content=self._format_report_content(analysis_result),
+                generated_at=timezone.now(),
+                status='completed'
+            )
+            
+            return {
+                'success': True,
+                'report_id': report.id,
+                'report': report
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating comprehensive report: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _format_report_content(self, analysis_result: Dict[str, Any]) -> str:
+        """Format analysis results into readable report content"""
+        try:
+            content = f"""
+# Financial Analysis Report
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+## Analysis Summary
+- **Status**: {'✅ Completed Successfully' if analysis_result.get('success') else '❌ Failed'}
+- **Confidence**: {analysis_result.get('confidence', 0):.2%}
+- **Processing Time**: {analysis_result.get('processing_time', 0):.2f} seconds
+
+## Key Metrics
+"""
+            
+            # Add predictions
+            predictions = analysis_result.get('predictions', {})
+            if predictions:
+                content += "\n### Financial Predictions\n"
+                for metric, value in predictions.items():
+                    content += f"- **{metric.replace('_', ' ').title()}**: {value:.4f}\n"
+            
+            # Add recommendations
+            recommendations = analysis_result.get('recommendations', {})
+            if recommendations:
+                content += "\n### Recommendations\n"
+                for category, items in recommendations.items():
+                    if isinstance(items, list) and items:
+                        content += f"\n#### {category.replace('_', ' ').title()}\n"
+                        for item in items[:3]:  # Show first 3 items
+                            if isinstance(item, dict):
+                                content += f"- **{item.get('action', 'Action')}**: {item.get('description', 'No description')}\n"
+                            else:
+                                content += f"- {item}\n"
+            
+            # Add risk assessment
+            risk_assessment = analysis_result.get('risk_assessment', {})
+            if risk_assessment:
+                content += "\n### Risk Assessment\n"
+                content += f"- **Overall Risk**: {risk_assessment.get('overall_risk', 'Unknown')}\n"
+                content += f"- **Profitability Risk**: {risk_assessment.get('profitability_risk', 'Unknown')}\n"
+                content += f"- **Operational Risk**: {risk_assessment.get('operational_risk', 'Unknown')}\n"
+            
+            return content
+            
+        except Exception as e:
+            logger.error(f"Error formatting report content: {str(e)}")
+            return f"Error generating report content: {str(e)}"
+    
+    def _create_success_result(self, upload_record: FinancialDataUpload, results: Dict[str, Any]) -> Dict[str, Any]:
+        """Create success result for complete workflow"""
+        return {
+            'success': True,
+            'message': f'Complete analysis pipeline finished successfully for {upload_record.file_name}',
+            'pipeline_status': self.pipeline_status,
+            'results': {
+                'extraction_confidence': results['extraction'].get('confidence', 0),
+                'validation_records': results['validation'].get('rows_processed', 0),
+                'analysis_success': results['analysis'].get('success', False),
+                'results_generated': results['results'].get('success', False)
+            },
+            'analysis_id': results['results'].get('analysis_id'),
+            'report_id': results['results'].get('report_result', {}).get('report_id'),
+            'timestamp': timezone.now().isoformat()
+        }
+    
+    def _create_error_result(self, failed_step: str, error_message: str) -> Dict[str, Any]:
+        """Create error result for failed workflow"""
+        return {
+            'success': False,
+            'error': f'Pipeline failed at {failed_step} step: {error_message}',
+            'pipeline_status': self.pipeline_status,
+            'failed_step': failed_step,
+            'timestamp': timezone.now().isoformat()
+        }
+    
+    def get_pipeline_status(self) -> Dict[str, Any]:
+        """Get current pipeline status"""
+        return {
+            'pipeline_status': self.pipeline_status,
+            'overall_status': 'completed' if all(status == 'completed' for status in self.pipeline_status.values()) else 'in_progress',
+            'timestamp': timezone.now().isoformat()
+        }

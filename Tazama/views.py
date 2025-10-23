@@ -20,6 +20,7 @@ from quidpath_backend.core.utils.request_parser import get_clean_data
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from .Services.TazamaService import FinancialDataService, TazamaAnalysisService, DashboardService, ModelTrainingService
 from .Services.EnhancedFinancialDataService import EnhancedFinancialDataService
+from .Services.CompleteAnalysisPipeline import CompleteAnalysisPipeline
 from .core.TazamaCore import FinancialDataProcessor
 from .core.report_generator import TazamaReportGenerator
 
@@ -102,9 +103,16 @@ def upload_financial_data(request):
             file_size=uploaded_file.size
         )
 
-        # Process the file using enhanced intelligent extraction
-        enhanced_data_service = EnhancedFinancialDataService()
-        success, message = enhanced_data_service.process_csv_upload(upload_record)
+        # Process the file using complete analysis pipeline
+        complete_pipeline = CompleteAnalysisPipeline()
+        pipeline_result = complete_pipeline.process_complete_workflow(upload_record)
+        
+        if pipeline_result['success']:
+            success = True
+            message = pipeline_result['message']
+        else:
+            success = False
+            message = pipeline_result['error']
 
         if success:
             TransactionLogBase.log(
@@ -125,7 +133,11 @@ def upload_financial_data(request):
                     "upload_id": upload_record.id,
                     "file_name": uploaded_file.name,
                     "rows_processed": upload_record.rows_processed,
-                    "status": upload_record.processing_status
+                    "status": upload_record.processing_status,
+                    "pipeline_results": pipeline_result.get('results', {}),
+                    "analysis_id": pipeline_result.get('analysis_id'),
+                    "report_id": pipeline_result.get('report_id'),
+                    "pipeline_status": pipeline_result.get('pipeline_status', {})
                 },
                 message=message,
                 code=200
@@ -1155,6 +1167,74 @@ def test_intelligent_extraction(request):
     except Exception as e:
         return ResponseProvider(
             message=f"Intelligent extraction test failed: {str(e)}",
+            code=500
+        ).exception()
+
+
+@csrf_exempt
+def get_complete_pipeline_status(request):
+    """
+    Get the status of the complete analysis pipeline
+    """
+    data, metadata = get_clean_data(request)
+    user = metadata.get("user")
+    if not user:
+        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+
+    try:
+        upload_id = data.get('upload_id')
+        if not upload_id:
+            return ResponseProvider(
+                message="Upload ID is required",
+                code=400
+            ).bad_request()
+
+        # Get upload record
+        try:
+            upload_record = FinancialDataUpload.objects.get(id=upload_id, corporate=user.corporate)
+        except FinancialDataUpload.DoesNotExist:
+            return ResponseProvider(
+                message="Upload record not found",
+                code=404
+            ).not_found()
+
+        # Get pipeline status
+        pipeline = CompleteAnalysisPipeline()
+        pipeline_status = pipeline.get_pipeline_status()
+
+        # Get analysis results if available
+        analysis_results = {}
+        if upload_record.processing_status == 'completed':
+            # Get latest analysis
+            latest_analysis = TazamaAnalysisRequest.objects.filter(
+                corporate=user.corporate
+            ).order_by('-created_at').first()
+            
+            if latest_analysis:
+                analysis_results = {
+                    'analysis_id': latest_analysis.id,
+                    'status': latest_analysis.status,
+                    'confidence_scores': latest_analysis.confidence_scores,
+                    'processing_time': latest_analysis.processing_time_seconds,
+                    'created_at': latest_analysis.created_at.isoformat()
+                }
+
+        return ResponseProvider(
+            data={
+                "upload_id": upload_id,
+                "file_name": upload_record.file_name,
+                "processing_status": upload_record.processing_status,
+                "pipeline_status": pipeline_status,
+                "analysis_results": analysis_results,
+                "rows_processed": upload_record.rows_processed
+            },
+            message="Pipeline status retrieved successfully",
+            code=200
+        ).success()
+
+    except Exception as e:
+        return ResponseProvider(
+            message=f"Error retrieving pipeline status: {str(e)}",
             code=500
         ).exception()
 

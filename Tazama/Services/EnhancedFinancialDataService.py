@@ -70,13 +70,23 @@ class EnhancedFinancialDataService:
             if not storage_result['success']:
                 return False, storage_result['error']
             
+            # ✅ NEW: Automatically trigger analysis after successful extraction
+            analysis_result = self._trigger_automatic_analysis(upload_record, storage_result)
+            
             # Update upload record
             upload_record.processing_status = 'completed'
             upload_record.rows_processed = storage_result['rows_processed']
             upload_record.save()
             
-            logger.info(f"Successfully processed {upload_record.file_name} with intelligent extraction")
-            return True, f"File processed successfully. Extracted {storage_result['rows_processed']} records with {storage_result['confidence']:.2%} confidence."
+            # Prepare success message with analysis info
+            success_message = f"File processed successfully. Extracted {storage_result['rows_processed']} records with {storage_result['confidence']:.2%} confidence."
+            if analysis_result['success']:
+                success_message += f" Analysis completed with {analysis_result['confidence']:.2%} confidence."
+            else:
+                success_message += f" Note: Analysis failed - {analysis_result['error']}"
+            
+            logger.info(f"Successfully processed {upload_record.file_name} with intelligent extraction and analysis")
+            return True, success_message
             
         except Exception as e:
             logger.error(f"Error in enhanced processing: {str(e)}")
@@ -459,4 +469,76 @@ class EnhancedFinancialDataService:
             return {
                 'success': False,
                 'error': str(e)
+            }
+    
+    def _trigger_automatic_analysis(self, upload_record: FinancialDataUpload, storage_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Automatically trigger financial analysis after successful data extraction
+        
+        Args:
+            upload_record: FinancialDataUpload instance
+            storage_result: Result from data storage
+            
+        Returns:
+            Analysis result dictionary
+        """
+        try:
+            logger.info(f"Triggering automatic analysis for {upload_record.file_name}")
+            
+            # Get the latest processed financial data
+            latest_data = ProcessedFinancialData.objects.filter(
+                corporate=upload_record.corporate,
+                upload=upload_record
+            ).order_by('-created_at').first()
+            
+            if not latest_data:
+                return {
+                    'success': False,
+                    'error': 'No processed data found for analysis'
+                }
+            
+            # Prepare financial data for analysis
+            financial_data = {
+                'totalRevenue': float(latest_data.total_revenue),
+                'costOfRevenue': float(latest_data.cost_of_revenue),
+                'grossProfit': float(latest_data.gross_profit),
+                'totalOperatingExpenses': float(latest_data.total_operating_expenses),
+                'operatingIncome': float(latest_data.operating_income),
+                'netIncome': float(latest_data.net_income),
+                'researchDevelopment': float(latest_data.research_development)
+            }
+            
+            # Import and use the analysis service
+            from .TazamaService import TazamaAnalysisService
+            analysis_service = TazamaAnalysisService()
+            
+            # Perform the analysis
+            analysis_result = analysis_service.analyze_financial_data(
+                financial_data=financial_data,
+                corporate=upload_record.corporate,
+                user=upload_record.uploaded_by
+            )
+            
+            if analysis_result['success']:
+                logger.info(f"Automatic analysis completed successfully for {upload_record.file_name}")
+                return {
+                    'success': True,
+                    'confidence': analysis_result.get('confidence', 0.8),
+                    'analysis_id': analysis_result.get('analysis_id'),
+                    'message': 'Analysis completed successfully'
+                }
+            else:
+                logger.warning(f"Automatic analysis failed for {upload_record.file_name}: {analysis_result.get('error')}")
+                return {
+                    'success': False,
+                    'error': analysis_result.get('error', 'Analysis failed'),
+                    'confidence': 0.0
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in automatic analysis: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'confidence': 0.0
             }
