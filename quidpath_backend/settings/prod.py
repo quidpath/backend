@@ -30,6 +30,9 @@ CORS_ALLOW_ALL_ORIGINS = False  # GOOD: Override base.py
 CORS_ALLOWED_ORIGINS = [
     "https://quidpath.com",
     "https://www.quidpath.com",
+    "https://quidpath-erp-frontend-production.up.railway.app",
+    "http://localhost:3000",
+    "http://localhost:3001",
     # You might want to add your Amplify preview/dev URLs here too
 ]
 
@@ -50,6 +53,11 @@ CORS_ALLOW_METHODS = [
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
     "content-type",
+    "x-requested-with",
+    "accept",
+    "origin",
+    "access-control-request-method",
+    "access-control-request-headers",
 ]
 
 # ====================================
