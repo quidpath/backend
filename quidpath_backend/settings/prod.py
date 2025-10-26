@@ -36,6 +36,9 @@ CORS_ALLOWED_ORIGINS = [
     # You might want to add your Amplify preview/dev URLs here too
 ]
 
+# Add debugging for CORS
+CORS_ALLOW_ALL_ORIGINS = True  # Temporarily allow all origins for debugging
+
 # This is vital for sending credentials (like JWT tokens)
 CORS_ALLOW_CREDENTIALS = True
 
