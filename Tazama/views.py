@@ -5,8 +5,11 @@ import requests
 
 import numpy as np
 import pandas as pd
+import logging
 from decimal import Decimal
 from datetime import datetime, date, timedelta
+
+logger = logging.getLogger(__name__)
 
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
@@ -460,16 +463,19 @@ def get_financial_dashboard(request):
         resolved_snapshot = None
 
         # Helper: build minimal financial_data dict from a ProcessedFinancialData row
+        # Convert to camelCase as expected by EnhancedFinancialDataService
         def build_financial_data_dict(pfd):
             if not pfd:
                 return {}
-            return {
-                "total_revenue": float(pfd.total_revenue or 0),
-                "cost_of_revenue": float(pfd.cost_of_revenue or 0),
-                "gross_profit": float(pfd.gross_profit or 0),
-                "total_operating_expenses": float(pfd.total_operating_expenses or 0),
-                "operating_income": float(pfd.operating_income or 0),
-                "net_income": float(pfd.net_income or 0),
+            
+            # Convert snake_case to camelCase for service compatibility
+            data = {
+                "totalRevenue": float(pfd.total_revenue or 0),
+                "costOfRevenue": float(pfd.cost_of_revenue or 0),
+                "grossProfit": float(pfd.gross_profit or 0),
+                "totalOperatingExpenses": float(pfd.total_operating_expenses or 0),
+                "operatingIncome": float(pfd.operating_income or 0),
+                "netIncome": float(pfd.net_income or 0),
                 "profit_margin": float(pfd.profit_margin or 0) if pfd.profit_margin is not None else None,
                 "operating_margin": float(pfd.operating_margin or 0) if pfd.operating_margin is not None else None,
                 "gross_margin": float(pfd.gross_margin or 0) if pfd.gross_margin is not None else None,
@@ -479,57 +485,141 @@ def get_financial_dashboard(request):
                 "revenue_growth": float(pfd.revenue_growth or 0) if pfd.revenue_growth is not None else None,
                 "additional_features": pfd.additional_features or {},
             }
+            
+            # Add snake_case aliases for backwards compatibility
+            data.update({
+                "total_revenue": data["totalRevenue"],
+                "cost_of_revenue": data["costOfRevenue"],
+                "gross_profit": data["grossProfit"],
+                "total_operating_expenses": data["totalOperatingExpenses"],
+                "operating_income": data["operatingIncome"],
+                "net_income": data["netIncome"],
+            })
+            
+            return data
+        
+        # Helper: validate financial data quality
+        def validate_financial_data(financial_data):
+            """Validate that financial data makes sense"""
+            if not financial_data:
+                return False, "No financial data provided"
+            
+            revenue = financial_data.get('totalRevenue', 0) or financial_data.get('total_revenue', 0)
+            cost_of_revenue = financial_data.get('costOfRevenue', 0) or financial_data.get('cost_of_revenue', 0)
+            gross_profit = financial_data.get('grossProfit', 0) or financial_data.get('gross_profit', 0)
+            operating_expenses = financial_data.get('totalOperatingExpenses', 0) or financial_data.get('total_operating_expenses', 0)
+            net_income = financial_data.get('netIncome', 0) or financial_data.get('net_income', 0)
+            
+            # Check if all values are identical (data quality issue)
+            values = [revenue, cost_of_revenue, gross_profit, operating_expenses, net_income]
+            if len(set(values)) <= 2 and revenue > 0:  # Allow for some variance but not all identical
+                if all(abs(v - revenue) < revenue * 0.01 for v in values if v > 0):
+                    return False, "Data quality issue: All financial values are identical"
+            
+            # Check if revenue is zero
+            if revenue <= 0:
+                return False, "Invalid data: Revenue must be greater than zero"
+            
+            # Check if basic accounting relationships make sense
+            # Gross profit should roughly equal revenue - cost of revenue
+            expected_gross = revenue - cost_of_revenue
+            if abs(gross_profit - expected_gross) > revenue * 0.1:  # Allow 10% variance
+                # This might be acceptable if data is already calculated
+                pass
+            
+            # Check for impossible ratios
+            if revenue > 0:
+                cost_ratio = cost_of_revenue / revenue
+                if cost_ratio > 1.5:  # Costs shouldn't exceed revenue by 50%
+                    return False, "Invalid data: Cost of revenue exceeds revenue by more than 50%"
+            
+            return True, "Data validated"
 
-        # If upload_id provided, verify upload completed, then resolve its processed snapshot and date
+        # If upload_id provided, resolve its processed snapshot and date
+        # IMPORTANT: Only use uploads that have completed processing
         if upload_id:
+            # Check that upload exists and is completed
             try:
-                upload_rec = FinancialDataUpload.objects.get(id=upload_id, corporate_id=corporate_id)
+                upload = FinancialDataUpload.objects.get(id=upload_id, corporate_id=corporate_id)
+                if upload.processing_status != 'completed':
+                    return ResponseProvider(
+                        message=f"Upload processing not complete. Current status: {upload.processing_status}. Please wait for processing to complete.",
+                        code=400
+                    ).bad_request()
             except FinancialDataUpload.DoesNotExist:
-                return ResponseProvider(message="Upload not found for this corporate.", code=404).not_found()
-            if upload_rec.processing_status != 'completed':
-                return ResponseProvider(
-                    message="Processing not completed yet for this upload. Please wait until status is 'completed'.",
-                    code=202
-                ).success()
+                return ResponseProvider(message="Upload not found", code=404).not_found()
+            
             pfd_qs = ProcessedFinancialData.objects.filter(upload_id=upload_id, corporate_id=corporate_id).order_by('-period_date')
             resolved_snapshot = pfd_qs.first()
             if resolved_snapshot:
                 resolved_statement_date = resolved_snapshot.period_date
+        
         # Else if a statement_date was provided, use it and pick the latest snapshot at or before that date
+        # Only use snapshots from completed uploads
         if not resolved_statement_date and statement_date_str:
             try:
                 candidate_date = datetime.strptime(statement_date_str, '%Y-%m-%d').date()
             except Exception:
                 return ResponseProvider(message="Invalid statement_date format; expected YYYY-MM-DD", code=400).bad_request()
-            pfd_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id, period_date__lte=candidate_date).order_by('-period_date')
+            
+            # Get processed data only from completed uploads
+            completed_upload_ids = FinancialDataUpload.objects.filter(
+                corporate_id=corporate_id,
+                processing_status='completed'
+            ).values_list('id', flat=True)
+            
+            pfd_qs = ProcessedFinancialData.objects.filter(
+                corporate_id=corporate_id,
+                period_date__lte=candidate_date,
+                upload_id__in=completed_upload_ids
+            ).order_by('-period_date')
             resolved_snapshot = pfd_qs.first()
             resolved_statement_date = candidate_date
+        
         # Fallback: if nothing specified, use the most recent processed snapshot and its date
-    if not resolved_statement_date:
-        pfd_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id).order_by('-period_date')
-        resolved_snapshot = pfd_qs.first()
+        # Only use snapshots from completed uploads
+        if not resolved_statement_date:
+            completed_upload_ids = FinancialDataUpload.objects.filter(
+                corporate_id=corporate_id,
+                processing_status='completed'
+            ).values_list('id', flat=True)
+            
+            pfd_qs = ProcessedFinancialData.objects.filter(
+                corporate_id=corporate_id,
+                upload_id__in=completed_upload_ids
+            ).order_by('-period_date')
+            resolved_snapshot = pfd_qs.first()
+            resolved_statement_date = resolved_snapshot.period_date if resolved_snapshot else date.today()
+        
+        # Validate that we have a valid snapshot
         if not resolved_snapshot:
             return ResponseProvider(
-                message="No processed financial data found. Please upload and complete processing first.",
+                message="No completed financial data found. Please upload and process financial statements first.",
                 code=404
             ).not_found()
-        resolved_statement_date = resolved_snapshot.period_date
-
-    # Final gate: ensure snapshot exists
-    if not resolved_snapshot:
-        return ResponseProvider(message="No processed snapshot available for analysis.", code=404).not_found()
 
         # ✅ Get all completed analyses in date range (for aggregates/history, not for projections)
+        # IMPORTANT: Only show analyses from completed uploads
+        completed_upload_ids_for_analyses = FinancialDataUpload.objects.filter(
+            corporate_id=corporate_id,
+            processing_status='completed'
+        ).values_list('id', flat=True)
+        
+        # Get analyses that reference completed uploads or are validated
         all_analyses = TazamaAnalysisRequest.objects.filter(
             corporate_id=corporate_id,
             status='completed',
             created_at__date__gte=start_date,
             created_at__date__lte=end_date
         ).order_by('-created_at')
+        
+        # Filter to ensure we only show analyses with valid, completed data
+        # We'll validate each analysis's input_data has reasonable values
+        
+        # First, count all analyses (for summary)
+        total_analyses_all = all_analyses.count()
 
-        total_analyses = all_analyses.count()
-
-        # ✅ Calculate average predictions across all analyses
+        # ✅ Calculate average predictions across all VALID analyses only
         average_predictions = {
             'profit_margin': 0,
             'operating_margin': 0,
@@ -537,23 +627,41 @@ def get_financial_dashboard(request):
             'expense_ratio': 0
         }
 
-        if total_analyses > 0:
-            for target in average_predictions.keys():
-                total = sum(
-                    analysis.predictions.get(target, 0)
-                    for analysis in all_analyses
-                    if analysis.predictions
-                )
-                average_predictions[target] = round(total / total_analyses, 4)
+        # Use only validated analyses (same validation as analyses_data)
+        valid_analyses_for_averages = []
+        for analysis in all_analyses:
+            input_data = analysis.input_data or {}
+            analysis_revenue = input_data.get('totalRevenue', 0) or input_data.get('netIncome', 0) or 0
+            if analysis_revenue > 0:
+                # Check for data quality
+                values = [
+                    input_data.get('totalRevenue', 0),
+                    input_data.get('costOfRevenue', 0),
+                    input_data.get('grossProfit', 0),
+                    input_data.get('operatingIncome', 0),
+                    input_data.get('netIncome', 0)
+                ]
+                if len(set([v for v in values if v > 0])) > 2:  # Valid data has variation
+                    valid_analyses_for_averages.append(analysis)
 
-        # ✅ Calculate risk distribution
+        if valid_analyses_for_averages:
+            for target in average_predictions.keys():
+                valid_predictions = [
+                    analysis.predictions.get(target, 0)
+                    for analysis in valid_analyses_for_averages
+                    if analysis.predictions and isinstance(analysis.predictions.get(target), (int, float))
+                ]
+                if valid_predictions:
+                    average_predictions[target] = round(sum(valid_predictions) / len(valid_predictions), 4)
+
+        # ✅ Calculate risk distribution (only for valid analyses)
         risk_distribution = {
             'LOW': 0,
             'MEDIUM': 0,
             'HIGH': 0
         }
 
-        for analysis in all_analyses:
+        for analysis in valid_analyses_for_averages:
             if analysis.risk_assessment:
                 risk_level = analysis.risk_assessment.get('overall_risk', 'LOW')
                 risk_distribution[risk_level] = risk_distribution.get(risk_level, 0) + 1
@@ -563,12 +671,34 @@ def get_financial_dashboard(request):
 
         analyses_data = []
         for analysis in recent_analyses:
+            input_data = analysis.input_data or {}
+            
+            # Validate analysis input data before including
+            analysis_revenue = input_data.get('totalRevenue', 0) or input_data.get('netIncome', 0) or 0
+            if analysis_revenue <= 0:
+                # Skip analyses with invalid data
+                continue
+            
+            # Check for data quality issues in analysis input
+            values = [
+                input_data.get('totalRevenue', 0),
+                input_data.get('costOfRevenue', 0),
+                input_data.get('grossProfit', 0),
+                input_data.get('operatingIncome', 0),
+                input_data.get('netIncome', 0)
+            ]
+            # Skip if all key values are identical (data quality issue)
+            if len(set([v for v in values if v > 0])) <= 2:
+                if all(abs(v - analysis_revenue) < analysis_revenue * 0.01 for v in values if v > 0 and v == analysis_revenue):
+                    logger.warning(f"Skipping analysis {analysis.id} due to identical financial values")
+                    continue
+            
             analyses_data.append({
                 'id': analysis.id,
                 'date': analysis.created_at.date().isoformat(),
                 'datetime': analysis.created_at.isoformat(),
                 'predictions': analysis.predictions or {},
-                'input_data': analysis.input_data or {},  # ✅ ADD: Include actual cash figures
+                'input_data': input_data,  # ✅ Include validated actual cash figures
                 'recommendations_count': len(analysis.recommendations.get('immediate_actions', [])) if analysis.recommendations else 0,
                 'risk_level': analysis.risk_assessment.get('overall_risk', 'LOW') if analysis.risk_assessment else 'LOW',
                 'risk_factors_count': len(analysis.risk_assessment.get('risk_factors', [])) if analysis.risk_assessment else 0,
@@ -684,11 +814,67 @@ def get_financial_dashboard(request):
         # ✅ Time-sensitive, statement-aligned intelligent analysis
         enhanced_service = EnhancedFinancialDataService()
         financial_data_snapshot = build_financial_data_dict(resolved_snapshot)
-        intelligent = enhanced_service.analyze_intelligent_date_driven_projection(
-            financial_data=financial_data_snapshot,
-            statement_date=resolved_statement_date,
-            corporate_id=corporate_id
-        )
+        
+        # Validate financial data before analysis
+        is_valid, validation_message = validate_financial_data(financial_data_snapshot)
+        if not is_valid:
+            # If data is invalid, return a warning but still provide basic structure
+            intelligent = {
+                'success': False,
+                'error': f'Data validation failed: {validation_message}',
+                'statement_date': resolved_statement_date.isoformat(),
+                'warning': 'Financial data quality issue detected. Analysis may be inaccurate.',
+                'intelligent_projections': {
+                    'next_period': {
+                        'period': 'N/A',
+                        'start_date': None,
+                        'end_date': None,
+                        'projected_revenue': 0.0,
+                        'projected_cost_of_revenue': 0.0,
+                        'projected_gross_profit': 0.0,
+                        'projected_operating_expenses': 0.0,
+                        'projected_operating_income': 0.0,
+                        'projected_net_income': 0.0
+                    }
+                },
+                'kpi_predictions': {},
+                'cost_optimization': {},
+                'decision_intelligence': {
+                    'strategic_recommendations': [{
+                        'category': 'Data Quality',
+                        'priority': 'HIGH',
+                        'title': 'Data Quality Issue',
+                        'description': validation_message,
+                        'expected_impact': 'Please review and correct financial data',
+                        'timeline': 'Immediate',
+                        'implementation_difficulty': 'Low'
+                    }],
+                    'financial_health_score': {
+                        'overall_score': 0.0,
+                        'health_level': 'Unknown',
+                        'recommendations': ['Fix data quality issues before analysis']
+                    }
+                },
+                'confidence_analysis': {
+                    'overall_confidence': 0.0,
+                    'projection_confidence': 0.0,
+                    'recommendation_confidence': 0.0,
+                    'risk_assessment_confidence': 0.0
+                }
+            }
+        else:
+            # Data is valid, proceed with intelligent analysis
+            intelligent = enhanced_service.analyze_intelligent_date_driven_projection(
+                financial_data=financial_data_snapshot,
+                statement_date=resolved_statement_date,
+                corporate_id=corporate_id
+            )
+            
+            # Double-check that projections were calculated
+            if intelligent.get('success') and intelligent.get('intelligent_projections', {}).get('next_period', {}).get('projected_revenue') == 0.0:
+                # If revenue > 0 but projection is 0, something went wrong
+                if financial_data_snapshot.get('totalRevenue', 0) > 0:
+                    logger.warning(f"Projections are zero despite valid revenue data. Revenue: {financial_data_snapshot.get('totalRevenue', 0)}")
 
         # Helper: convert monetary fields in arbitrary nested dicts while leaving ratios/margins intact
         monetary_keys = set([
@@ -712,10 +898,6 @@ def get_financial_dashboard(request):
             endings = ['_revenue', '_income', '_expenses', '_expense', '_cost', '_cash', '_amount', '_spend']
             if any(lower.endswith(end) for end in endings):
                 return isinstance(value, (int, float))
-            # Extra heuristic for camelCase / generic terms
-            contains_terms = ['revenue', 'income', 'expense', 'expenses', 'cost', 'profit', 'cash', 'amount', 'spend']
-            if any(term in lower for term in contains_terms):
-                return isinstance(value, (int, float))
             return False
 
         def convert_nested(obj, rate: float):
@@ -736,19 +918,6 @@ def get_financial_dashboard(request):
         currency_info = convert_currency(1.0, 'KES', requested_currency)
         rate = float(currency_info.get('rate', 1.0))
 
-        # If snapshot appears effectively zeroed, fallback to latest non-zero snapshot
-        def snapshot_has_signal(snap: dict) -> bool:
-            keys_to_check = ['total_revenue', 'gross_profit', 'operating_income', 'net_income']
-            return any((snap.get(k) or 0) not in (0, None) for k in keys_to_check)
-
-        if not snapshot_has_signal(financial_data_snapshot):
-            alt_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id, period_date__lte=resolved_statement_date).order_by('-period_date')
-            for alt in alt_qs:
-                alt_snap = build_financial_data_dict(alt)
-                if snapshot_has_signal(alt_snap):
-                    financial_data_snapshot = alt_snap
-                    break
-
         # Convert snapshot monetary figures and intelligent analysis amounts
         converted_snapshot = convert_nested(financial_data_snapshot, rate)
         converted_intelligent = convert_nested(intelligent, rate)
@@ -758,29 +927,8 @@ def get_financial_dashboard(request):
             if 'input_data' in item and isinstance(item['input_data'], dict):
                 item['input_data'] = convert_nested(item['input_data'], rate)
 
-        # Normalize any hardcoded currency markers in texts (e.g., "$500K")
-        currency_symbols = {
-            'KES': 'KSh', 'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥', 'CAD': 'C$', 'AUD': 'A$', 'CHF': 'Fr', 'CNY': '¥', 'INR': '₹', 'ZAR': 'R', 'UGX': 'USh'
-        }
-        symbol = currency_symbols.get(requested_currency, requested_currency)
-
-        def replace_currency_texts(obj):
-            if isinstance(obj, dict):
-                new_obj = {}
-                for k, v in obj.items():
-                    if isinstance(v, str):
-                        new_obj[k] = v.replace('$', symbol)
-                    else:
-                        new_obj[k] = replace_currency_texts(v)
-                return new_obj
-            elif isinstance(obj, list):
-                return [replace_currency_texts(x) for x in obj]
-            else:
-                return obj
-
-        converted_intelligent = replace_currency_texts(converted_intelligent)
-
-        # Get currency conversion info (already computed)
+        # Get currency conversion info
+        # currency_info already computed above
         
         # Build dashboard response (statement-aligned core first, with aggregates as context)
         dashboard_data = {
@@ -797,7 +945,8 @@ def get_financial_dashboard(request):
             },
             "intelligent_analysis": converted_intelligent,
             'summary': {
-                'total_analyses': total_analyses,
+                'total_analyses': len(valid_analyses_for_averages),
+                'total_analyses_all': total_analyses_all,
                 'total_uploads': total_uploads,
                 'successful_uploads': successful_uploads,
                 'average_predictions': average_predictions,
@@ -814,7 +963,8 @@ def get_financial_dashboard(request):
             state_name="Success",
             extra={
                 "period": f"{start_date} to {end_date}",
-                "total_analyses": total_analyses
+                "total_analyses": len(valid_analyses_for_averages),
+                "total_analyses_all": total_analyses_all
             },
             request=request,
         )
