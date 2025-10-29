@@ -480,8 +480,17 @@ def get_financial_dashboard(request):
                 "additional_features": pfd.additional_features or {},
             }
 
-        # If upload_id provided, resolve its processed snapshot and date
+        # If upload_id provided, verify upload completed, then resolve its processed snapshot and date
         if upload_id:
+            try:
+                upload_rec = FinancialDataUpload.objects.get(id=upload_id, corporate_id=corporate_id)
+            except FinancialDataUpload.DoesNotExist:
+                return ResponseProvider(message="Upload not found for this corporate.", code=404).not_found()
+            if upload_rec.processing_status != 'completed':
+                return ResponseProvider(
+                    message="Processing not completed yet for this upload. Please wait until status is 'completed'.",
+                    code=202
+                ).success()
             pfd_qs = ProcessedFinancialData.objects.filter(upload_id=upload_id, corporate_id=corporate_id).order_by('-period_date')
             resolved_snapshot = pfd_qs.first()
             if resolved_snapshot:
@@ -496,10 +505,19 @@ def get_financial_dashboard(request):
             resolved_snapshot = pfd_qs.first()
             resolved_statement_date = candidate_date
         # Fallback: if nothing specified, use the most recent processed snapshot and its date
-        if not resolved_statement_date:
-            pfd_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id).order_by('-period_date')
-            resolved_snapshot = pfd_qs.first()
-            resolved_statement_date = resolved_snapshot.period_date if resolved_snapshot else date.today()
+    if not resolved_statement_date:
+        pfd_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id).order_by('-period_date')
+        resolved_snapshot = pfd_qs.first()
+        if not resolved_snapshot:
+            return ResponseProvider(
+                message="No processed financial data found. Please upload and complete processing first.",
+                code=404
+            ).not_found()
+        resolved_statement_date = resolved_snapshot.period_date
+
+    # Final gate: ensure snapshot exists
+    if not resolved_snapshot:
+        return ResponseProvider(message="No processed snapshot available for analysis.", code=404).not_found()
 
         # ✅ Get all completed analyses in date range (for aggregates/history, not for projections)
         all_analyses = TazamaAnalysisRequest.objects.filter(
@@ -694,6 +712,10 @@ def get_financial_dashboard(request):
             endings = ['_revenue', '_income', '_expenses', '_expense', '_cost', '_cash', '_amount', '_spend']
             if any(lower.endswith(end) for end in endings):
                 return isinstance(value, (int, float))
+            # Extra heuristic for camelCase / generic terms
+            contains_terms = ['revenue', 'income', 'expense', 'expenses', 'cost', 'profit', 'cash', 'amount', 'spend']
+            if any(term in lower for term in contains_terms):
+                return isinstance(value, (int, float))
             return False
 
         def convert_nested(obj, rate: float):
@@ -714,6 +736,19 @@ def get_financial_dashboard(request):
         currency_info = convert_currency(1.0, 'KES', requested_currency)
         rate = float(currency_info.get('rate', 1.0))
 
+        # If snapshot appears effectively zeroed, fallback to latest non-zero snapshot
+        def snapshot_has_signal(snap: dict) -> bool:
+            keys_to_check = ['total_revenue', 'gross_profit', 'operating_income', 'net_income']
+            return any((snap.get(k) or 0) not in (0, None) for k in keys_to_check)
+
+        if not snapshot_has_signal(financial_data_snapshot):
+            alt_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id, period_date__lte=resolved_statement_date).order_by('-period_date')
+            for alt in alt_qs:
+                alt_snap = build_financial_data_dict(alt)
+                if snapshot_has_signal(alt_snap):
+                    financial_data_snapshot = alt_snap
+                    break
+
         # Convert snapshot monetary figures and intelligent analysis amounts
         converted_snapshot = convert_nested(financial_data_snapshot, rate)
         converted_intelligent = convert_nested(intelligent, rate)
@@ -723,8 +758,29 @@ def get_financial_dashboard(request):
             if 'input_data' in item and isinstance(item['input_data'], dict):
                 item['input_data'] = convert_nested(item['input_data'], rate)
 
-        # Get currency conversion info
-        # currency_info already computed above
+        # Normalize any hardcoded currency markers in texts (e.g., "$500K")
+        currency_symbols = {
+            'KES': 'KSh', 'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥', 'CAD': 'C$', 'AUD': 'A$', 'CHF': 'Fr', 'CNY': '¥', 'INR': '₹', 'ZAR': 'R', 'UGX': 'USh'
+        }
+        symbol = currency_symbols.get(requested_currency, requested_currency)
+
+        def replace_currency_texts(obj):
+            if isinstance(obj, dict):
+                new_obj = {}
+                for k, v in obj.items():
+                    if isinstance(v, str):
+                        new_obj[k] = v.replace('$', symbol)
+                    else:
+                        new_obj[k] = replace_currency_texts(v)
+                return new_obj
+            elif isinstance(obj, list):
+                return [replace_currency_texts(x) for x in obj]
+            else:
+                return obj
+
+        converted_intelligent = replace_currency_texts(converted_intelligent)
+
+        # Get currency conversion info (already computed)
         
         # Build dashboard response (statement-aligned core first, with aggregates as context)
         dashboard_data = {
