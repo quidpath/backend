@@ -463,23 +463,53 @@ def get_financial_dashboard(request):
         def build_financial_data_dict(pfd):
             if not pfd:
                 return {}
-            return {
-                "total_revenue": float(pfd.total_revenue or 0),
-                "cost_of_revenue": float(pfd.cost_of_revenue or 0),
-                "gross_profit": float(pfd.gross_profit or 0),
-                "total_operating_expenses": float(pfd.total_operating_expenses or 0),
-                "operating_income": float(pfd.operating_income or 0),
-                "net_income": float(pfd.net_income or 0),
+            total_revenue = float(pfd.total_revenue or 0)
+            cost_of_revenue = float(pfd.cost_of_revenue or 0)
+            gross_profit = float(pfd.gross_profit or 0)
+            total_operating_expenses = float(pfd.total_operating_expenses or 0)
+            operating_income = float(pfd.operating_income or 0)
+            net_income = float(pfd.net_income or 0)
+
+            # Recompute derived fields if missing or clearly inconsistent
+            if gross_profit == 0 and (total_revenue or cost_of_revenue):
+                gross_profit = total_revenue - cost_of_revenue
+            if operating_income == 0 and (gross_profit or total_operating_expenses):
+                operating_income = gross_profit - total_operating_expenses
+            # If taxes were tracked, they would be subtracted; otherwise keep provided net_income
+
+            snapshot = {
+                "total_revenue": total_revenue,
+                "cost_of_revenue": cost_of_revenue,
+                "gross_profit": gross_profit,
+                "total_operating_expenses": total_operating_expenses,
+                "operating_income": operating_income,
+                "net_income": net_income,
                 "profit_margin": float(pfd.profit_margin or 0) if pfd.profit_margin is not None else None,
                 "operating_margin": float(pfd.operating_margin or 0) if pfd.operating_margin is not None else None,
                 "gross_margin": float(pfd.gross_margin or 0) if pfd.gross_margin is not None else None,
-                "cost_revenue_ratio": float(
-                    pfd.cost_revenue_ratio or 0) if pfd.cost_revenue_ratio is not None else None,
+                "cost_revenue_ratio": float(pfd.cost_revenue_ratio or 0) if pfd.cost_revenue_ratio is not None else None,
                 "expense_ratio": float(pfd.expense_ratio or 0) if pfd.expense_ratio is not None else None,
                 "rd_intensity": float(pfd.rd_intensity or 0) if pfd.rd_intensity is not None else None,
                 "revenue_growth": float(pfd.revenue_growth or 0) if pfd.revenue_growth is not None else None,
                 "additional_features": pfd.additional_features or {},
             }
+
+            # Debug logging of snapshot before currency conversion
+            try:
+                print({
+                    "debug_snapshot_before_fx": {
+                        "total_revenue": snapshot["total_revenue"],
+                        "cost_of_revenue": snapshot["cost_of_revenue"],
+                        "gross_profit": snapshot["gross_profit"],
+                        "operating_expenses": snapshot["total_operating_expenses"],
+                        "operating_income": snapshot["operating_income"],
+                        "net_income": snapshot["net_income"],
+                    }
+                })
+            except Exception:
+                pass
+
+            return snapshot
 
         # ✅ FIX: Proper try-except block structure
         try:
@@ -747,6 +777,21 @@ def get_financial_dashboard(request):
         # Convert all monetary values
         converted_snapshot = convert_nested(financial_data_snapshot, rate)
         converted_intelligent = convert_nested(intelligent, rate)
+
+        # Debug logging after conversion
+        try:
+            print({
+                "debug_snapshot_after_fx": {
+                    "total_revenue": converted_snapshot.get("total_revenue"),
+                    "cost_of_revenue": converted_snapshot.get("cost_of_revenue"),
+                    "gross_profit": converted_snapshot.get("gross_profit"),
+                    "operating_expenses": converted_snapshot.get("total_operating_expenses"),
+                    "operating_income": converted_snapshot.get("operating_income"),
+                    "net_income": converted_snapshot.get("net_income"),
+                }
+            })
+        except Exception:
+            pass
 
         # ✅ Recompute KPI trends dynamically from recent analyses
         def compute_trends_from_history(history: list) -> dict:
