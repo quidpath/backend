@@ -1,6 +1,7 @@
 # views.py - Django views for Tazama integration
 import json
 import os
+import requests
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,59 @@ from .models import (
     FinancialDataUpload, ProcessedFinancialData, TazamaAnalysisRequest,
     FinancialReport, TazamaMLModel, ModelTrainingJob, DashboardMetric, ModelPredictionLog
 )
+
+# Currency conversion helper
+def convert_currency(amount: float, from_currency: str = 'KES', to_currency: str = 'USD') -> dict:
+    """
+    Convert currency using exchangerate-api.io (free tier)
+    Returns conversion rate and converted amount
+    """
+    try:
+        if from_currency == to_currency:
+            return {'rate': 1.0, 'converted_amount': amount, 'from': from_currency, 'to': to_currency}
+        
+        # Using exchangerate-api.io free tier (no API key required for basic usage)
+        url = f"https://api.exchangerate-api.com/v4/latest/{from_currency}"
+        response = requests.get(url, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            rates = data.get('rates', {})
+            rate = rates.get(to_currency, 1.0)
+            converted = amount * rate
+            return {
+                'rate': round(rate, 6),
+                'converted_amount': round(converted, 2),
+                'from': from_currency,
+                'to': to_currency,
+                'timestamp': data.get('date')
+            }
+        else:
+            # Fallback to approximate conversion if API fails
+            fallback_rates = {
+                'USD': 1.0,
+                'KES': 0.0067,  # ~1 KES = 0.0067 USD
+                'EUR': 1.08,
+                'GBP': 1.27,
+                'JPY': 0.0068,
+                'CAD': 0.74,
+                'AUD': 0.67,
+                'CHF': 1.11,
+                'CNY': 0.14,
+                'INR': 0.012
+            }
+            if from_currency in fallback_rates and to_currency in fallback_rates:
+                rate = fallback_rates[to_currency] / fallback_rates[from_currency]
+                return {
+                    'rate': round(rate, 6),
+                    'converted_amount': round(amount * rate, 2),
+                    'from': from_currency,
+                    'to': to_currency,
+                    'warning': 'Using fallback rates - API unavailable'
+                }
+            return {'rate': 1.0, 'converted_amount': amount, 'error': 'Currency conversion failed'}
+    except Exception as e:
+        return {'rate': 1.0, 'converted_amount': amount, 'error': str(e)}
 
 def sanitize_report_data_for_json(data):
     """
@@ -359,8 +413,12 @@ def get_financial_dashboard(request):
     - end_date: End date for historical aggregates window
     - statement_date: ISO date string to align projections to this statement timeline
     - upload_id: If provided, derive statement_date and financial snapshot from this upload
+    - currency: Target currency code (default: KES, options: USD, EUR, GBP, etc.)
     """
     data, metadata = get_clean_data(request)
+    
+    # Get requested currency or default to KES
+    requested_currency = data.get('currency', 'KES').upper()
     user = metadata.get("user")
     if not user:
         return ResponseProvider(message="User not authenticated", code=401).unauthorized()
@@ -614,11 +672,21 @@ def get_financial_dashboard(request):
             corporate_id=corporate_id
         )
 
+        # Get currency conversion info
+        currency_info = convert_currency(1.0, 'KES', requested_currency)
+        
         # Build dashboard response (statement-aligned core first, with aggregates as context)
         dashboard_data = {
             "alignment": {
                 "reference_statement_date": resolved_statement_date.isoformat(),
                 "source": "upload_id" if upload_id else ("explicit_date" if statement_date_str else "latest_snapshot"),
+            },
+            "currency": {
+                "code": requested_currency,
+                "rate": currency_info.get('rate', 1.0),
+                "from": "KES",
+                "to": requested_currency,
+                "timestamp": currency_info.get('timestamp')
             },
             "intelligent_analysis": intelligent,
             'summary': {
@@ -1273,6 +1341,32 @@ def get_complete_pipeline_status(request):
     except Exception as e:
         return ResponseProvider(
             message=f"Error retrieving pipeline status: {str(e)}",
+            code=500
+        ).exception()
+
+
+@csrf_exempt
+def convert_currency_endpoint(request):
+    """
+    Currency conversion endpoint
+    """
+    data, metadata = get_clean_data(request)
+    
+    try:
+        amount = float(data.get('amount', 1.0))
+        from_currency = data.get('from', 'KES').upper()
+        to_currency = data.get('to', 'USD').upper()
+        
+        result = convert_currency(amount, from_currency, to_currency)
+        
+        return ResponseProvider(
+            data=result,
+            message="Currency conversion successful",
+            code=200
+        ).success()
+    except Exception as e:
+        return ResponseProvider(
+            message=f"Currency conversion failed: {str(e)}",
             code=500
         ).exception()
 

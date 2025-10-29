@@ -23,4 +23,7 @@ urlpatterns = [
     # Intelligent data extraction
     path('test-intelligent-extraction/', views.test_intelligent_extraction, name='test_intelligent_extraction'),
     path('get-complete-pipeline-status/', views.get_complete_pipeline_status, name='get_complete_pipeline_status'),
+    
+    # Currency conversion
+    path('convert-currency/', views.convert_currency_endpoint, name='convert_currency'),
 ]
