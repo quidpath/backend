@@ -655,6 +655,20 @@ class IntelligentDataExtractor:
             'shareholders_equity': metrics.get('shareholders_equity', 0.0)
         }
         
+        # Debug logging: Show what was extracted
+        print("🔍 DEBUG: IntelligentDataExtractor - _create_financial_records")
+        print({
+            "metrics_input": metrics,
+            "record_output": {
+                "total_revenue": record['total_revenue'],
+                "cost_of_revenue": record['cost_of_revenue'],
+                "gross_profit": record['gross_profit'],
+                "operating_expenses": record['total_operating_expenses'],
+                "operating_income": record['operating_income'],
+                "net_income": record['net_income']
+            }
+        })
+        
         return [record]
 
     def _validate_extracted_data(self, data: Dict[str, Any]) -> Dict[str, Any]:

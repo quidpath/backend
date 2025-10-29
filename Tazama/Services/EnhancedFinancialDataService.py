@@ -114,6 +114,19 @@ class EnhancedFinancialDataService:
                     # Validate and clean the record
                     cleaned_record = self._clean_financial_record(record)
                     
+                    # Debug logging: Show cleaned record before storage
+                    print("🔍 DEBUG: EnhancedFinancialDataService - _store_intelligent_extraction")
+                    print({
+                        "cleaned_record": {
+                            "total_revenue": cleaned_record.get('total_revenue', 0),
+                            "cost_of_revenue": cleaned_record.get('cost_of_revenue', 0),
+                            "gross_profit": cleaned_record.get('gross_profit', 0),
+                            "operating_expenses": cleaned_record.get('total_operating_expenses', 0),
+                            "operating_income": cleaned_record.get('operating_income', 0),
+                            "net_income": cleaned_record.get('net_income', 0)
+                        }
+                    })
+                    
                     # Calculate derived metrics
                     calculated_metrics = self._calculate_derived_metrics(cleaned_record)
                     
@@ -141,6 +154,19 @@ class EnhancedFinancialDataService:
                             'validation_errors': []
                         }
                     )
+                    
+                    # Debug logging: Show what was saved to database
+                    print("🔍 DEBUG: Saved to ProcessedFinancialData")
+                    print({
+                        "saved_to_db": {
+                            "total_revenue": str(processed_data.total_revenue),
+                            "cost_of_revenue": str(processed_data.cost_of_revenue),
+                            "gross_profit": str(processed_data.gross_profit),
+                            "operating_expenses": str(processed_data.total_operating_expenses),
+                            "operating_income": str(processed_data.operating_income),
+                            "net_income": str(processed_data.net_income)
+                        }
+                    })
                     
                     stored_count += 1
                     
@@ -198,6 +224,23 @@ class EnhancedFinancialDataService:
             cleaned['period_date'] = record['period_date']
         else:
             cleaned['period_date'] = timezone.now().date()
+        
+        # ✅ CRITICAL FIX: Recompute derived fields if missing or zero
+        total_revenue = cleaned.get('total_revenue', 0)
+        cost_of_revenue = cleaned.get('cost_of_revenue', 0)
+        gross_profit = cleaned.get('gross_profit', 0)
+        total_operating_expenses = cleaned.get('total_operating_expenses', 0)
+        operating_income = cleaned.get('operating_income', 0)
+        
+        # Recompute gross_profit if missing but we have revenue and cost
+        if gross_profit == 0 and total_revenue > 0 and cost_of_revenue > 0:
+            cleaned['gross_profit'] = total_revenue - cost_of_revenue
+            logger.info(f"Recomputed gross_profit: {cleaned['gross_profit']}")
+        
+        # Recompute operating_income if missing but we have gross profit and expenses
+        if operating_income == 0 and cleaned.get('gross_profit', 0) > 0 and total_operating_expenses > 0:
+            cleaned['operating_income'] = cleaned['gross_profit'] - total_operating_expenses
+            logger.info(f"Recomputed operating_income: {cleaned['operating_income']}")
         
         return cleaned
     
