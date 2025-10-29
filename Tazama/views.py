@@ -672,8 +672,59 @@ def get_financial_dashboard(request):
             corporate_id=corporate_id
         )
 
-        # Get currency conversion info
+        # Helper: convert monetary fields in arbitrary nested dicts while leaving ratios/margins intact
+        monetary_keys = set([
+            'total_revenue', 'cost_of_revenue', 'gross_profit', 'total_operating_expenses',
+            'operating_income', 'net_income', 'revenue', 'expenses', 'costs', 'cash',
+            'capital_expenditure', 'capex', 'opex', 'ebit', 'ebitda', 'depreciation', 'amortization',
+            'working_capital', 'inventory_cost', 'marketing_spend', 'rd_spend', 'interest_expense'
+        ])
+
+        def is_monetary_field(key: str, value) -> bool:
+            if not isinstance(key, str):
+                return False
+            # Exclude typical ratio/percentage keys
+            lower = key.lower()
+            if any(s in lower for s in ['margin', 'ratio', 'rate', 'percent', 'growth']) or lower.endswith('_pct'):
+                return False
+            # Whitelist specific monetary keys
+            if key in monetary_keys:
+                return True
+            # Heuristic: names ending with these are likely monetary
+            endings = ['_revenue', '_income', '_expenses', '_expense', '_cost', '_cash', '_amount', '_spend']
+            if any(lower.endswith(end) for end in endings):
+                return isinstance(value, (int, float))
+            return False
+
+        def convert_nested(obj, rate: float):
+            if isinstance(obj, dict):
+                new_obj = {}
+                for k, v in obj.items():
+                    if is_monetary_field(k, v) and isinstance(v, (int, float)):
+                        new_obj[k] = round(float(v) * rate, 2)
+                    else:
+                        new_obj[k] = convert_nested(v, rate)
+                return new_obj
+            elif isinstance(obj, list):
+                return [convert_nested(x, rate) for x in obj]
+            else:
+                return obj
+
+        # Determine conversion rate (from KES baseline to requested currency)
         currency_info = convert_currency(1.0, 'KES', requested_currency)
+        rate = float(currency_info.get('rate', 1.0))
+
+        # Convert snapshot monetary figures and intelligent analysis amounts
+        converted_snapshot = convert_nested(financial_data_snapshot, rate)
+        converted_intelligent = convert_nested(intelligent, rate)
+
+        # Convert input_data in recent analyses (if present)
+        for item in analyses_data:
+            if 'input_data' in item and isinstance(item['input_data'], dict):
+                item['input_data'] = convert_nested(item['input_data'], rate)
+
+        # Get currency conversion info
+        # currency_info already computed above
         
         # Build dashboard response (statement-aligned core first, with aggregates as context)
         dashboard_data = {
@@ -688,7 +739,7 @@ def get_financial_dashboard(request):
                 "to": requested_currency,
                 "timestamp": currency_info.get('timestamp')
             },
-            "intelligent_analysis": intelligent,
+            "intelligent_analysis": converted_intelligent,
             'summary': {
                 'total_analyses': total_analyses,
                 'total_uploads': total_uploads,
@@ -697,6 +748,7 @@ def get_financial_dashboard(request):
                 'risk_distribution': risk_distribution
             },
             'recent_analyses': analyses_data,
+            'statement_snapshot': converted_snapshot,
         }
 
         TransactionLogBase.log(
