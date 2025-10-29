@@ -141,16 +141,9 @@ CORS_ALLOWED_ORIGINS = [
     "https://quidpath.com",
     "https://www.quidpath.com",
     "http://localhost:3000",
-    "http://localhost:3001",
     "https://quidpath-erp-frontend-production.up.railway.app"
+
 ]
-CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
-    "content-type",
-    "x-requested-with",
-    "accept",
-    "origin",
-    "access-control-request-method",
-    "access-control-request-headers",
 ]

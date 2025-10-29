@@ -36,20 +36,6 @@ def issue_tokens_for_user(user, role=None, corporate_id=None):
 
 @csrf_exempt
 def login_user(request):
-    # Handle OPTIONS preflight request
-    if request.method == 'OPTIONS':
-        response = JsonResponse({})
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
-        response["Access-Control-Allow-Credentials"] = "true"
-        return response
-    
-    # Add debugging for CORS
-    print(f"Login request from origin: {request.META.get('HTTP_ORIGIN', 'No origin')}")
-    print(f"Login request method: {request.method}")
-    print(f"Login request headers: {dict(request.META)}")
-    
     data, _ = get_clean_data(request)
     username = data.get("username")
     password = data.get("password")
@@ -113,26 +99,10 @@ def login_user(request):
         "organisation_id": corporate_id,
         "role": role or ("superuser" if user.is_superuser else None),
     })
-    
-    # Add CORS headers
-    response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
-    response["Access-Control-Allow-Credentials"] = "true"
-    
     return response
 
 @csrf_exempt
 def verify_otp(request):
-    # Handle OPTIONS preflight request
-    if request.method == 'OPTIONS':
-        response = JsonResponse({})
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
-        response["Access-Control-Allow-Credentials"] = "true"
-        return response
-    
     data, _ = get_clean_data(request)
     otp_code = data.get("otp")
 
@@ -169,13 +139,6 @@ def verify_otp(request):
         "otp_required": False
     })
     response["Authorization"] = f"Bearer {access_token}"
-    
-    # Add CORS headers
-    response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
-    response["Access-Control-Allow-Credentials"] = "true"
-    
     return response
 
 from rest_framework_simplejwt.authentication import JWTAuthentication

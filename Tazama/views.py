@@ -352,11 +352,13 @@ def analyze_financial_data(request):
 @csrf_exempt
 def get_financial_dashboard(request):
     """
-    Get dashboard data for financial analysis visualization
+    Get dashboard data with statement-time-aligned projections
 
     Expected data (optional):
-    - start_date: Start date for metrics calculation
-    - end_date: End date for metrics calculation
+    - start_date: Start date for historical aggregates window
+    - end_date: End date for historical aggregates window
+    - statement_date: ISO date string to align projections to this statement timeline
+    - upload_id: If provided, derive statement_date and financial snapshot from this upload
     """
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
@@ -381,21 +383,67 @@ def get_financial_dashboard(request):
 
         corporate_id = corporate_users[0]["corporate_id"]
 
-        # Parse dates
+        # Parse window dates for aggregates (defaults to last 365 days)
         start_date_str = data.get("start_date")
         end_date_str = data.get("end_date")
-
         if start_date_str:
             start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
         else:
-            start_date = date.today() - timedelta(days=365)  # Last year by default
-
+            start_date = date.today() - timedelta(days=365)
         if end_date_str:
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
         else:
             end_date = date.today()
 
-        # ✅ Get all completed analyses in date range
+        # Determine statement-aligned context
+        statement_date_str = data.get("statement_date") or data.get("reference_date")
+        upload_id = data.get("upload_id")
+        resolved_statement_date = None
+        resolved_snapshot = None
+
+        # Helper: build minimal financial_data dict from a ProcessedFinancialData row
+        def build_financial_data_dict(pfd):
+            if not pfd:
+                return {}
+            return {
+                "total_revenue": float(pfd.total_revenue or 0),
+                "cost_of_revenue": float(pfd.cost_of_revenue or 0),
+                "gross_profit": float(pfd.gross_profit or 0),
+                "total_operating_expenses": float(pfd.total_operating_expenses or 0),
+                "operating_income": float(pfd.operating_income or 0),
+                "net_income": float(pfd.net_income or 0),
+                "profit_margin": float(pfd.profit_margin or 0) if pfd.profit_margin is not None else None,
+                "operating_margin": float(pfd.operating_margin or 0) if pfd.operating_margin is not None else None,
+                "gross_margin": float(pfd.gross_margin or 0) if pfd.gross_margin is not None else None,
+                "cost_revenue_ratio": float(pfd.cost_revenue_ratio or 0) if pfd.cost_revenue_ratio is not None else None,
+                "expense_ratio": float(pfd.expense_ratio or 0) if pfd.expense_ratio is not None else None,
+                "rd_intensity": float(pfd.rd_intensity or 0) if pfd.rd_intensity is not None else None,
+                "revenue_growth": float(pfd.revenue_growth or 0) if pfd.revenue_growth is not None else None,
+                "additional_features": pfd.additional_features or {},
+            }
+
+        # If upload_id provided, resolve its processed snapshot and date
+        if upload_id:
+            pfd_qs = ProcessedFinancialData.objects.filter(upload_id=upload_id, corporate_id=corporate_id).order_by('-period_date')
+            resolved_snapshot = pfd_qs.first()
+            if resolved_snapshot:
+                resolved_statement_date = resolved_snapshot.period_date
+        # Else if a statement_date was provided, use it and pick the latest snapshot at or before that date
+        if not resolved_statement_date and statement_date_str:
+            try:
+                candidate_date = datetime.strptime(statement_date_str, '%Y-%m-%d').date()
+            except Exception:
+                return ResponseProvider(message="Invalid statement_date format; expected YYYY-MM-DD", code=400).bad_request()
+            pfd_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id, period_date__lte=candidate_date).order_by('-period_date')
+            resolved_snapshot = pfd_qs.first()
+            resolved_statement_date = candidate_date
+        # Fallback: if nothing specified, use the most recent processed snapshot and its date
+        if not resolved_statement_date:
+            pfd_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id).order_by('-period_date')
+            resolved_snapshot = pfd_qs.first()
+            resolved_statement_date = resolved_snapshot.period_date if resolved_snapshot else date.today()
+
+        # ✅ Get all completed analyses in date range (for aggregates/history, not for projections)
         all_analyses = TazamaAnalysisRequest.objects.filter(
             corporate_id=corporate_id,
             status='completed',
@@ -557,40 +605,30 @@ def get_financial_dashboard(request):
             corporate_id=corporate_id
         ).order_by('-period_date').first()
 
+        # ✅ Time-sensitive, statement-aligned intelligent analysis
+        enhanced_service = EnhancedFinancialDataService()
+        financial_data_snapshot = build_financial_data_dict(resolved_snapshot)
+        intelligent = enhanced_service.analyze_intelligent_date_driven_projection(
+            financial_data=financial_data_snapshot,
+            statement_date=resolved_statement_date,
+            corporate_id=corporate_id
+        )
+
+        # Build dashboard response (statement-aligned core first, with aggregates as context)
         dashboard_data = {
-            'period': {
-                'start_date': start_date.isoformat(),
-                'end_date': end_date.isoformat(),
-                'days_in_period': (end_date - start_date).days
+            "alignment": {
+                "reference_statement_date": resolved_statement_date.isoformat(),
+                "source": "upload_id" if upload_id else ("explicit_date" if statement_date_str else "latest_snapshot"),
             },
+            "intelligent_analysis": intelligent,
             'summary': {
                 'total_analyses': total_analyses,
+                'total_uploads': total_uploads,
+                'successful_uploads': successful_uploads,
                 'average_predictions': average_predictions,
-                'risk_distribution': risk_distribution,
-                'uploads': {
-                    'total': total_uploads,
-                    'successful': successful_uploads,
-                    'failed': failed_uploads
-                },
-                'processed_records': processed_data_count,
-                'latest_analysis_date': latest_analysis.created_at.isoformat() if latest_analysis else None,
-                'latest_data_period': latest_processed_data.period_date.isoformat() if latest_processed_data else None
+                'risk_distribution': risk_distribution
             },
-            'period_over_period_changes': changes,
             'recent_analyses': analyses_data,
-            'available_models': models_data,
-            'trends': {
-                'data': trend_data,
-                'metrics': ['profit_margin', 'operating_margin', 'cost_revenue_ratio', 'expense_ratio'],
-                'dates': [item['date'] for item in trend_data]
-            },
-            'insights': {
-                'most_common_risk_level': max(risk_distribution.items(), key=lambda x: x[1])[0] if total_analyses > 0 else None,
-                'average_processing_time': round(
-                    sum(a.processing_time_seconds or 0 for a in all_analyses) / total_analyses, 2
-                ) if total_analyses > 0 else 0,
-                'analyses_per_day': round(total_analyses / max((end_date - start_date).days, 1), 2)
-            }
         }
 
         TransactionLogBase.log(
@@ -607,7 +645,7 @@ def get_financial_dashboard(request):
 
         return ResponseProvider(
             data=dashboard_data,
-            message="Dashboard data retrieved successfully",
+            message="Time-sensitive dashboard data retrieved successfully",
             code=200
         ).success()
 
