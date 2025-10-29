@@ -15,6 +15,10 @@ import logging
 from datetime import datetime, date
 import warnings
 
+from Tazama.Services.TazamaService import TazamaAnalysisService
+from Tazama.core.report_generator import TazamaReportGenerator
+from Tazama.models import TazamaAnalysisRequest, FinancialReport
+
 warnings.filterwarnings('ignore')
 logger = logging.getLogger(__name__)
 
@@ -842,3 +846,196 @@ class IntelligentDataExtractor:
         """Extract values using ML prediction"""
         column = prediction['column']
         return self._extract_metric_values(df, column)
+
+    def _generate_comprehensive_report(self, analysis_result, upload_record):
+        """
+        Generate comprehensive financial report with proper error handling
+        """
+        try:
+
+
+            # ✅ FIX: Validate analysis_result before report generation
+            if not analysis_result or not isinstance(analysis_result, dict):
+                logger.warning("Invalid analysis result for report generation")
+                return {
+                    'success': False,
+                    'error': 'Invalid analysis result'
+                }
+
+            # Get the analysis request object
+            analysis_id = analysis_result.get('analysis_id')
+            if not analysis_id:
+                logger.warning("No analysis_id in result")
+                return {
+                    'success': False,
+                    'error': 'No analysis ID available'
+                }
+
+            try:
+                analysis_request = TazamaAnalysisRequest.objects.get(id=analysis_id)
+            except TazamaAnalysisRequest.DoesNotExist:
+                logger.error(f"Analysis request {analysis_id} not found")
+                return {
+                    'success': False,
+                    'error': 'Analysis request not found'
+                }
+
+            # Generate report using the generator
+            report_generator = TazamaReportGenerator()
+
+            # ✅ FIX: Use correct FinancialReport fields (no 'content' field)
+            report_path, content_type = report_generator.generate_report(
+                analysis_request,
+                format='html'  # or 'pdf', 'json', 'excel'
+            )
+
+            # Create FinancialReport record with correct fields
+            date_str = analysis_request.created_at.strftime('%Y-%m-%d')
+
+            # ✅ FIX: Remove 'content' field and use correct field names
+            financial_report = FinancialReport.objects.create(
+                analysis_request=analysis_request,
+                corporate=analysis_request.corporate,
+                report_type='comprehensive_analysis',
+                title=f"Financial Analysis Report - {date_str}"[:90],  # Truncate to field limit
+                executive_summary=f"AI-powered financial analysis"[:255],  # Truncate to field limit
+                detailed_analysis=analysis_request.predictions or {},
+                recommendations=analysis_request.recommendations or {},
+                report_format='html',
+                report_file=report_path
+            )
+
+            return {
+                'success': True,
+                'report_id': financial_report.id,
+                'report_path': report_path,
+                'report_type': content_type
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating comprehensive report: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def _run_intelligent_analysis(self, processed_data, upload_record):
+        """
+        Run intelligent AI analysis with proper input validation
+        """
+        try:
+            # ✅ FIX: Validate processed_data before analysis
+            if not processed_data or not isinstance(processed_data, list):
+                logger.warning("Empty or invalid processed_data for analysis")
+                return {
+                    'success': False,
+                    'error': 'No valid data to analyze'
+                }
+
+            if len(processed_data) == 0:
+                logger.warning("Empty processed_data list")
+                return {
+                    'success': False,
+                    'error': 'No financial records to analyze'
+                }
+
+            # Get the latest processed record
+            latest_record = processed_data[0]
+
+            # ✅ FIX: Build proper input_data with ALL required features
+            input_data = {
+                'totalRevenue': float(latest_record.total_revenue or 0),
+                'costOfRevenue': float(latest_record.cost_of_revenue or 0),
+                'grossProfit': float(latest_record.gross_profit or 0),
+                'totalOperatingExpenses': float(latest_record.total_operating_expenses or 0),
+                'operatingIncome': float(latest_record.operating_income or 0),
+                'netIncome': float(latest_record.net_income or 0),
+                'researchDevelopment': float(latest_record.research_development or 0),
+            }
+
+            # ✅ CRITICAL: Calculate ALL derived features that model expects
+            total_revenue = input_data['totalRevenue']
+            cost_of_revenue = input_data['costOfRevenue']
+            gross_profit = input_data['grossProfit']
+            total_expenses = input_data['totalOperatingExpenses']
+            operating_income = input_data['operatingIncome']
+            net_income = input_data['netIncome']
+            rd_expenses = input_data['researchDevelopment']
+
+            # Calculate ratios and margins
+            if total_revenue > 0:
+                input_data['profit_margin'] = net_income / total_revenue
+                input_data['operating_margin'] = operating_income / total_revenue
+                input_data['cost_revenue_ratio'] = cost_of_revenue / total_revenue
+                input_data['expense_ratio'] = total_expenses / total_revenue
+                input_data['gross_margin'] = gross_profit / total_revenue
+                input_data['rd_intensity'] = rd_expenses / total_revenue
+                input_data['revenue_per_expense'] = total_revenue / max(total_expenses, 1)
+            else:
+                input_data['profit_margin'] = 0
+                input_data['operating_margin'] = 0
+                input_data['cost_revenue_ratio'] = 0
+                input_data['expense_ratio'] = 0
+                input_data['gross_margin'] = 0
+                input_data['rd_intensity'] = 0
+                input_data['revenue_per_expense'] = 0
+
+            # Clip values to reasonable ranges (same as training)
+            input_data['profit_margin'] = np.clip(input_data['profit_margin'], -1, 1)
+            input_data['gross_margin'] = np.clip(input_data['gross_margin'], -1, 1)
+            input_data['operating_margin'] = np.clip(input_data['operating_margin'], -1, 1)
+            input_data['cost_revenue_ratio'] = np.clip(input_data['cost_revenue_ratio'], 0, 2)
+            input_data['expense_ratio'] = np.clip(input_data['expense_ratio'], 0, 2)
+            input_data['rd_intensity'] = np.clip(input_data['rd_intensity'], 0, 1)
+            input_data['revenue_per_expense'] = np.clip(input_data['revenue_per_expense'], 0, 10)
+
+            # ✅ Validate input_data is not empty
+            if not any(v != 0 for v in input_data.values()):
+                logger.warning("All input values are zero")
+                return {
+                    'success': False,
+                    'error': 'All financial values are zero - cannot perform analysis'
+                }
+
+            logger.info(f"Running analysis with input_data: {input_data}")
+
+            # Create analysis request
+            analysis_service = TazamaAnalysisService()
+
+            request_obj = analysis_service.create_analysis_request(
+                corporate=upload_record.corporate,
+                user=upload_record.uploaded_by,
+                input_data=input_data,
+                request_type='automated_upload_analysis'
+            )
+
+            # Execute analysis
+            success, message = analysis_service.run_analysis(request_obj.id)
+
+            if success:
+                request_obj.refresh_from_db()
+                return {
+                    'success': True,
+                    'analysis_id': request_obj.id,
+                    'predictions': request_obj.predictions,
+                    'recommendations': request_obj.recommendations,
+                    'risk_assessment': request_obj.risk_assessment,
+                    'confidence_scores': request_obj.confidence_scores,
+                    'processing_time': request_obj.processing_time_seconds
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': message
+                }
+
+        except Exception as e:
+            logger.error(f"Error in intelligent analysis: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {
+                'success': False,
+                'error': str(e)
+            }
