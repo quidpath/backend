@@ -72,6 +72,16 @@ class CompleteAnalysisPipeline:
             if not results_result['success']:
                 return self._create_error_result('results', results_result['error'])
             
+            # Mark upload as completed and persist rows processed
+            try:
+                upload_record.processing_status = 'completed'
+                # Prefer rows from validation_result if available
+                if isinstance(validation_result, dict) and 'rows_processed' in validation_result:
+                    upload_record.rows_processed = validation_result.get('rows_processed') or 0
+                upload_record.save()
+            except Exception as e:
+                logger.warning(f"Could not update upload record completion state: {str(e)}")
+
             # Complete workflow summary
             return self._create_success_result(upload_record, {
                 'extraction': extraction_result,
@@ -82,6 +92,12 @@ class CompleteAnalysisPipeline:
             
         except Exception as e:
             logger.error(f"Error in complete analysis pipeline: {str(e)}")
+            try:
+                upload_record.processing_status = 'failed'
+                upload_record.error_message = str(e)
+                upload_record.save()
+            except Exception:
+                pass
             return {
                 'success': False,
                 'error': str(e),

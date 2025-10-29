@@ -1383,14 +1383,22 @@ def get_complete_pipeline_status(request):
                 code=400
             ).bad_request()
 
-        # Get upload record
+        # Resolve user's corporate properly (dict or model instance)
         try:
-            upload_record = FinancialDataUpload.objects.get(id=upload_id, corporate=user.corporate)
+            from OrgAuth.models import CorporateUser
+            if isinstance(user, dict):
+                corporate_user = CorporateUser.objects.get(customuser_ptr_id=user.get('id'))
+            else:
+                corporate_user = user
+            corporate = corporate_user.corporate
+        except Exception:
+            return ResponseProvider(message="Unable to resolve user's corporate", code=400).bad_request()
+
+        # Get upload record scoped to corporate
+        try:
+            upload_record = FinancialDataUpload.objects.get(id=upload_id, corporate=corporate)
         except FinancialDataUpload.DoesNotExist:
-            return ResponseProvider(
-                message="Upload record not found",
-                code=404
-            ).not_found()
+            return ResponseProvider(message="Upload record not found", code=404).not_found()
 
         # Get pipeline status
         pipeline = CompleteAnalysisPipeline()
