@@ -748,6 +748,132 @@ def get_financial_dashboard(request):
         converted_snapshot = convert_nested(financial_data_snapshot, rate)
         converted_intelligent = convert_nested(intelligent, rate)
 
+        # ✅ Recompute KPI trends dynamically from recent analyses
+        def compute_trends_from_history(history: list) -> dict:
+            if not history:
+                return {}
+            # Use last two points if available
+            latest = history[-1]
+            prev = history[-2] if len(history) > 1 else None
+            trends_out = {}
+            keys = ['profit_margin', 'operating_margin', 'gross_margin', 'cost_revenue_ratio', 'expense_ratio']
+            for k in keys:
+                cur = latest.get(k, 0)
+                if prev is None:
+                    trends_out[k] = {'trend': 'stable', 'change': 0}
+                    continue
+                pr = prev.get(k, 0)
+                delta = cur - pr
+                # classify movement
+                if k in ['cost_revenue_ratio', 'expense_ratio']:
+                    # lower is better
+                    if delta <= -0.02:
+                        t = 'improving'
+                    elif delta >= 0.02:
+                        t = 'declining'
+                    elif abs(delta) < 0.005:
+                        t = 'stable'
+                    else:
+                        t = 'declining' if delta > 0 else 'improving'
+                else:
+                    if delta >= 0.02:
+                        t = 'improving'
+                    elif delta <= -0.02:
+                        t = 'declining'
+                    elif abs(delta) < 0.005:
+                        t = 'stable'
+                    else:
+                        t = 'improving' if delta > 0 else 'declining'
+                # critical state checks
+                critical = False
+                if k in ['profit_margin', 'operating_margin'] and cur < 0.02:
+                    critical = True
+                if k in ['cost_revenue_ratio', 'expense_ratio'] and cur > 0.90:
+                    critical = True
+                trends_out[k] = {'trend': 'critical' if critical else t, 'change': round(delta, 4)}
+            return trends_out
+
+        dynamic_trends = compute_trends_from_history(trend_data)
+
+        # ✅ Sync benchmark current values from statement snapshot explicitly
+        def safe_ratio(num: float, den: float) -> float:
+            try:
+                return max(0.0, min(1.0, (num / den) if den and den > 0 else 0.0))
+            except Exception:
+                return 0.0
+
+        snap_rev = float(converted_snapshot.get('total_revenue', 0) or 0)
+        snapshot_ratios = {
+            'profit_margin': safe_ratio(float(converted_snapshot.get('net_income', 0) or 0), snap_rev),
+            'operating_margin': safe_ratio(float(converted_snapshot.get('operating_income', 0) or 0), snap_rev),
+            'gross_margin': safe_ratio(float(converted_snapshot.get('gross_profit', 0) or 0), snap_rev),
+            'cost_revenue_ratio': safe_ratio(float(converted_snapshot.get('cost_of_revenue', 0) or 0), snap_rev),
+            'expense_ratio': safe_ratio(float(converted_snapshot.get('total_operating_expenses', 0) or 0), snap_rev)
+        }
+
+        # Mutate intelligent analysis with dynamic trends and benchmark current values
+        try:
+            if isinstance(converted_intelligent, dict):
+                # KPI trends update
+                kp = converted_intelligent.get('kpi_predictions', {})
+                if kp:
+                    # update trends
+                    if 'kpi_trends' in kp and isinstance(kp['kpi_trends'], dict):
+                        kp['kpi_trends'].update(dynamic_trends)
+                    else:
+                        kp['kpi_trends'] = dynamic_trends
+                    # sync benchmarks
+                    if 'profitability_kpis' in kp:
+                        pass
+                    ba = kp.get('benchmark_analysis', {})
+                    for k in ['profit_margin', 'operating_margin', 'gross_margin', 'cost_revenue_ratio', 'expense_ratio']:
+                        if ba.get(k):
+                            ba[k]['current_value'] = snapshot_ratios[k]
+                        else:
+                            ba[k] = {
+                                'current_value': snapshot_ratios[k]
+                            }
+                    kp['benchmark_analysis'] = ba
+                    converted_intelligent['kpi_predictions'] = kp
+                # Dynamic confidence based on variance in recent analyses
+                try:
+                    import statistics
+                    vals = []
+                    for it in analyses_data[-10:]:
+                        preds = it.get('predictions', {})
+                        row = [
+                            float(preds.get('profit_margin', 0)),
+                            float(preds.get('operating_margin', 0)),
+                            float(preds.get('cost_revenue_ratio', 0)),
+                            float(preds.get('expense_ratio', 0))
+                        ]
+                        vals.append(row)
+                    flat = [x for row in vals for x in row] if vals else []
+                    stdv = statistics.pstdev(flat) if flat else 0.0
+                    # Map std dev (~0..0.3) to confidence 1..0.5
+                    conf_overall = max(0.4, min(1.0, 1.0 - (stdv * 1.2)))
+                except Exception:
+                    conf_overall = 0.8
+                ca = converted_intelligent.get('confidence_analysis', {})
+                ca['overall'] = round(float(conf_overall), 3)
+                converted_intelligent['confidence_analysis'] = ca
+                # Dynamic overall risk based on benchmark gaps
+                ba = converted_intelligent.get('kpi_predictions', {}).get('benchmark_analysis', {})
+                total_gap = 0.0
+                for k, item in ba.items():
+                    if isinstance(item, dict):
+                        total_gap += float(item.get('gap', 0) or 0)
+                if total_gap > 1.2:
+                    overall = 'HIGH'
+                elif total_gap > 0.6:
+                    overall = 'MEDIUM'
+                else:
+                    overall = 'LOW'
+                # Attach summarized risk level for dashboard recent card
+                converted_intelligent['risk_summary'] = {'overall_risk': overall}
+        except Exception:
+            pass
+
         # Convert input_data in recent analyses
         for item in analyses_data:
             if 'input_data' in item and isinstance(item['input_data'], dict):

@@ -901,13 +901,19 @@ class EnhancedFinancialDataService:
     def _generate_intelligent_projections(self, financial_data: Dict[str, Any], statement_date: date, date_analysis: Dict[str, Any], historical_patterns: Dict[str, Any]) -> Dict[str, Any]:
         """Generate intelligent projections based on date analysis and historical patterns"""
         try:
-            # Extract current financial metrics
-            revenue = financial_data.get('totalRevenue', 0)
-            cost_of_revenue = financial_data.get('costOfRevenue', 0)
-            gross_profit = financial_data.get('grossProfit', 0)
-            operating_expenses = financial_data.get('totalOperatingExpenses', 0)
-            operating_income = financial_data.get('operatingIncome', 0)
-            net_income = financial_data.get('netIncome', 0)
+            # Extract current financial metrics (support snake_case and camelCase)
+            def v(*keys, default=0.0):
+                for k in keys:
+                    if k in financial_data and isinstance(financial_data.get(k), (int, float)):
+                        return float(financial_data.get(k) or 0)
+                return float(default)
+
+            revenue = v('totalRevenue', 'total_revenue')
+            cost_of_revenue = v('costOfRevenue', 'cost_of_revenue')
+            gross_profit = v('grossProfit', 'gross_profit')
+            operating_expenses = v('totalOperatingExpenses', 'total_operating_expenses')
+            operating_income = v('operatingIncome', 'operating_income')
+            net_income = v('netIncome', 'net_income')
             
             # Calculate intelligent growth rates based on date analysis
             growth_rates = self._calculate_intelligent_growth_rates(
@@ -917,17 +923,25 @@ class EnhancedFinancialDataService:
             # Generate projections for next period
             next_period = self._calculate_next_period(statement_date, date_analysis)
             
+            # Compute projections using dynamic formulas (multiplicative, dependency aware)
+            projected_revenue = self._project_intelligent_revenue(revenue, growth_rates, date_analysis)
+            projected_cost_of_revenue = self._project_intelligent_cost_of_revenue(cost_of_revenue, growth_rates, date_analysis)
+            projected_gross_profit = projected_revenue - projected_cost_of_revenue
+            projected_operating_expenses = self._project_intelligent_operating_expenses(operating_expenses, growth_rates, date_analysis)
+            projected_operating_income = projected_gross_profit - projected_operating_expenses
+            projected_net_income = self._project_intelligent_net_income(net_income, growth_rates, date_analysis)
+
             projections = {
                 'next_period': {
                     'period': next_period['label'],
                     'start_date': next_period['start_date'],
                     'end_date': next_period['end_date'],
-                    'projected_revenue': self._project_intelligent_revenue(revenue, growth_rates, date_analysis),
-                    'projected_cost_of_revenue': self._project_intelligent_cost_of_revenue(cost_of_revenue, growth_rates, date_analysis),
-                    'projected_gross_profit': self._project_intelligent_gross_profit(gross_profit, growth_rates, date_analysis),
-                    'projected_operating_expenses': self._project_intelligent_operating_expenses(operating_expenses, growth_rates, date_analysis),
-                    'projected_operating_income': self._project_intelligent_operating_income(operating_income, growth_rates, date_analysis),
-                    'projected_net_income': self._project_intelligent_net_income(net_income, growth_rates, date_analysis)
+                    'projected_revenue': projected_revenue,
+                    'projected_cost_of_revenue': projected_cost_of_revenue,
+                    'projected_gross_profit': projected_gross_profit,
+                    'projected_operating_expenses': projected_operating_expenses,
+                    'projected_operating_income': projected_operating_income,
+                    'projected_net_income': projected_net_income
                 },
                 'growth_rates': growth_rates,
                 'confidence_factors': self._calculate_projection_confidence(date_analysis, historical_patterns),
@@ -1085,23 +1099,29 @@ class EnhancedFinancialDataService:
     def _generate_intelligent_kpi_predictions(self, financial_data: Dict[str, Any], statement_date: date, date_analysis: Dict[str, Any], historical_patterns: Dict[str, Any]) -> Dict[str, Any]:
         """Generate intelligent KPI predictions based on statement date and analysis"""
         try:
-            # Extract current financial metrics
-            revenue = financial_data.get('totalRevenue', 0)
-            cost_of_revenue = financial_data.get('costOfRevenue', 0)
-            gross_profit = financial_data.get('grossProfit', 0)
-            operating_expenses = financial_data.get('totalOperatingExpenses', 0)
-            operating_income = financial_data.get('operatingIncome', 0)
-            net_income = financial_data.get('netIncome', 0)
+            # Extract current financial metrics (support snake_case and camelCase)
+            def v(*keys, default=0.0):
+                for k in keys:
+                    if k in financial_data and isinstance(financial_data.get(k), (int, float)):
+                        return float(financial_data.get(k) or 0)
+                return float(default)
+
+            revenue = v('totalRevenue', 'total_revenue')
+            cost_of_revenue = v('costOfRevenue', 'cost_of_revenue')
+            gross_profit = v('grossProfit', 'gross_profit')
+            operating_expenses = v('totalOperatingExpenses', 'total_operating_expenses')
+            operating_income = v('operatingIncome', 'operating_income')
+            net_income = v('netIncome', 'net_income')
             
             # Calculate current KPIs
             current_kpis = {
-                'profit_margin': net_income / revenue if revenue > 0 else 0,
-                'operating_margin': operating_income / revenue if revenue > 0 else 0,
-                'gross_margin': gross_profit / revenue if revenue > 0 else 0,
-                'cost_revenue_ratio': cost_of_revenue / revenue if revenue > 0 else 0,
-                'expense_ratio': operating_expenses / revenue if revenue > 0 else 0,
-                'revenue_growth_rate': 0,  # Would need historical data
-                'profit_growth_rate': 0    # Would need historical data
+                'profit_margin': max(0.0, min(1.0, (net_income / revenue) if revenue > 0 else 0)),
+                'operating_margin': max(0.0, min(1.0, (operating_income / revenue) if revenue > 0 else 0)),
+                'gross_margin': max(0.0, min(1.0, (gross_profit / revenue) if revenue > 0 else 0)),
+                'cost_revenue_ratio': max(0.0, min(1.0, (cost_of_revenue / revenue) if revenue > 0 else 0)),
+                'expense_ratio': max(0.0, min(1.0, (operating_expenses / revenue) if revenue > 0 else 0)),
+                'revenue_growth_rate': 0,
+                'profit_growth_rate': 0
             }
             
             # Generate intelligent KPI projections
@@ -1202,29 +1222,13 @@ class EnhancedFinancialDataService:
         return benchmark_analysis
     
     def _analyze_kpi_trends(self, current_kpis: Dict[str, float], date_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze KPI trends and patterns"""
+        """Analyze KPI trends and patterns
+        Note: This will be refined by the dashboard view using recent analyses to determine movement.
+        Here we provide placeholders using neutral 'stable' to avoid static quality tags.
+        """
         trends = {}
-        
-        for kpi, value in current_kpis.items():
-            if kpi in ['profit_margin', 'operating_margin', 'gross_margin']:
-                if value > 0.15:
-                    trends[kpi] = {'trend': 'excellent', 'description': 'Strong profitability metrics'}
-                elif value > 0.10:
-                    trends[kpi] = {'trend': 'good', 'description': 'Healthy profitability metrics'}
-                elif value > 0.05:
-                    trends[kpi] = {'trend': 'fair', 'description': 'Moderate profitability metrics'}
-                else:
-                    trends[kpi] = {'trend': 'poor', 'description': 'Weak profitability metrics'}
-            elif kpi in ['cost_revenue_ratio', 'expense_ratio']:
-                if value < 0.50:
-                    trends[kpi] = {'trend': 'excellent', 'description': 'Very efficient cost management'}
-                elif value < 0.70:
-                    trends[kpi] = {'trend': 'good', 'description': 'Good cost management'}
-                elif value < 0.85:
-                    trends[kpi] = {'trend': 'fair', 'description': 'Moderate cost management'}
-                else:
-                    trends[kpi] = {'trend': 'poor', 'description': 'Inefficient cost management'}
-        
+        for k, v in current_kpis.items():
+            trends[k] = {'trend': 'stable', 'description': 'Awaiting recent trend analysis'}
         return trends
     
     def _generate_intelligent_cost_optimization(self, financial_data: Dict[str, Any], statement_date: date, date_analysis: Dict[str, Any], historical_patterns: Dict[str, Any]) -> Dict[str, Any]:

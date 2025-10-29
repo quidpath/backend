@@ -45,22 +45,25 @@ class FinancialDataProcessor:
             if col not in df.columns:
                 df[col] = 0
 
-        # Calculate financial ratios
-        df['profit_margin'] = df['netIncome'] / (df['totalRevenue'] + 1e-8)
-        df['profit_margin'] = np.clip(df['profit_margin'], -1, 1)
+        # Calculate financial ratios with valid math and clamping to 0..1
+        revenue = df['totalRevenue']
+        safe_revenue = revenue.replace(0, np.nan)
 
-        df['gross_margin'] = df['grossProfit'] / (df['totalRevenue'] + 1e-8)
-        df['gross_margin'] = np.clip(df['gross_margin'], -1, 1)
+        df['profit_margin'] = (df['netIncome'] / safe_revenue).fillna(0)
+        df['profit_margin'] = np.clip(df['profit_margin'], 0, 1)
 
-        df['operating_margin'] = df['operatingIncome'] / (df['totalRevenue'] + 1e-8)
-        df['operating_margin'] = np.clip(df['operating_margin'], -1, 1)
+        df['gross_margin'] = (df['grossProfit'] / safe_revenue).fillna(0)
+        df['gross_margin'] = np.clip(df['gross_margin'], 0, 1)
+
+        df['operating_margin'] = (df['operatingIncome'] / safe_revenue).fillna(0)
+        df['operating_margin'] = np.clip(df['operating_margin'], 0, 1)
 
         # Cost ratios
-        df['cost_revenue_ratio'] = df['costOfRevenue'] / (df['totalRevenue'] + 1e-8)
-        df['cost_revenue_ratio'] = np.clip(df['cost_revenue_ratio'], 0, 2)
+        df['cost_revenue_ratio'] = (df['costOfRevenue'] / safe_revenue).fillna(0)
+        df['cost_revenue_ratio'] = np.clip(df['cost_revenue_ratio'], 0, 1)
 
-        df['expense_ratio'] = df['totalOperatingExpenses'] / (df['totalRevenue'] + 1e-8)
-        df['expense_ratio'] = np.clip(df['expense_ratio'], 0, 2)
+        df['expense_ratio'] = (df['totalOperatingExpenses'] / safe_revenue).fillna(0)
+        df['expense_ratio'] = np.clip(df['expense_ratio'], 0, 1)
 
         # R&D intensity
         df['rd_intensity'] = df['researchDevelopment'] / (df['totalRevenue'] + 1e-8)
@@ -119,11 +122,11 @@ class FinancialDataProcessor:
         aligned_df = aligned_df.fillna(0)
 
         # Clip values to training ranges
-        aligned_df['profit_margin'] = np.clip(aligned_df.get('profit_margin', 0), -1, 1)
-        aligned_df['gross_margin'] = np.clip(aligned_df.get('gross_margin', 0), -1, 1)
-        aligned_df['operating_margin'] = np.clip(aligned_df.get('operating_margin', 0), -1, 1)
-        aligned_df['cost_revenue_ratio'] = np.clip(aligned_df.get('cost_revenue_ratio', 0), 0, 2)
-        aligned_df['expense_ratio'] = np.clip(aligned_df.get('expense_ratio', 0), 0, 2)
+        aligned_df['profit_margin'] = np.clip(aligned_df.get('profit_margin', 0), 0, 1)
+        aligned_df['gross_margin'] = np.clip(aligned_df.get('gross_margin', 0), 0, 1)
+        aligned_df['operating_margin'] = np.clip(aligned_df.get('operating_margin', 0), 0, 1)
+        aligned_df['cost_revenue_ratio'] = np.clip(aligned_df.get('cost_revenue_ratio', 0), 0, 1)
+        aligned_df['expense_ratio'] = np.clip(aligned_df.get('expense_ratio', 0), 0, 1)
         aligned_df['rd_intensity'] = np.clip(aligned_df.get('rd_intensity', 0), 0, 1)
         aligned_df['revenue_per_expense'] = np.clip(aligned_df.get('revenue_per_expense', 0), 0, 10)
 
