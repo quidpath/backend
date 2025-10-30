@@ -272,25 +272,50 @@ def analyze_financial_data(request):
             return ResponseProvider(message="Either financial_data or upload_id must be provided",
                                     code=400).bad_request()
 
-        # If upload_id is provided, get the latest processed data
+        # If upload_id is provided, select a valid processed row (prefer non-zero revenue)
         if upload_id:
             try:
                 upload_record = FinancialDataUpload.objects.get(id=upload_id, corporate_id=corporate.id)
-                latest_data = ProcessedFinancialData.objects.filter(
-                    upload=upload_record
-                ).order_by('-period_date').first()
+                qs = ProcessedFinancialData.objects.filter(upload=upload_record).order_by('-period_date')
+                latest_data = qs.exclude(total_revenue=0).first() or \
+                              qs.exclude(
+                                  total_revenue=0,
+                                  cost_of_revenue=0,
+                                  gross_profit=0,
+                                  total_operating_expenses=0,
+                                  operating_income=0,
+                                  net_income=0
+                              ).first() or \
+                              qs.first()
 
                 if not latest_data:
                     return ResponseProvider(message="No processed data found for this upload", code=400).bad_request()
 
+                # Build robust financial snapshot with derivations if needed
+                tr = float(latest_data.total_revenue or 0)
+                cr = float(latest_data.cost_of_revenue or 0)
+                gp = float(latest_data.gross_profit or 0)
+                opex = float(latest_data.total_operating_expenses or 0)
+                oi = float(latest_data.operating_income or 0)
+                ni = float(latest_data.net_income or 0)
+                rd = float(latest_data.research_development or 0)
+
+                # Derivations
+                if gp == 0 and (tr or cr):
+                    gp = max(0.0, tr - cr)
+                if oi == 0 and (gp or opex):
+                    oi = gp - opex
+                if ni == 0 and oi:
+                    ni = oi
+
                 financial_data = {
-                    'totalRevenue': float(latest_data.total_revenue),
-                    'costOfRevenue': float(latest_data.cost_of_revenue),
-                    'grossProfit': float(latest_data.gross_profit),
-                    'totalOperatingExpenses': float(latest_data.total_operating_expenses),
-                    'operatingIncome': float(latest_data.operating_income),
-                    'netIncome': float(latest_data.net_income),
-                    'researchDevelopment': float(latest_data.research_development),
+                    'totalRevenue': tr,
+                    'costOfRevenue': cr,
+                    'grossProfit': gp,
+                    'totalOperatingExpenses': opex,
+                    'operatingIncome': oi,
+                    'netIncome': ni,
+                    'researchDevelopment': rd,
                 }
             except FinancialDataUpload.DoesNotExist:
                 return ResponseProvider(message="Upload record not found", code=404).not_found()
