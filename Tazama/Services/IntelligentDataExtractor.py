@@ -613,8 +613,32 @@ class IntelligentDataExtractor:
             if 'metrics' in sheet_data:
                 # Convert to standardized format
                 standardized_metrics = self._standardize_metrics(sheet_data['metrics'])
+
+                # Heuristic fix for duplicated columns across metrics: if major metrics are identical
+                # treat the series as revenue and set others to zero for proper downstream derivations
+                def to_tuple(x):
+                    if isinstance(x, list):
+                        return tuple(x)
+                    return (x,)
+                major_keys = [
+                    'total_revenue', 'cost_of_revenue', 'gross_profit',
+                    'total_operating_expenses', 'operating_income', 'net_income'
+                ]
+                values = [to_tuple(standardized_metrics.get(k, 0)) for k in major_keys]
+                non_empty = [v for v in values if any(v)]
+                all_equal = len(non_empty) > 1 and all(v == non_empty[0] for v in non_empty)
+                if all_equal:
+                    base = non_empty[0]
+                    base_len = len(base)
+                    standardized_metrics['total_revenue'] = list(base)
+                    standardized_metrics['cost_of_revenue'] = [0.0] * base_len
+                    standardized_metrics['total_operating_expenses'] = [0.0] * base_len
+                    standardized_metrics['gross_profit'] = [0.0] * base_len
+                    standardized_metrics['operating_income'] = [0.0] * base_len
+                    standardized_metrics['net_income'] = [0.0] * base_len
+
                 processed_data['metrics'][sheet_name] = standardized_metrics
-                
+
                 # Create records
                 records = self._create_financial_records(standardized_metrics)
                 processed_data['records'].extend(records)

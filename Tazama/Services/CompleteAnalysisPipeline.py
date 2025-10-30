@@ -312,14 +312,21 @@ class CompleteAnalysisPipeline:
         """Generate comprehensive analysis report"""
         try:
             # Create financial report
+            # Map to FinancialReport fields (no 'content' field)
+            formatted_text = self._format_report_content(analysis_result)
             report = FinancialReport.objects.create(
                 corporate=upload_record.corporate,
                 analysis_request=analysis_request,
-                report_type='comprehensive_analysis',
+                report_type='ai_analysis',
                 title=f"Financial Analysis Report - {upload_record.file_name}",
-                content=self._format_report_content(analysis_result),
-                generated_at=timezone.now(),
-                status='completed'
+                executive_summary=formatted_text,
+                detailed_analysis=analysis_result.get('predictions', {}),
+                recommendations=analysis_result.get('recommendations', {}),
+                charts_data={
+                    'risk_assessment': analysis_result.get('risk_assessment', {}),
+                    'confidence_scores': analysis_result.get('confidence_scores', {})
+                },
+                report_format='json'
             )
             
             return {
