@@ -350,14 +350,18 @@ class IntelligentDataExtractor:
                 'matched_columns': {},
                 'confidence': 0.0
             }
+            used_columns: set[str] = set()
             
             # Try to match each financial metric
             for metric, patterns in self.financial_patterns.items():
-                best_match = self._find_best_column_match(df.columns, patterns)
+                # Avoid reusing the same column for multiple metrics
+                remaining_columns = [c for c in df.columns if str(c) not in used_columns]
+                best_match = self._find_best_column_match(remaining_columns, patterns)
                 if best_match:
                     sheet_results['matched_columns'][metric] = best_match
                     sheet_results['metrics'][metric] = self._extract_metric_values(df, best_match)
                     sheet_results['confidence'] += 0.1
+                    used_columns.add(str(best_match))
             
             # Calculate sheet confidence
             if sheet_results['matched_columns']:

@@ -218,6 +218,29 @@ class EnhancedFinancialDataService:
                     cleaned[field] = float(value) if value is not None else 0.0
             except (ValueError, TypeError):
                 cleaned[field] = 0.0
+
+        # Derive key metrics when missing or zero
+        try:
+            revenue = cleaned.get('total_revenue', 0.0)
+            cost = cleaned.get('cost_of_revenue', 0.0)
+            gross_profit = cleaned.get('gross_profit', 0.0)
+            opex = cleaned.get('total_operating_expenses', 0.0)
+            operating_income = cleaned.get('operating_income', 0.0)
+            net_income = cleaned.get('net_income', 0.0)
+
+            # Gross Profit = Revenue - Cost of Revenue
+            if (gross_profit == 0.0) and (revenue or cost):
+                cleaned['gross_profit'] = max(0.0, revenue - cost)
+
+            # Operating Income = Gross Profit - Operating Expenses
+            if (operating_income == 0.0) and (cleaned.get('gross_profit', 0.0) or opex):
+                cleaned['operating_income'] = cleaned.get('gross_profit', 0.0) - opex
+
+            # Net Income: if absent, approximate with Operating Income when available
+            if (net_income == 0.0) and (cleaned.get('operating_income', 0.0)):
+                cleaned['net_income'] = cleaned.get('operating_income', 0.0)
+        except Exception:
+            pass
         
         # Ensure date field
         if 'period_date' in record:
