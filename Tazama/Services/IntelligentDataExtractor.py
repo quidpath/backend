@@ -623,53 +623,106 @@ class IntelligentDataExtractor:
         return processed_data
 
     def _standardize_metrics(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """Standardize extracted metrics to common format"""
-        standardized = {}
-        
+        """Standardize extracted metrics to a consistent format while preserving row alignment.
+
+        - Lists/Series are converted to lists of floats (order preserved, NaNs removed)
+        - Scalars are converted to floats
+        """
+        standardized: Dict[str, Any] = {}
         for metric, values in metrics.items():
-            if isinstance(values, (list, pd.Series)):
-                # Take the first non-null value or average
-                clean_values = [v for v in values if pd.notna(v) and v != 0]
-                if clean_values:
-                    standardized[metric] = np.mean(clean_values) if len(clean_values) > 1 else clean_values[0]
-                else:
-                    standardized[metric] = 0.0
+            if isinstance(values, pd.Series):
+                values = values.tolist()
+            if isinstance(values, list):
+                clean_list: list[float] = []
+                for v in values:
+                    if pd.isna(v):
+                        continue
+                    try:
+                        clean_list.append(float(v))
+                    except Exception:
+                        # Skip non-numeric entries in numeric metrics
+                        continue
+                standardized[metric] = clean_list
             else:
-                standardized[metric] = float(values) if pd.notna(values) else 0.0
-        
+                try:
+                    standardized[metric] = float(values) if pd.notna(values) else 0.0
+                except Exception:
+                    standardized[metric] = 0.0
         return standardized
 
     def _create_financial_records(self, metrics: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Create financial records from extracted metrics"""
-        record = {
-            'period_date': datetime.now().date(),
-            'total_revenue': metrics.get('total_revenue', 0.0),
-            'cost_of_revenue': metrics.get('cost_of_revenue', 0.0),
-            'gross_profit': metrics.get('gross_profit', 0.0),
-            'total_operating_expenses': metrics.get('total_operating_expenses', 0.0),
-            'operating_income': metrics.get('operating_income', 0.0),
-            'net_income': metrics.get('net_income', 0.0),
-            'research_development': metrics.get('research_development', 0.0),
-            'total_assets': metrics.get('total_assets', 0.0),
-            'total_liabilities': metrics.get('total_liabilities', 0.0),
-            'shareholders_equity': metrics.get('shareholders_equity', 0.0)
-        }
-        
-        # Debug logging: Show what was extracted
-        print("🔍 DEBUG: IntelligentDataExtractor - _create_financial_records")
-        print({
-            "metrics_input": metrics,
-            "record_output": {
-                "total_revenue": record['total_revenue'],
-                "cost_of_revenue": record['cost_of_revenue'],
-                "gross_profit": record['gross_profit'],
-                "operating_expenses": record['total_operating_expenses'],
-                "operating_income": record['operating_income'],
-                "net_income": record['net_income']
+        """Create financial records from extracted metrics, preserving all rows.
+
+        If metrics contain lists, we align by index to emit one record per row.
+        If only scalars are present, we emit a single record.
+        """
+        # Determine row count from longest list among known metrics
+        list_lengths: List[int] = []
+        known_keys = [
+            'total_revenue', 'cost_of_revenue', 'gross_profit',
+            'total_operating_expenses', 'operating_income', 'net_income',
+            'research_development', 'total_assets', 'total_liabilities',
+            'shareholders_equity'
+        ]
+        for key in known_keys:
+            val = metrics.get(key)
+            if isinstance(val, list):
+                list_lengths.append(len(val))
+        row_count = max(list_lengths) if list_lengths else 1
+
+        # Optional date series detection
+        date_keys = ['date', 'period_date', 'end_date', 'report_date']
+        date_series: List[Any] | None = None
+        for dk in date_keys:
+            dv = metrics.get(dk)
+            if isinstance(dv, list) and len(dv) == row_count:
+                date_series = dv
+                break
+
+        records: List[Dict[str, Any]] = []
+        for i in range(row_count):
+            def pick(key: str) -> float:
+                v = metrics.get(key, 0.0)
+                if isinstance(v, list):
+                    try:
+                        return float(v[i]) if i < len(v) and pd.notna(v[i]) else 0.0
+                    except Exception:
+                        return 0.0
+                try:
+                    return float(v) if pd.notna(v) else 0.0
+                except Exception:
+                    return 0.0
+
+            period = None
+            if date_series is not None:
+                try:
+                    period = pd.to_datetime(date_series[i], errors='coerce').date() if i < len(date_series) else None
+                except Exception:
+                    period = None
+
+            record = {
+                'period_date': period or datetime.now().date(),
+                'total_revenue': pick('total_revenue'),
+                'cost_of_revenue': pick('cost_of_revenue'),
+                'gross_profit': pick('gross_profit'),
+                'total_operating_expenses': pick('total_operating_expenses'),
+                'operating_income': pick('operating_income'),
+                'net_income': pick('net_income'),
+                'research_development': pick('research_development'),
+                'total_assets': pick('total_assets'),
+                'total_liabilities': pick('total_liabilities'),
+                'shareholders_equity': pick('shareholders_equity')
             }
-        })
-        
-        return [record]
+
+            records.append(record)
+
+        # Debug logging: Show summary of records created
+        try:
+            print("🔍 DEBUG: IntelligentDataExtractor - _create_financial_records count", len(records))
+        except Exception:
+            pass
+
+        return records
 
     def _validate_extracted_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Validate the quality and completeness of extracted data"""
