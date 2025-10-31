@@ -16,7 +16,6 @@ from Tazama.models import (
 from OrgAuth.models import CorporateUser, Corporate
 from .IntelligentDataExtractor import IntelligentDataExtractor
 from .EnhancedFinancialDataService import EnhancedFinancialDataService
-from .UniversalFinancialParser import UniversalFinancialParser
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,6 @@ class CompleteAnalysisPipeline:
     def __init__(self):
         self.intelligent_extractor = IntelligentDataExtractor()
         self.enhanced_data_service = EnhancedFinancialDataService()
-        self.universal_parser = UniversalFinancialParser()
         self.pipeline_status = {
             'extraction': 'pending',
             'validation': 'pending', 
@@ -107,100 +105,12 @@ class CompleteAnalysisPipeline:
             }
     
     def _perform_intelligent_extraction(self, upload_record: FinancialDataUpload) -> Dict[str, Any]:
-        """Step 1: Perform intelligent data extraction using Universal Parser"""
+        """Step 1: Perform intelligent data extraction"""
         try:
             logger.info(f"Step 1: Performing intelligent extraction for {upload_record.file_name}")
             self.pipeline_status['extraction'] = 'processing'
             
             file_path = upload_record.file_path.path
-            
-            # Use Universal Parser for robust extraction
-            try:
-                parse_result = self.universal_parser.parse_file(file_path)
-                
-                logger.info(f"🔍 DEBUG: Parse result success = {parse_result.get('success')}")
-                
-                if parse_result.get('success'):
-                    # Convert to format expected by downstream pipeline
-                    structured_data = parse_result['structured_data']
-                    metrics = structured_data['current_metrics']
-                    metadata = structured_data['metadata']
-                    period_info = metadata.get('period', {})
-                    
-                    logger.info(f"🔍 DEBUG: Extracted metrics = {metrics}")
-                    logger.info(f"🔍 DEBUG: Statement type = {metadata.get('statement_type')}")
-                    
-                    # Parse period_date from metadata
-                    from datetime import datetime as dt
-                    period_date = None
-                    if period_info.get('end_date'):
-                        if isinstance(period_info['end_date'], str):
-                            try:
-                                period_date = dt.fromisoformat(period_info['end_date']).date()
-                            except:
-                                period_date = timezone.now().date()
-                        else:
-                            period_date = period_info['end_date']
-                    else:
-                        period_date = timezone.now().date()
-                    
-                    # Create a financial record from metrics
-                    financial_record = {
-                        'total_revenue': float(metrics.get('total_revenue', 0)),
-                        'cost_of_revenue': float(metrics.get('cost_of_revenue', 0)),
-                        'gross_profit': float(metrics.get('gross_profit', 0)),
-                        'total_operating_expenses': float(metrics.get('total_operating_expenses', 0)),
-                        'operating_income': float(metrics.get('operating_income', 0)),
-                        'net_income': float(metrics.get('net_income', 0)),
-                        'research_development': 0,
-                        'total_assets': float(metrics.get('total_assets', 0)),
-                        'total_liabilities': float(metrics.get('total_liabilities', 0)),
-                        'shareholders_equity': float(metrics.get('total_equity', 0)),
-                        'period_date': period_date,
-                        'currency': metadata.get('currency', 'KES'),
-                        'statement_type': metadata.get('statement_type', 'unknown')
-                    }
-                    
-                    logger.info(f"🔍 DEBUG: Created financial_record with total_revenue={financial_record['total_revenue']}, net_income={financial_record['net_income']}")
-                    
-                    extraction_result = {
-                        'success': True,
-                        'confidence': 0.95,  # High confidence from universal parser
-                        'extracted_data': {
-                            'records': [financial_record],  # Storage function expects records array
-                            'sheet_0': {
-                                'metrics': {
-                                    'totalRevenue': metrics.get('total_revenue', 0),
-                                    'costOfRevenue': metrics.get('cost_of_revenue', 0),
-                                    'grossProfit': metrics.get('gross_profit', 0),
-                                    'totalOperatingExpenses': metrics.get('total_operating_expenses', 0),
-                                    'operatingIncome': metrics.get('operating_income', 0),
-                                    'netIncome': metrics.get('net_income', 0),
-                                    'researchDevelopment': 0,
-                                    # Include ratios
-                                    'profit_margin': metrics.get('profit_margin', 0) / 100,
-                                    'operating_margin': metrics.get('operating_margin', 0) / 100,
-                                    'gross_margin': metrics.get('gross_margin', 0) / 100,
-                                    'expense_ratio': metrics.get('expense_ratio', 0) / 100,
-                                },
-                                'confidence': 0.95,
-                                'period_info': metadata.get('period', {}),
-                                'statement_type': metadata.get('statement_type'),
-                                'currency': metadata.get('currency', 'KES')
-                            }
-                        },
-                        'metadata': metadata,
-                        'projections': structured_data.get('projections', {})
-                    }
-                    
-                    self.pipeline_status['extraction'] = 'completed'
-                    logger.info(f"Universal parser extraction completed successfully")
-                    return extraction_result
-                    
-            except Exception as parser_error:
-                logger.warning(f"Universal parser failed: {str(parser_error)}, falling back to legacy extractor")
-            
-            # Fallback to legacy extractor if universal parser fails
             extraction_result = self.intelligent_extractor.extract_financial_data(
                 file_path, 
                 file_type='auto'
@@ -208,7 +118,7 @@ class CompleteAnalysisPipeline:
             
             if extraction_result['success']:
                 self.pipeline_status['extraction'] = 'completed'
-                logger.info(f"Legacy extraction completed with {extraction_result.get('confidence', 0):.2%} confidence")
+                logger.info(f"Intelligent extraction completed with {extraction_result['confidence']:.2%} confidence")
             else:
                 self.pipeline_status['extraction'] = 'failed'
                 logger.error(f"Intelligent extraction failed: {extraction_result.get('error')}")
@@ -281,40 +191,16 @@ class CompleteAnalysisPipeline:
                 'researchDevelopment': float(latest_data.research_development)
             }
             
-            logger.info(f"🔍 DEBUG: Financial data for analysis: {financial_data}")
-            
             # Check if there's an available model
             available_model = TazamaMLModel.objects.filter(
                 is_active=True,
                 model_type='traditional'
             ).first()
             
-            # ALWAYS use fallback analysis for accurate ratio calculations
-            # ML model is disabled until properly trained
-            logger.info("Using fallback analysis for accurate ratio calculations")
-            analysis_result = self._perform_fallback_analysis(financial_data)
-            
-            # Store the analysis in database for tracking
-            if available_model:
-                try:
-                    analysis_request = TazamaAnalysisRequest.objects.create(
-                        corporate=upload_record.corporate,
-                        requested_by=upload_record.uploaded_by,
-                        request_type='single_prediction',
-                        input_data=financial_data,
-                        model_used=available_model,
-                        status='completed',
-                        predictions=analysis_result.get('predictions', {}),
-                        recommendations=analysis_result.get('recommendations', {}),
-                        risk_assessment=analysis_result.get('risk_assessment', {}),
-                        confidence_scores=analysis_result.get('confidence_scores', {}),
-                        processing_time_seconds=analysis_result.get('processing_time', 0.1)
-                    )
-                    analysis_result['analysis_id'] = analysis_request.id
-                except Exception as e:
-                    logger.warning(f"Could not create analysis request record: {e}")
-            
-            if False:  # Temporarily disable ML model path
+            if not available_model:
+                # Create a fallback analysis without ML model
+                analysis_result = self._perform_fallback_analysis(financial_data)
+            else:
                 # Create analysis request with model
                 analysis_request = TazamaAnalysisRequest.objects.create(
                     corporate=upload_record.corporate,
@@ -335,31 +221,20 @@ class CompleteAnalysisPipeline:
                 if success:
                     # Refresh the analysis request to get updated data
                     analysis_request.refresh_from_db()
-                    
-                    # Check if ML model returned placeholder/default values (indicating failure)
-                    predictions = analysis_request.predictions or {}
-                    
-                    # If predictions look like defaults (all zeros or typical placeholders), use fallback
-                    if (predictions.get('profit_margin', 0) == 0 and 
-                        predictions.get('operating_margin', 0) == 0 and
-                        financial_data['totalRevenue'] > 0):
-                        logger.warning("ML model returned zero/default predictions, using fallback analysis instead")
-                        analysis_result = self._perform_fallback_analysis(financial_data)
-                        analysis_result['analysis_id'] = analysis_request.id  # Preserve the analysis request ID
-                    else:
-                        analysis_result = {
-                            'success': True,
-                            'predictions': predictions,
-                            'recommendations': analysis_request.recommendations,
-                            'risk_assessment': analysis_request.risk_assessment,
-                            'confidence_scores': analysis_request.confidence_scores,
-                            'processing_time': analysis_request.processing_time_seconds,
-                            'analysis_id': analysis_request.id
-                        }
+                    analysis_result = {
+                        'success': True,
+                        'predictions': analysis_request.predictions,
+                        'recommendations': analysis_request.recommendations,
+                        'risk_assessment': analysis_request.risk_assessment,
+                        'confidence_scores': analysis_request.confidence_scores,
+                        'processing_time': analysis_request.processing_time_seconds,
+                        'analysis_id': analysis_request.id
+                    }
                 else:
-                    # If ML model analysis failed, use fallback
-                    logger.warning(f"ML model analysis failed: {message}, using fallback analysis")
-                    analysis_result = self._perform_fallback_analysis(financial_data)
+                    analysis_result = {
+                        'success': False,
+                        'error': message
+                    }
             
             if analysis_result['success']:
                 self.pipeline_status['analysis'] = 'completed'
@@ -560,8 +435,6 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             net_income = financial_data.get('netIncome', 0)
             
             # Calculate basic ratios
-            logger.info(f"🔍 FALLBACK ANALYSIS - Input data: revenue={revenue}, cost={cost}, gross_profit={gross_profit}, expenses={expenses}, operating_income={operating_income}, net_income={net_income}")
-            
             predictions = {}
             if revenue > 0:
                 predictions['profit_margin'] = net_income / revenue
@@ -569,8 +442,6 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 predictions['gross_margin'] = gross_profit / revenue
                 predictions['cost_revenue_ratio'] = cost / revenue
                 predictions['expense_ratio'] = expenses / revenue
-                
-                logger.info(f"✅ CALCULATED RATIOS: profit_margin={predictions['profit_margin']:.4f} ({predictions['profit_margin']*100:.2f}%), operating_margin={predictions['operating_margin']:.4f} ({predictions['operating_margin']*100:.2f}%), expense_ratio={predictions['expense_ratio']:.4f} ({predictions['expense_ratio']*100:.2f}%)")
             else:
                 predictions = {
                     'profit_margin': 0.0,
@@ -579,7 +450,6 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     'cost_revenue_ratio': 0.0,
                     'expense_ratio': 0.0
                 }
-                logger.warning("⚠️ Revenue is zero, returning zero ratios")
             
             # Generate basic recommendations
             recommendations = {

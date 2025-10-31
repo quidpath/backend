@@ -100,10 +100,6 @@ class EnhancedFinancialDataService:
             extracted_data = extraction_result['extracted_data']
             records = extracted_data.get('records', [])
             
-            logger.info(f"🔍 DEBUG: _store_intelligent_extraction received {len(records) if records else 0} records")
-            if records:
-                logger.info(f"🔍 DEBUG: First record preview: revenue={records[0].get('total_revenue', 0)}, net_income={records[0].get('net_income', 0)}")
-            
             if not records:
                 return {
                     'success': False,
@@ -134,9 +130,6 @@ class EnhancedFinancialDataService:
                     # Calculate derived metrics
                     calculated_metrics = self._calculate_derived_metrics(cleaned_record)
                     
-                    # Log what we're about to store
-                    logger.info(f"💾 Storing to database: total_operating_expenses={cleaned_record.get('total_operating_expenses', 0)}, operating_income={cleaned_record.get('operating_income', 0)}, gross_profit={cleaned_record.get('gross_profit', 0)}")
-                    
                     # Create or update ProcessedFinancialData record
                     processed_data, created = ProcessedFinancialData.objects.update_or_create(
                         corporate=upload_record.corporate,
@@ -161,8 +154,6 @@ class EnhancedFinancialDataService:
                             'validation_errors': []
                         }
                     )
-                    
-                    logger.info(f"✅ Successfully stored - OPEX in DB: {processed_data.total_operating_expenses}")
                     
                     # Debug logging: Show what was saved to database
                     print("🔍 DEBUG: Saved to ProcessedFinancialData")
@@ -240,27 +231,10 @@ class EnhancedFinancialDataService:
             # Gross Profit = Revenue - Cost of Revenue
             if (gross_profit == 0.0) and (revenue or cost):
                 cleaned['gross_profit'] = max(0.0, revenue - cost)
-            
-            # Update gross_profit variable after calculation
-            gross_profit = cleaned.get('gross_profit', 0.0)
 
-            # CRITICAL FIX: Calculate Operating Expenses from Gross Profit and Operating Income
-            # Operating Expenses = Gross Profit - Operating Income
-            logger.info(f"🔍 DEBUG: Before OPEX calc - opex={opex}, gross_profit={gross_profit}, operating_income={operating_income}")
-            
-            if (opex == 0.0 or opex == 0) and gross_profit > 0 and operating_income > 0:
-                calculated_opex = gross_profit - operating_income
-                if calculated_opex >= 0:  # Allow zero (break-even)
-                    cleaned['total_operating_expenses'] = calculated_opex
-                    opex = calculated_opex
-                    logger.info(f"✅ Calculated Operating Expenses: Gross Profit ({gross_profit}) - Operating Income ({operating_income}) = {calculated_opex}")
-            else:
-                logger.info(f"⚠️ Could not calculate OPEX: opex={opex}, gross_profit={gross_profit}, operating_income={operating_income}")
-
-            # Operating Income = Gross Profit - Operating Expenses (if operating income is missing)
-            if (operating_income == 0.0) and (gross_profit > 0 or opex > 0):
-                cleaned['operating_income'] = max(0.0, gross_profit - opex)
-                operating_income = cleaned['operating_income']
+            # Operating Income = Gross Profit - Operating Expenses
+            if (operating_income == 0.0) and (cleaned.get('gross_profit', 0.0) or opex):
+                cleaned['operating_income'] = cleaned.get('gross_profit', 0.0) - opex
 
             # Net Income: if absent, approximate with Operating Income when available
             if (net_income == 0.0) and (cleaned.get('operating_income', 0.0)):
@@ -307,15 +281,12 @@ class EnhancedFinancialDataService:
         
         # Calculate ratios if revenue is available
         if total_revenue > 0:
-            # Always calculate ratios, even if numerator is zero (which gives 0.0 ratio)
-            metrics['profit_margin'] = net_income / total_revenue
-            metrics['operating_margin'] = operating_income / total_revenue
-            metrics['gross_margin'] = gross_profit / total_revenue
-            metrics['cost_revenue_ratio'] = cost_of_revenue / total_revenue
-            metrics['expense_ratio'] = total_operating_expenses / total_revenue
-            metrics['rd_intensity'] = research_development / total_revenue if research_development != 0 else 0.0
-            
-            logger.info(f"📊 Calculated Metrics: profit_margin={metrics['profit_margin']:.4f} ({metrics['profit_margin']*100:.2f}%), operating_margin={metrics['operating_margin']:.4f}, expense_ratio={metrics['expense_ratio']:.4f}, OPEX={total_operating_expenses}")
+            metrics['profit_margin'] = (net_income / total_revenue) if net_income != 0 else None
+            metrics['operating_margin'] = (operating_income / total_revenue) if operating_income != 0 else None
+            metrics['gross_margin'] = (gross_profit / total_revenue) if gross_profit != 0 else None
+            metrics['cost_revenue_ratio'] = (cost_of_revenue / total_revenue) if cost_of_revenue != 0 else None
+            metrics['expense_ratio'] = (total_operating_expenses / total_revenue) if total_operating_expenses != 0 else None
+            metrics['rd_intensity'] = (research_development / total_revenue) if research_development != 0 else None
         else:
             metrics.update({
                 'profit_margin': None,
@@ -325,7 +296,6 @@ class EnhancedFinancialDataService:
                 'expense_ratio': None,
                 'rd_intensity': None
             })
-            logger.warning(f"⚠️ Cannot calculate metrics: total_revenue is {total_revenue}")
         
         # Calculate revenue growth (would need historical data)
         metrics['revenue_growth'] = None

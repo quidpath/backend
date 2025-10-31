@@ -562,39 +562,10 @@ def get_financial_dashboard(request):
             # Recompute derived fields if missing or clearly inconsistent
             if gross_profit == 0 and (total_revenue or cost_of_revenue):
                 gross_profit = total_revenue - cost_of_revenue
-            
-            # CRITICAL: Calculate Operating Expenses if missing
-            if total_operating_expenses == 0 and gross_profit > 0 and operating_income > 0:
-                total_operating_expenses = gross_profit - operating_income
-                logger.info(f"🔍 Dashboard: Calculated OPEX from Gross Profit ({gross_profit}) - Operating Income ({operating_income}) = {total_operating_expenses}")
-            
             if operating_income == 0 and (gross_profit or total_operating_expenses):
                 operating_income = gross_profit - total_operating_expenses
             # If taxes were tracked, they would be subtracted; otherwise keep provided net_income
 
-            # Calculate ratios dynamically if missing or zero in database
-            profit_margin_db = float(pfd.profit_margin) if pfd.profit_margin is not None else None
-            operating_margin_db = float(pfd.operating_margin) if pfd.operating_margin is not None else None
-            gross_margin_db = float(pfd.gross_margin) if pfd.gross_margin is not None else None
-            cost_revenue_ratio_db = float(pfd.cost_revenue_ratio) if pfd.cost_revenue_ratio is not None else None
-            expense_ratio_db = float(pfd.expense_ratio) if pfd.expense_ratio is not None else None
-            
-            # Recalculate ratios if they're missing (None) or if revenue exists
-            if total_revenue > 0:
-                profit_margin = profit_margin_db if profit_margin_db is not None else (net_income / total_revenue)
-                operating_margin = operating_margin_db if operating_margin_db is not None else (operating_income / total_revenue)
-                gross_margin = gross_margin_db if gross_margin_db is not None else (gross_profit / total_revenue)
-                cost_revenue_ratio = cost_revenue_ratio_db if cost_revenue_ratio_db is not None else (cost_of_revenue / total_revenue)
-                expense_ratio = expense_ratio_db if expense_ratio_db is not None else (total_operating_expenses / total_revenue)
-                
-                logger.info(f"📊 Dashboard Ratios - profit_margin: {profit_margin:.4f} ({profit_margin*100:.2f}%), operating_margin: {operating_margin:.4f}, expense_ratio: {expense_ratio:.4f}")
-            else:
-                profit_margin = profit_margin_db or 0
-                operating_margin = operating_margin_db or 0
-                gross_margin = gross_margin_db or 0
-                cost_revenue_ratio = cost_revenue_ratio_db or 0
-                expense_ratio = expense_ratio_db or 0
-            
             snapshot = {
                 "total_revenue": total_revenue,
                 "cost_of_revenue": cost_of_revenue,
@@ -602,13 +573,13 @@ def get_financial_dashboard(request):
                 "total_operating_expenses": total_operating_expenses,
                 "operating_income": operating_income,
                 "net_income": net_income,
-                "profit_margin": profit_margin,
-                "operating_margin": operating_margin,
-                "gross_margin": gross_margin,
-                "cost_revenue_ratio": cost_revenue_ratio,
-                "expense_ratio": expense_ratio,
-                "rd_intensity": float(pfd.rd_intensity or 0) if pfd.rd_intensity is not None else 0,
-                "revenue_growth": float(pfd.revenue_growth or 0) if pfd.revenue_growth is not None else 0,
+                "profit_margin": float(pfd.profit_margin or 0) if pfd.profit_margin is not None else None,
+                "operating_margin": float(pfd.operating_margin or 0) if pfd.operating_margin is not None else None,
+                "gross_margin": float(pfd.gross_margin or 0) if pfd.gross_margin is not None else None,
+                "cost_revenue_ratio": float(pfd.cost_revenue_ratio or 0) if pfd.cost_revenue_ratio is not None else None,
+                "expense_ratio": float(pfd.expense_ratio or 0) if pfd.expense_ratio is not None else None,
+                "rd_intensity": float(pfd.rd_intensity or 0) if pfd.rd_intensity is not None else None,
+                "revenue_growth": float(pfd.revenue_growth or 0) if pfd.revenue_growth is not None else None,
                 "additional_features": pfd.additional_features or {},
             }
 
