@@ -735,6 +735,17 @@ class UniversalFinancialParser:
         cost_of_revenue = sum(row['amount'] for row in sections.get('cost_of_revenue', []))
         total_expenses = sum(row['amount'] for row in sections.get('expenses', []))
         
+        # Debug logging for sections
+        logger.info(f"🔍 SECTIONS DEBUG:")
+        logger.info(f"   Revenue items: {len(sections.get('revenue', []))} = {total_revenue}")
+        logger.info(f"   Cost of Revenue items: {len(sections.get('cost_of_revenue', []))} = {cost_of_revenue}")
+        logger.info(f"   Expense items: {len(sections.get('expenses', []))} = {total_expenses}")
+        
+        if sections.get('expenses'):
+            logger.info(f"   Expense details:")
+            for exp in sections['expenses'][:5]:  # Show first 5
+                logger.info(f"      - {exp.get('label')}: {exp.get('amount')}")
+        
         # Check for explicit totals
         gross_profit_explicit = sum(row['amount'] for row in sections.get('gross_profit', []))
         operating_income_explicit = sum(row['amount'] for row in sections.get('operating_income', []))
@@ -744,6 +755,11 @@ class UniversalFinancialParser:
         gross_profit = gross_profit_explicit if gross_profit_explicit else (total_revenue - cost_of_revenue)
         operating_income = operating_income_explicit if operating_income_explicit else (gross_profit - total_expenses)
         net_income = net_income_explicit if net_income_explicit else operating_income
+        
+        logger.info(f"📊 CALCULATED VALUES:")
+        logger.info(f"   Gross Profit: {gross_profit} (explicit: {gross_profit_explicit})")
+        logger.info(f"   Operating Income: {operating_income} (explicit: {operating_income_explicit})")
+        logger.info(f"   Net Income: {net_income} (explicit: {net_income_explicit})")
         
         # Calculate ratios
         profit_margin = (net_income / total_revenue * 100) if total_revenue > 0 else 0

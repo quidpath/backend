@@ -307,12 +307,15 @@ class EnhancedFinancialDataService:
         
         # Calculate ratios if revenue is available
         if total_revenue > 0:
-            metrics['profit_margin'] = (net_income / total_revenue) if net_income != 0 else None
-            metrics['operating_margin'] = (operating_income / total_revenue) if operating_income != 0 else None
-            metrics['gross_margin'] = (gross_profit / total_revenue) if gross_profit != 0 else None
-            metrics['cost_revenue_ratio'] = (cost_of_revenue / total_revenue) if cost_of_revenue != 0 else None
-            metrics['expense_ratio'] = (total_operating_expenses / total_revenue) if total_operating_expenses != 0 else None
-            metrics['rd_intensity'] = (research_development / total_revenue) if research_development != 0 else None
+            # Always calculate ratios, even if numerator is zero (which gives 0.0 ratio)
+            metrics['profit_margin'] = net_income / total_revenue
+            metrics['operating_margin'] = operating_income / total_revenue
+            metrics['gross_margin'] = gross_profit / total_revenue
+            metrics['cost_revenue_ratio'] = cost_of_revenue / total_revenue
+            metrics['expense_ratio'] = total_operating_expenses / total_revenue
+            metrics['rd_intensity'] = research_development / total_revenue if research_development != 0 else 0.0
+            
+            logger.info(f"📊 Calculated Metrics: profit_margin={metrics['profit_margin']:.4f} ({metrics['profit_margin']*100:.2f}%), operating_margin={metrics['operating_margin']:.4f}, expense_ratio={metrics['expense_ratio']:.4f}, OPEX={total_operating_expenses}")
         else:
             metrics.update({
                 'profit_margin': None,
@@ -322,6 +325,7 @@ class EnhancedFinancialDataService:
                 'expense_ratio': None,
                 'rd_intensity': None
             })
+            logger.warning(f"⚠️ Cannot calculate metrics: total_revenue is {total_revenue}")
         
         # Calculate revenue growth (would need historical data)
         metrics['revenue_growth'] = None
