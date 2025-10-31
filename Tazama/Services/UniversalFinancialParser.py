@@ -218,14 +218,30 @@ class UniversalFinancialParser:
                         rows_to_skip = idx + 1
                         continue
                     
-                    # Skip if row contains only header keywords
-                    row_text = ' '.join([str(v).lower() for v in row if pd.notna(v)])
-                    if any(keyword in row_text for keyword in header_keywords) and len(row_text.split()) <= 5:
+                    # Get non-NaN values
+                    non_nan_values = [str(v).lower() for v in row if pd.notna(v)]
+                    row_text = ' '.join(non_nan_values)
+                    
+                    # Check if this looks like a header row
+                    # 1. Contains header keywords
+                    has_header_keyword = any(keyword in row_text for keyword in header_keywords)
+                    
+                    # 2. Contains year numbers (2020-2030 range) - typical for P&L headers
+                    has_year_numbers = any(re.search(r'\b20[2-3]\d\b', str(v)) for v in row if pd.notna(v))
+                    
+                    # 3. Row is mostly text/keywords with few or no actual financial data
+                    # If first cell contains header keyword and rest are numbers/nan, it's likely a header
+                    first_val = str(row.iloc[0]).lower() if pd.notna(row.iloc[0]) else ''
+                    is_header_row = has_header_keyword and (len(non_nan_values) <= 5 or has_year_numbers)
+                    
+                    if is_header_row:
                         rows_to_skip = idx + 1
+                        logger.info(f"🔍 DEBUG: Identified row {idx} as header: {list(row)[:3]}")
                         continue
                     
-                    # If we find a row with actual data, stop skipping
-                    break
+                    # If we find a row with actual financial data (numbers but no header keywords), stop skipping
+                    if len(non_nan_values) > 0 and not has_header_keyword:
+                        break
                 
                 if rows_to_skip > 0:
                     df = df.iloc[rows_to_skip:].reset_index(drop=True)
