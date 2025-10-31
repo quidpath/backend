@@ -405,12 +405,29 @@ class UniversalFinancialParser:
                 scores['text'][col] = text_count
                 scores['numeric'][col] = numeric_count
             
-            # Choose best candidates
+            # Choose best candidates ensuring they're different
             if not label_col:
                 label_col = max(scores['text'], key=scores['text'].get, default=None)
             
             if not amount_col:
-                amount_col = max(scores['numeric'], key=scores['numeric'].get, default=None)
+                # Get top numeric columns
+                sorted_numeric = sorted(scores['numeric'].items(), key=lambda x: x[1], reverse=True)
+                for col, score in sorted_numeric:
+                    if col != label_col and score > 0:  # Ensure different from label_col
+                        amount_col = col
+                        break
+                
+                # If still not found, use first numeric column
+                if not amount_col and sorted_numeric:
+                    amount_col = sorted_numeric[0][0]
+            
+            # Final safety check: if they're the same, try to use different columns
+            if label_col == amount_col and len(self.raw_data.columns) >= 2:
+                # Use first column as label, second as amount by default
+                all_cols = list(self.raw_data.columns)
+                label_col = all_cols[0] if len(all_cols) > 0 else None
+                amount_col = all_cols[1] if len(all_cols) > 1 else all_cols[0]
+                logger.warning(f"Label and amount were same column, using positional fallback")
         
         logger.info(f"Identified columns - Label: {label_col}, Amount: {amount_col}")
         return label_col, amount_col
@@ -789,4 +806,5 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
 

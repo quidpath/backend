@@ -123,11 +123,44 @@ class CompleteAnalysisPipeline:
                     structured_data = parse_result['structured_data']
                     metrics = structured_data['current_metrics']
                     metadata = structured_data['metadata']
+                    period_info = metadata.get('period', {})
+                    
+                    # Parse period_date from metadata
+                    from datetime import datetime as dt
+                    period_date = None
+                    if period_info.get('end_date'):
+                        if isinstance(period_info['end_date'], str):
+                            try:
+                                period_date = dt.fromisoformat(period_info['end_date']).date()
+                            except:
+                                period_date = timezone.now().date()
+                        else:
+                            period_date = period_info['end_date']
+                    else:
+                        period_date = timezone.now().date()
+                    
+                    # Create a financial record from metrics
+                    financial_record = {
+                        'total_revenue': float(metrics.get('total_revenue', 0)),
+                        'cost_of_revenue': float(metrics.get('cost_of_revenue', 0)),
+                        'gross_profit': float(metrics.get('gross_profit', 0)),
+                        'total_operating_expenses': float(metrics.get('total_operating_expenses', 0)),
+                        'operating_income': float(metrics.get('operating_income', 0)),
+                        'net_income': float(metrics.get('net_income', 0)),
+                        'research_development': 0,
+                        'total_assets': float(metrics.get('total_assets', 0)),
+                        'total_liabilities': float(metrics.get('total_liabilities', 0)),
+                        'shareholders_equity': float(metrics.get('total_equity', 0)),
+                        'period_date': period_date,
+                        'currency': metadata.get('currency', 'KES'),
+                        'statement_type': metadata.get('statement_type', 'unknown')
+                    }
                     
                     extraction_result = {
                         'success': True,
                         'confidence': 0.95,  # High confidence from universal parser
                         'extracted_data': {
+                            'records': [financial_record],  # Storage function expects records array
                             'sheet_0': {
                                 'metrics': {
                                     'totalRevenue': metrics.get('total_revenue', 0),
