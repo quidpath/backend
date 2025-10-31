@@ -37,11 +37,15 @@ class UniversalFinancialParser:
         'revenue': [
             'revenue', 'sales', 'income', 'turnover', 'receipts',
             'service revenue', 'sales revenue', 'product sales',
-            'total revenue', 'gross revenue', 'operating revenue'
+            'total revenue', 'gross revenue', 'operating revenue',
+            'other charges', 'other revenue', 'trading income',
+            'crib', 'digi', 'ifrs', 'kplc', 'messa', 'onboarding',
+            'sim swap', 'sms', 'spin', 'supercrunch', 'tanzania', 'ussd'
         ],
         'cost_of_revenue': [
             'cost of revenue', 'cogs', 'cost of goods sold', 'cost of sales',
-            'direct costs', 'production costs', 'manufacturing costs'
+            'direct costs', 'production costs', 'manufacturing costs',
+            'hire of', 'labor cost', 'purchases', 'parts', 'materials'
         ],
         'expenses': [
             'expense', 'expenses', 'operating expense', 'opex',
@@ -49,7 +53,15 @@ class UniversalFinancialParser:
             'advertising', 'administrative', 'office', 'transport',
             'travel', 'supplies', 'depreciation', 'amortization',
             'interest expense', 'tax expense', 'legal', 'consulting',
-            'subscription', 'insurance', 'maintenance', 'repairs'
+            'subscription', 'insurance', 'maintenance', 'repairs',
+            'accommodation', 'audit', 'bad debt', 'bank fees', 'branding',
+            'business', 'computer', 'consultancy', 'credit card',
+            'delivery', 'donations', 'electricity', 'fines', 'fuel',
+            'general expenses', 'housing', 'internship', 'licenses',
+            'light', 'meals', 'medical', 'meeting', 'nssf', 'paye',
+            'printing', 'professional', 'rent', 'repairs', 'staff',
+            'statutory', 'taxation', 'telephone', 'tendering', 'vehicle',
+            'taswira', 'spin@s', 'merchant'
         ],
         'gross_profit': [
             'gross profit', 'gross income', 'gross margin'
@@ -185,13 +197,39 @@ class UniversalFinancialParser:
                 df = pd.read_excel(file_path, sheet_name=0)
                 logger.info(f"Successfully loaded Excel file")
                 
-                # Debug: Show dataframe structure
-                logger.info(f"🔍 DEBUG: DataFrame shape: {df.shape}, Columns: {list(df.columns)[:6]}")
+                # Debug: Show dataframe structure BEFORE cleaning
+                logger.info(f"🔍 DEBUG: DataFrame shape (before cleaning): {df.shape}, Columns: {list(df.columns)[:6]}")
                 if len(df) > 0:
-                    logger.info(f"🔍 DEBUG: First 3 rows preview:")
-                    for idx in range(min(3, len(df))):
+                    logger.info(f"🔍 DEBUG: First 5 rows preview:")
+                    for idx in range(min(5, len(df))):
                         row_data = {col: df.iloc[idx][col] for col in list(df.columns)[:4]}
                         logger.info(f"  Row {idx}: {row_data}")
+                
+                # Clean: Remove header rows (rows that are all NaN or contain header keywords)
+                header_keywords = ['account', 'section', 'item', 'code', 'description', 'particulars', 
+                                   'total', 'amount', 'balance', 'debit', 'credit']
+                rows_to_skip = 0
+                
+                for idx in range(min(10, len(df))):  # Check first 10 rows
+                    row = df.iloc[idx]
+                    
+                    # Skip if all NaN
+                    if row.isna().all():
+                        rows_to_skip = idx + 1
+                        continue
+                    
+                    # Skip if row contains only header keywords
+                    row_text = ' '.join([str(v).lower() for v in row if pd.notna(v)])
+                    if any(keyword in row_text for keyword in header_keywords) and len(row_text.split()) <= 5:
+                        rows_to_skip = idx + 1
+                        continue
+                    
+                    # If we find a row with actual data, stop skipping
+                    break
+                
+                if rows_to_skip > 0:
+                    df = df.iloc[rows_to_skip:].reset_index(drop=True)
+                    logger.info(f"🔍 DEBUG: Skipped {rows_to_skip} header rows, new shape: {df.shape}")
                 
                 return df
                 
@@ -340,12 +378,34 @@ class UniversalFinancialParser:
         
         # Normalize data
         normalized_rows = []
+        skip_patterns = [
+            r'^total\s+for\s+',  # "Total for Operating Income", "Total for Cost of Goods Sold"
+            r'^total\s+\w+\s+income$',  # "Total Operating Income"
+            r'^total\s+\w+\s+expense',  # "Total Operating Expense"
+            r'^gross\s+profit$',  # "Gross Profit" (summary row)
+            r'^operating\s+profit$',  # "Operating Profit" (summary row)
+            r'^net\s+profit',  # "Net Profit/Loss" (summary row)
+        ]
+        
         for idx, row in self.raw_data.iterrows():
             label = str(row[label_col]).strip()
             amount_str = str(row[amount_col]).strip()
             
             # Skip if label is empty or invalid
             if not label or label.lower() in ['nan', 'none', '']:
+                continue
+            
+            # Skip "Total for X" and other summary rows (we'll calculate these ourselves)
+            label_lower = label.lower()
+            if any(re.search(pattern, label_lower) for pattern in skip_patterns):
+                logger.debug(f"Skipping summary row: {label}")
+                continue
+            
+            # Skip section header rows (no amount, just category name)
+            if label_lower in ['operating income', 'operating expense', 'cost of goods sold', 
+                               'non operating income', 'non operating expense',
+                               'trading income', 'cost of sales', 'operating expenses']:
+                logger.debug(f"Skipping section header: {label}")
                 continue
             
             # Parse amount
@@ -377,6 +437,8 @@ class UniversalFinancialParser:
         if self.raw_data is None or len(self.raw_data.columns) == 0:
             return None, None
         
+        all_cols = list(self.raw_data.columns)
+        
         # Keywords for label columns
         label_keywords = ['account', 'section', 'category', 'item', 'name', 
                           'particulars', 'description', 'line item']
@@ -397,6 +459,13 @@ class UniversalFinancialParser:
             
             if not amount_col and any(kw in col_lower for kw in amount_keywords):
                 amount_col = col
+        
+        # Special case: If first column name contains "account" keyword, definitely use it
+        if len(all_cols) > 0:
+            first_col_lower = str(all_cols[0]).lower()
+            if 'account' in first_col_lower or 'item' in first_col_lower:
+                label_col = all_cols[0]
+                logger.info(f"🔍 DEBUG: Using first column '{all_cols[0]}' as label (contains account/item keyword)")
         
         # Fallback: use heuristics
         if not label_col or not amount_col:
@@ -436,12 +505,24 @@ class UniversalFinancialParser:
                     label_col = max(scores['text'], key=scores['text'].get, default=None)
             
             if not amount_col:
-                # Get top numeric columns
+                # Prefer the first numeric column after the label column (usually most recent data)
+                label_col_idx = all_cols.index(label_col) if label_col in all_cols else -1
+                
                 sorted_numeric = sorted(scores['numeric'].items(), key=lambda x: x[1], reverse=True)
-                for col, score in sorted_numeric:
-                    if col != label_col and score > 0:  # Ensure different from label_col
-                        amount_col = col
-                        break
+                
+                # First, try to find a numeric column immediately after label column
+                if label_col_idx >= 0 and label_col_idx + 1 < len(all_cols):
+                    next_col = all_cols[label_col_idx + 1]
+                    if scores['numeric'].get(next_col, 0) > 0:
+                        amount_col = next_col
+                        logger.info(f"🔍 DEBUG: Using column immediately after label as amount: {amount_col}")
+                
+                # Otherwise, use highest scoring numeric column different from label
+                if not amount_col:
+                    for col, score in sorted_numeric:
+                        if col != label_col and score > 0:  # Ensure different from label_col
+                            amount_col = col
+                            break
                 
                 # If still not found, use first numeric column
                 if not amount_col and sorted_numeric:
@@ -497,11 +578,18 @@ class UniversalFinancialParser:
         # Remove whitespace and commas
         amount_str = amount_str.replace(',', '').replace(' ', '').strip()
         
-        # Check for parentheses (negative)
+        # Check for negative indicators
         is_negative = False
+        
+        # Handle parentheses for negative (accounting format): (1,000) = -1000
         if amount_str.startswith('(') and amount_str.endswith(')'):
             is_negative = True
             amount_str = amount_str[1:-1]
+        
+        # Handle explicit minus sign: -1000
+        elif amount_str.startswith('-'):
+            is_negative = True
+            amount_str = amount_str[1:]
         
         # Parse number
         try:
