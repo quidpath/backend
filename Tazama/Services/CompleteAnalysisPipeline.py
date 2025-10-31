@@ -16,6 +16,7 @@ from Tazama.models import (
 from OrgAuth.models import CorporateUser, Corporate
 from .IntelligentDataExtractor import IntelligentDataExtractor
 from .EnhancedFinancialDataService import EnhancedFinancialDataService
+from .UniversalFinancialParser import UniversalFinancialParser
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class CompleteAnalysisPipeline:
     def __init__(self):
         self.intelligent_extractor = IntelligentDataExtractor()
         self.enhanced_data_service = EnhancedFinancialDataService()
+        self.universal_parser = UniversalFinancialParser()
         self.pipeline_status = {
             'extraction': 'pending',
             'validation': 'pending', 
@@ -105,12 +107,60 @@ class CompleteAnalysisPipeline:
             }
     
     def _perform_intelligent_extraction(self, upload_record: FinancialDataUpload) -> Dict[str, Any]:
-        """Step 1: Perform intelligent data extraction"""
+        """Step 1: Perform intelligent data extraction using Universal Parser"""
         try:
             logger.info(f"Step 1: Performing intelligent extraction for {upload_record.file_name}")
             self.pipeline_status['extraction'] = 'processing'
             
             file_path = upload_record.file_path.path
+            
+            # Use Universal Parser for robust extraction
+            try:
+                parse_result = self.universal_parser.parse_file(file_path)
+                
+                if parse_result.get('success'):
+                    # Convert to format expected by downstream pipeline
+                    structured_data = parse_result['structured_data']
+                    metrics = structured_data['current_metrics']
+                    metadata = structured_data['metadata']
+                    
+                    extraction_result = {
+                        'success': True,
+                        'confidence': 0.95,  # High confidence from universal parser
+                        'extracted_data': {
+                            'sheet_0': {
+                                'metrics': {
+                                    'totalRevenue': metrics.get('total_revenue', 0),
+                                    'costOfRevenue': metrics.get('cost_of_revenue', 0),
+                                    'grossProfit': metrics.get('gross_profit', 0),
+                                    'totalOperatingExpenses': metrics.get('total_operating_expenses', 0),
+                                    'operatingIncome': metrics.get('operating_income', 0),
+                                    'netIncome': metrics.get('net_income', 0),
+                                    'researchDevelopment': 0,
+                                    # Include ratios
+                                    'profit_margin': metrics.get('profit_margin', 0) / 100,
+                                    'operating_margin': metrics.get('operating_margin', 0) / 100,
+                                    'gross_margin': metrics.get('gross_margin', 0) / 100,
+                                    'expense_ratio': metrics.get('expense_ratio', 0) / 100,
+                                },
+                                'confidence': 0.95,
+                                'period_info': metadata.get('period', {}),
+                                'statement_type': metadata.get('statement_type'),
+                                'currency': metadata.get('currency', 'KES')
+                            }
+                        },
+                        'metadata': metadata,
+                        'projections': structured_data.get('projections', {})
+                    }
+                    
+                    self.pipeline_status['extraction'] = 'completed'
+                    logger.info(f"Universal parser extraction completed successfully")
+                    return extraction_result
+                    
+            except Exception as parser_error:
+                logger.warning(f"Universal parser failed: {str(parser_error)}, falling back to legacy extractor")
+            
+            # Fallback to legacy extractor if universal parser fails
             extraction_result = self.intelligent_extractor.extract_financial_data(
                 file_path, 
                 file_type='auto'
@@ -118,7 +168,7 @@ class CompleteAnalysisPipeline:
             
             if extraction_result['success']:
                 self.pipeline_status['extraction'] = 'completed'
-                logger.info(f"Intelligent extraction completed with {extraction_result['confidence']:.2%} confidence")
+                logger.info(f"Legacy extraction completed with {extraction_result.get('confidence', 0):.2%} confidence")
             else:
                 self.pipeline_status['extraction'] = 'failed'
                 logger.error(f"Intelligent extraction failed: {extraction_result.get('error')}")
