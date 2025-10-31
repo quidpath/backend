@@ -230,6 +230,11 @@ class UniversalFinancialParser:
                 if rows_to_skip > 0:
                     df = df.iloc[rows_to_skip:].reset_index(drop=True)
                     logger.info(f"🔍 DEBUG: Skipped {rows_to_skip} header rows, new shape: {df.shape}")
+                    
+                    # Reset column names to positional indices after skipping headers
+                    # This prevents issues where column names don't match actual data positions
+                    df.columns = [f'Col_{i}' for i in range(len(df.columns))]
+                    logger.info(f"🔍 DEBUG: Reset column names to positional: {list(df.columns)}")
                 
                 return df
                 
@@ -450,22 +455,29 @@ class UniversalFinancialParser:
         label_col = None
         amount_col = None
         
-        # Check column names
-        for col in self.raw_data.columns:
-            col_lower = str(col).lower()
-            
-            if not label_col and any(kw in col_lower for kw in label_keywords):
-                label_col = col
-            
-            if not amount_col and any(kw in col_lower for kw in amount_keywords):
-                amount_col = col
+        # Check if we're using positional column names (Col_0, Col_1, etc.)
+        using_positional_cols = all_cols[0].startswith('Col_') if all_cols else False
         
-        # Special case: If first column name contains "account" keyword, definitely use it
-        if len(all_cols) > 0:
-            first_col_lower = str(all_cols[0]).lower()
-            if 'account' in first_col_lower or 'item' in first_col_lower:
-                label_col = all_cols[0]
-                logger.info(f"🔍 DEBUG: Using first column '{all_cols[0]}' as label (contains account/item keyword)")
+        if using_positional_cols:
+            # For positional columns, use heuristics based on content, not names
+            logger.info(f"🔍 DEBUG: Using positional column names, will analyze content")
+        else:
+            # Check column names for keywords
+            for col in self.raw_data.columns:
+                col_lower = str(col).lower()
+                
+                if not label_col and any(kw in col_lower for kw in label_keywords):
+                    label_col = col
+                
+                if not amount_col and any(kw in col_lower for kw in amount_keywords):
+                    amount_col = col
+            
+            # Special case: If first column name contains "account" keyword, definitely use it
+            if len(all_cols) > 0:
+                first_col_lower = str(all_cols[0]).lower()
+                if 'account' in first_col_lower or 'item' in first_col_lower:
+                    label_col = all_cols[0]
+                    logger.info(f"🔍 DEBUG: Using first column '{all_cols[0]}' as label (contains account/item keyword)")
         
         # Fallback: use heuristics
         if not label_col or not amount_col:
@@ -494,13 +506,17 @@ class UniversalFinancialParser:
             
             # Choose best candidates ensuring they're different
             if not label_col:
-                # Prioritize first column if it has any text
-                all_cols = list(self.raw_data.columns)
+                # For positional columns or when first column has text, use it
                 first_col = all_cols[0] if all_cols else None
                 
+                # Always prioritize first column (Col_0) if it has text content
                 if first_col and scores['text'].get(first_col, 0) > 0:
                     label_col = first_col
-                    logger.info(f"🔍 DEBUG: Using first column as label column (has text)")
+                    logger.info(f"🔍 DEBUG: Using first column '{first_col}' as label column (has text)")
+                elif using_positional_cols and first_col:
+                    # For positional columns, default to Col_0 even if no text score yet
+                    label_col = first_col
+                    logger.info(f"🔍 DEBUG: Using first column '{first_col}' as label column (positional default)")
                 else:
                     label_col = max(scores['text'], key=scores['text'].get, default=None)
             
