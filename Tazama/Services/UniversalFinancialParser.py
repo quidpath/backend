@@ -777,18 +777,31 @@ class UniversalFinancialParser:
         
         # Calculate next period dates
         if period_type == 'quarterly':
+            # Calculate current quarter
+            current_quarter = (end_date.month - 1) // 3 + 1
+            
+            # Calculate next quarter
+            next_quarter = (current_quarter % 4) + 1
+            next_year = end_date.year + (1 if current_quarter == 4 else 0)
+            
+            # Set next period start and end dates
             next_start = end_date + timedelta(days=1)
             next_end = next_start + relativedelta(months=3, days=-1)
-            next_period_label = f"Q{((end_date.month - 1) // 3 + 1) % 4 + 1} {end_date.year if end_date.month < 10 else end_date.year + 1}"
+            next_period_label = f"Q{next_quarter} {next_year}"
+            
         elif period_type == 'annual':
             next_start = end_date + timedelta(days=1)
             next_end = next_start + relativedelta(years=1, days=-1)
             next_period_label = f"Year {end_date.year + 1}"
+            
         else:
-            # Default to 3 months ahead
+            # For unknown period types, project 3 months ahead (next quarter)
             next_start = end_date + timedelta(days=1)
             next_end = next_start + relativedelta(months=3, days=-1)
-            next_period_label = f"{next_start.strftime('%b')}–{next_end.strftime('%b %Y')}"
+            
+            # Calculate which quarter the next period falls into
+            next_quarter = (next_start.month - 1) // 3 + 1
+            next_period_label = f"Q{next_quarter} {next_start.year}"
         
         # Apply growth rates
         growth_rates = self.DEFAULT_GROWTH_RATES
