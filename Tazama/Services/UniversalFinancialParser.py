@@ -184,6 +184,15 @@ class UniversalFinancialParser:
                 # Load first sheet by default
                 df = pd.read_excel(file_path, sheet_name=0)
                 logger.info(f"Successfully loaded Excel file")
+                
+                # Debug: Show dataframe structure
+                logger.info(f"🔍 DEBUG: DataFrame shape: {df.shape}, Columns: {list(df.columns)[:6]}")
+                if len(df) > 0:
+                    logger.info(f"🔍 DEBUG: First 3 rows preview:")
+                    for idx in range(min(3, len(df))):
+                        row_data = {col: df.iloc[idx][col] for col in list(df.columns)[:4]}
+                        logger.info(f"  Row {idx}: {row_data}")
+                
                 return df
                 
             else:
@@ -401,8 +410,8 @@ class UniversalFinancialParser:
                 for idx in range(min(10, len(self.raw_data))):
                     val = str(self.raw_data.iloc[idx][col])
                     
-                    # Check if looks like text
-                    if len(val) > 3 and not val.replace('.', '').replace(',', '').replace('-', '').isdigit():
+                    # Check if looks like text (not purely numeric)
+                    if len(val) > 3 and not val.replace('.', '').replace(',', '').replace('-', '').replace(' ', '').isdigit():
                         text_count += 1
                     
                     # Check if looks like number
@@ -412,9 +421,19 @@ class UniversalFinancialParser:
                 scores['text'][col] = text_count
                 scores['numeric'][col] = numeric_count
             
+            logger.info(f"🔍 DEBUG: Column scores - Text: {scores['text']}, Numeric: {scores['numeric']}")
+            
             # Choose best candidates ensuring they're different
             if not label_col:
-                label_col = max(scores['text'], key=scores['text'].get, default=None)
+                # Prioritize first column if it has any text
+                all_cols = list(self.raw_data.columns)
+                first_col = all_cols[0] if all_cols else None
+                
+                if first_col and scores['text'].get(first_col, 0) > 0:
+                    label_col = first_col
+                    logger.info(f"🔍 DEBUG: Using first column as label column (has text)")
+                else:
+                    label_col = max(scores['text'], key=scores['text'].get, default=None)
             
             if not amount_col:
                 # Get top numeric columns
@@ -430,11 +449,15 @@ class UniversalFinancialParser:
             
             # Final safety check: if they're the same, try to use different columns
             if label_col == amount_col and len(self.raw_data.columns) >= 2:
-                # Use first column as label, second as amount by default
+                # Use first column as label, last column (or second-to-last) as amount by default
                 all_cols = list(self.raw_data.columns)
                 label_col = all_cols[0] if len(all_cols) > 0 else None
-                amount_col = all_cols[1] if len(all_cols) > 1 else all_cols[0]
-                logger.warning(f"Label and amount were same column, using positional fallback")
+                # Try to use the last column with numeric data, or second-to-last
+                if len(all_cols) > 2:
+                    amount_col = all_cols[-1]  # Last column often has amounts
+                else:
+                    amount_col = all_cols[1] if len(all_cols) > 1 else all_cols[0]
+                logger.warning(f"Label and amount were same column, using positional fallback: label={label_col}, amount={amount_col}")
         
         logger.info(f"Identified columns - Label: {label_col}, Amount: {amount_col}")
         return label_col, amount_col
