@@ -193,64 +193,74 @@ class UniversalFinancialParser:
                 return df
                 
             elif extension in ['.xls', '.xlsx']:
-                # Load first sheet by default
-                df = pd.read_excel(file_path, sheet_name=0)
+                # Load first sheet by default WITHOUT headers (treat everything as data)
+                df = pd.read_excel(file_path, sheet_name=0, header=None)
                 logger.info(f"Successfully loaded Excel file")
                 
                 # Debug: Show dataframe structure BEFORE cleaning
-                logger.info(f"🔍 DEBUG: DataFrame shape (before cleaning): {df.shape}, Columns: {list(df.columns)[:6]}")
+                logger.info(f"🔍 DEBUG: DataFrame shape (before cleaning): {df.shape}")
                 if len(df) > 0:
-                    logger.info(f"🔍 DEBUG: First 5 rows preview:")
-                    for idx in range(min(5, len(df))):
-                        row_data = {col: df.iloc[idx][col] for col in list(df.columns)[:4]}
-                        logger.info(f"  Row {idx}: {row_data}")
+                    logger.info(f"🔍 DEBUG: First 10 rows preview:")
+                    for idx in range(min(10, len(df))):
+                        row_vals = [df.iloc[idx][col] for col in range(min(4, len(df.columns)))]
+                        logger.info(f"  Row {idx}: {row_vals}")
                 
-                # Clean: Remove header rows (rows that are all NaN or contain header keywords)
-                header_keywords = ['account', 'section', 'item', 'code', 'description', 'particulars', 
-                                   'total', 'amount', 'balance', 'debit', 'credit']
-                rows_to_skip = 0
+                # Find the actual data start row
+                data_start_row = 0
+                header_keywords = ['account', 'section', 'item', 'description', 'particulars']
                 
-                for idx in range(min(10, len(df))):  # Check first 10 rows
+                for idx in range(min(15, len(df))):  # Check first 15 rows
                     row = df.iloc[idx]
                     
-                    # Skip if all NaN
+                    # Skip completely empty rows
                     if row.isna().all():
-                        rows_to_skip = idx + 1
                         continue
                     
-                    # Get non-NaN values
-                    non_nan_values = [str(v).lower() for v in row if pd.notna(v)]
-                    row_text = ' '.join(non_nan_values)
+                    first_val = str(row.iloc[0]).lower().strip() if pd.notna(row.iloc[0]) else ''
                     
-                    # Check if this looks like a header row
-                    # 1. Contains header keywords
-                    has_header_keyword = any(keyword in row_text for keyword in header_keywords)
+                    # Check if this is the column header row (contains "Account" or similar)
+                    if any(keyword in first_val for keyword in header_keywords):
+                        # Check if this row also has year numbers in subsequent columns
+                        has_years = False
+                        for col_idx in range(1, min(6, len(row))):
+                            val = str(row.iloc[col_idx])
+                            if re.search(r'\b20[2-3]\d\b', val):
+                                has_years = True
+                                break
+                        
+                        if has_years:
+                            # This is the column header row - data starts AFTER this
+                            data_start_row = idx + 1
+                            logger.info(f"🔍 DEBUG: Found column header row at index {idx}: {list(row)[:4]}")
+                            logger.info(f"🔍 DEBUG: Data will start from row {data_start_row}")
+                            break
+                        else:
+                            # This is just a label row with no year columns - data starts here
+                            data_start_row = idx
+                            logger.info(f"🔍 DEBUG: Found label start at row {idx}")
+                            break
                     
-                    # 2. Contains year numbers (2020-2030 range) - typical for P&L headers
-                    has_year_numbers = any(re.search(r'\b20[2-3]\d\b', str(v)) for v in row if pd.notna(v))
-                    
-                    # 3. Row is mostly text/keywords with few or no actual financial data
-                    # If first cell contains header keyword and rest are numbers/nan, it's likely a header
-                    first_val = str(row.iloc[0]).lower() if pd.notna(row.iloc[0]) else ''
-                    is_header_row = has_header_keyword and (len(non_nan_values) <= 5 or has_year_numbers)
-                    
-                    if is_header_row:
-                        rows_to_skip = idx + 1
-                        logger.info(f"🔍 DEBUG: Identified row {idx} as header: {list(row)[:3]}")
-                        continue
-                    
-                    # If we find a row with actual financial data (numbers but no header keywords), stop skipping
-                    if len(non_nan_values) > 0 and not has_header_keyword:
-                        break
+                    # Check if this looks like actual financial data (text in first col, number in second)
+                    if first_val and len(first_val) > 2:
+                        second_val = row.iloc[1] if len(row) > 1 else None
+                        if pd.notna(second_val):
+                            try:
+                                float(second_val)
+                                # This looks like data - start here
+                                data_start_row = idx
+                                logger.info(f"🔍 DEBUG: Found data start at row {idx}")
+                                break
+                            except:
+                                pass
                 
-                if rows_to_skip > 0:
-                    df = df.iloc[rows_to_skip:].reset_index(drop=True)
-                    logger.info(f"🔍 DEBUG: Skipped {rows_to_skip} header rows, new shape: {df.shape}")
-                    
-                    # Reset column names to positional indices after skipping headers
-                    # This prevents issues where column names don't match actual data positions
-                    df.columns = [f'Col_{i}' for i in range(len(df.columns))]
-                    logger.info(f"🔍 DEBUG: Reset column names to positional: {list(df.columns)}")
+                # Skip to data start row
+                if data_start_row > 0:
+                    df = df.iloc[data_start_row:].reset_index(drop=True)
+                    logger.info(f"🔍 DEBUG: Skipped {data_start_row} header rows, new shape: {df.shape}")
+                
+                # Assign simple column names
+                df.columns = [f'Col_{i}' for i in range(len(df.columns))]
+                logger.info(f"🔍 DEBUG: Assigned column names: {list(df.columns)}")
                 
                 return df
                 
@@ -475,8 +485,26 @@ class UniversalFinancialParser:
         using_positional_cols = all_cols[0].startswith('Col_') if all_cols else False
         
         if using_positional_cols:
-            # For positional columns, use heuristics based on content, not names
-            logger.info(f"🔍 DEBUG: Using positional column names, will analyze content")
+            # For positional columns, use simple logic: Col_0 = labels, Col_1 = amounts
+            label_col = all_cols[0] if len(all_cols) > 0 else None
+            
+            # Find first numeric column after Col_0
+            amount_col = None
+            for col in all_cols[1:]:
+                # Check if this column has numeric data
+                sample_values = self.raw_data[col].head(10)
+                numeric_count = sum(1 for val in sample_values if pd.notna(val) and str(val).replace('.', '').replace('-', '').replace(',', '').isdigit())
+                if numeric_count > 0:
+                    amount_col = col
+                    break
+            
+            if not amount_col and len(all_cols) > 1:
+                amount_col = all_cols[1]  # Fallback to second column
+            
+            logger.info(f"🔍 DEBUG: Using positional columns - Label: {label_col}, Amount: {amount_col}")
+            logger.info(f"Identified columns - Label: {label_col}, Amount: {amount_col}")
+            return label_col, amount_col
+        
         else:
             # Check column names for keywords
             for col in self.raw_data.columns:
