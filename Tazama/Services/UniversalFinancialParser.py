@@ -350,6 +350,13 @@ class UniversalFinancialParser:
         
         self.normalized_data['rows'] = normalized_rows
         logger.info(f"Normalized {len(normalized_rows)} rows")
+        
+        # Debug: Show first few rows with non-zero amounts
+        non_zero_rows = [r for r in normalized_rows if r['amount'] != 0]
+        if non_zero_rows:
+            logger.info(f"🔍 DEBUG: First 3 non-zero rows: {non_zero_rows[:3]}")
+        else:
+            logger.warning(f"⚠️ WARNING: No rows with non-zero amounts found!")
     
     def _identify_columns(self) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -522,6 +529,13 @@ class UniversalFinancialParser:
         self._detect_statement_type(sections)
         
         logger.info(f"Classified into sections. Statement type: {self.statement_type}")
+        
+        # Debug: Show section counts and sample classifications
+        logger.info(f"🔍 DEBUG: Section counts - Revenue: {len(sections['revenue'])}, Expenses: {len(sections['expenses'])}, Cost of Revenue: {len(sections['cost_of_revenue'])}, Other: {len(sections['other'])}")
+        if sections['revenue']:
+            logger.info(f"🔍 DEBUG: Sample revenue items: {[r['label'] for r in sections['revenue'][:3]]}")
+        if sections['expenses']:
+            logger.info(f"🔍 DEBUG: Sample expense items: {[r['label'] for r in sections['expenses'][:3]]}")
     
     def _detect_statement_type(self, sections: Dict[str, List]):
         """Detect the type of financial statement."""

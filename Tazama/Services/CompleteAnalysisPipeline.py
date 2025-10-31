@@ -118,12 +118,17 @@ class CompleteAnalysisPipeline:
             try:
                 parse_result = self.universal_parser.parse_file(file_path)
                 
+                logger.info(f"🔍 DEBUG: Parse result success = {parse_result.get('success')}")
+                
                 if parse_result.get('success'):
                     # Convert to format expected by downstream pipeline
                     structured_data = parse_result['structured_data']
                     metrics = structured_data['current_metrics']
                     metadata = structured_data['metadata']
                     period_info = metadata.get('period', {})
+                    
+                    logger.info(f"🔍 DEBUG: Extracted metrics = {metrics}")
+                    logger.info(f"🔍 DEBUG: Statement type = {metadata.get('statement_type')}")
                     
                     # Parse period_date from metadata
                     from datetime import datetime as dt
@@ -155,6 +160,8 @@ class CompleteAnalysisPipeline:
                         'currency': metadata.get('currency', 'KES'),
                         'statement_type': metadata.get('statement_type', 'unknown')
                     }
+                    
+                    logger.info(f"🔍 DEBUG: Created financial_record with total_revenue={financial_record['total_revenue']}, net_income={financial_record['net_income']}")
                     
                     extraction_result = {
                         'success': True,

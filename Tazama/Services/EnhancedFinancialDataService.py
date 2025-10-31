@@ -100,6 +100,10 @@ class EnhancedFinancialDataService:
             extracted_data = extraction_result['extracted_data']
             records = extracted_data.get('records', [])
             
+            logger.info(f"🔍 DEBUG: _store_intelligent_extraction received {len(records) if records else 0} records")
+            if records:
+                logger.info(f"🔍 DEBUG: First record preview: revenue={records[0].get('total_revenue', 0)}, net_income={records[0].get('net_income', 0)}")
+            
             if not records:
                 return {
                     'success': False,
