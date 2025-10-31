@@ -235,10 +235,23 @@ class EnhancedFinancialDataService:
             # Gross Profit = Revenue - Cost of Revenue
             if (gross_profit == 0.0) and (revenue or cost):
                 cleaned['gross_profit'] = max(0.0, revenue - cost)
+            
+            # Update gross_profit variable after calculation
+            gross_profit = cleaned.get('gross_profit', 0.0)
 
-            # Operating Income = Gross Profit - Operating Expenses
-            if (operating_income == 0.0) and (cleaned.get('gross_profit', 0.0) or opex):
-                cleaned['operating_income'] = cleaned.get('gross_profit', 0.0) - opex
+            # CRITICAL FIX: Calculate Operating Expenses from Gross Profit and Operating Income
+            # Operating Expenses = Gross Profit - Operating Income
+            if (opex == 0.0) and gross_profit > 0 and operating_income > 0:
+                calculated_opex = gross_profit - operating_income
+                if calculated_opex > 0:  # Only if positive (makes sense)
+                    cleaned['total_operating_expenses'] = calculated_opex
+                    opex = calculated_opex
+                    logger.info(f"🔍 Calculated Operating Expenses from Gross Profit - Operating Income: {calculated_opex}")
+
+            # Operating Income = Gross Profit - Operating Expenses (if operating income is missing)
+            if (operating_income == 0.0) and (gross_profit > 0 or opex > 0):
+                cleaned['operating_income'] = max(0.0, gross_profit - opex)
+                operating_income = cleaned['operating_income']
 
             # Net Income: if absent, approximate with Operating Income when available
             if (net_income == 0.0) and (cleaned.get('operating_income', 0.0)):
