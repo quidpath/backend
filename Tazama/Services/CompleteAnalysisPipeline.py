@@ -289,13 +289,32 @@ class CompleteAnalysisPipeline:
                 model_type='traditional'
             ).first()
             
-            # ALWAYS use fallback analysis for now to ensure accurate ratio calculations
-            # The ML model can be unreliable with small/zero datasets
-            if not available_model or financial_data['totalRevenue'] == 0:
-                # Create a fallback analysis without ML model
-                logger.info("Using fallback analysis (no ML model or zero revenue)")
-                analysis_result = self._perform_fallback_analysis(financial_data)
-            else:
+            # ALWAYS use fallback analysis for accurate ratio calculations
+            # ML model is disabled until properly trained
+            logger.info("Using fallback analysis for accurate ratio calculations")
+            analysis_result = self._perform_fallback_analysis(financial_data)
+            
+            # Store the analysis in database for tracking
+            if available_model:
+                try:
+                    analysis_request = TazamaAnalysisRequest.objects.create(
+                        corporate=upload_record.corporate,
+                        requested_by=upload_record.uploaded_by,
+                        request_type='single_prediction',
+                        input_data=financial_data,
+                        model_used=available_model,
+                        status='completed',
+                        predictions=analysis_result.get('predictions', {}),
+                        recommendations=analysis_result.get('recommendations', {}),
+                        risk_assessment=analysis_result.get('risk_assessment', {}),
+                        confidence_scores=analysis_result.get('confidence_scores', {}),
+                        processing_time_seconds=analysis_result.get('processing_time', 0.1)
+                    )
+                    analysis_result['analysis_id'] = analysis_request.id
+                except Exception as e:
+                    logger.warning(f"Could not create analysis request record: {e}")
+            
+            if False:  # Temporarily disable ML model path
                 # Create analysis request with model
                 analysis_request = TazamaAnalysisRequest.objects.create(
                     corporate=upload_record.corporate,
@@ -541,6 +560,8 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             net_income = financial_data.get('netIncome', 0)
             
             # Calculate basic ratios
+            logger.info(f"🔍 FALLBACK ANALYSIS - Input data: revenue={revenue}, cost={cost}, gross_profit={gross_profit}, expenses={expenses}, operating_income={operating_income}, net_income={net_income}")
+            
             predictions = {}
             if revenue > 0:
                 predictions['profit_margin'] = net_income / revenue
@@ -548,6 +569,8 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 predictions['gross_margin'] = gross_profit / revenue
                 predictions['cost_revenue_ratio'] = cost / revenue
                 predictions['expense_ratio'] = expenses / revenue
+                
+                logger.info(f"✅ CALCULATED RATIOS: profit_margin={predictions['profit_margin']:.4f} ({predictions['profit_margin']*100:.2f}%), operating_margin={predictions['operating_margin']:.4f} ({predictions['operating_margin']*100:.2f}%), expense_ratio={predictions['expense_ratio']:.4f} ({predictions['expense_ratio']*100:.2f}%)")
             else:
                 predictions = {
                     'profit_margin': 0.0,
@@ -556,6 +579,7 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     'cost_revenue_ratio': 0.0,
                     'expense_ratio': 0.0
                 }
+                logger.warning("⚠️ Revenue is zero, returning zero ratios")
             
             # Generate basic recommendations
             recommendations = {

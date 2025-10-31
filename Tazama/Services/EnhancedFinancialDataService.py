@@ -134,6 +134,9 @@ class EnhancedFinancialDataService:
                     # Calculate derived metrics
                     calculated_metrics = self._calculate_derived_metrics(cleaned_record)
                     
+                    # Log what we're about to store
+                    logger.info(f"💾 Storing to database: total_operating_expenses={cleaned_record.get('total_operating_expenses', 0)}, operating_income={cleaned_record.get('operating_income', 0)}, gross_profit={cleaned_record.get('gross_profit', 0)}")
+                    
                     # Create or update ProcessedFinancialData record
                     processed_data, created = ProcessedFinancialData.objects.update_or_create(
                         corporate=upload_record.corporate,
@@ -158,6 +161,8 @@ class EnhancedFinancialDataService:
                             'validation_errors': []
                         }
                     )
+                    
+                    logger.info(f"✅ Successfully stored - OPEX in DB: {processed_data.total_operating_expenses}")
                     
                     # Debug logging: Show what was saved to database
                     print("🔍 DEBUG: Saved to ProcessedFinancialData")
@@ -241,12 +246,16 @@ class EnhancedFinancialDataService:
 
             # CRITICAL FIX: Calculate Operating Expenses from Gross Profit and Operating Income
             # Operating Expenses = Gross Profit - Operating Income
-            if (opex == 0.0) and gross_profit > 0 and operating_income > 0:
+            logger.info(f"🔍 DEBUG: Before OPEX calc - opex={opex}, gross_profit={gross_profit}, operating_income={operating_income}")
+            
+            if (opex == 0.0 or opex == 0) and gross_profit > 0 and operating_income > 0:
                 calculated_opex = gross_profit - operating_income
-                if calculated_opex > 0:  # Only if positive (makes sense)
+                if calculated_opex >= 0:  # Allow zero (break-even)
                     cleaned['total_operating_expenses'] = calculated_opex
                     opex = calculated_opex
-                    logger.info(f"🔍 Calculated Operating Expenses from Gross Profit - Operating Income: {calculated_opex}")
+                    logger.info(f"✅ Calculated Operating Expenses: Gross Profit ({gross_profit}) - Operating Income ({operating_income}) = {calculated_opex}")
+            else:
+                logger.info(f"⚠️ Could not calculate OPEX: opex={opex}, gross_profit={gross_profit}, operating_income={operating_income}")
 
             # Operating Income = Gross Profit - Operating Expenses (if operating income is missing)
             if (operating_income == 0.0) and (gross_profit > 0 or opex > 0):
