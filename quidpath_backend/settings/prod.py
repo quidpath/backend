@@ -13,7 +13,10 @@ print("Using Production Settings")
 DEBUG = False
 
 # Load allowed hosts from environment (comma-separated)
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "api.quidpath.com").split(",")
+ALLOWED_HOSTS = os.environ.get(
+    "ALLOWED_HOSTS",
+    "api.quidpath.com,quidpath.com,www.quidpath.com"
+).split(",")
 
 # ====================================
 # 🧩 CSRF & CORS CONFIGURATION
