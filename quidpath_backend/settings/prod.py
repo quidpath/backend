@@ -117,3 +117,21 @@ LOGGING = {
 # - Ensure ALLOWED_HOSTS includes api.quidpath.com, quidpath.com, and www.quidpath.com
 # - Restart backend after saving this file:
 #     docker compose restart backend
+#
+# ====================================
+# 🔐 NGINX CONFIGURATION REQUIREMENT
+# ====================================
+# ⚠️ CRITICAL: Django admin CSRF requires the Referer header.
+#
+# Your Nginx config MUST use:
+#   add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+#
+# NOT:
+#   add_header Referrer-Policy "no-referrer" always;  ❌ (blocks CSRF)
+#
+# Why: Django's CSRF protection validates the Referer header to confirm same-origin
+#      requests. If Nginx sends "no-referrer", the browser omits Referer entirely,
+#      causing "CSRF verification failed (no Referer header)" errors in admin.
+#
+# "strict-origin-when-cross-origin" provides strong privacy (doesn't leak full paths)
+# while still allowing Django to receive Referer for same-origin HTTPS requests.
