@@ -363,6 +363,16 @@ class IntelligentDataExtractor:
                     sheet_results['confidence'] += 0.1
                     used_columns.add(str(best_match))
             
+            # Section-aware aggregation fallback for Section/Item/Amount style
+            try:
+                agg = self._aggregate_section_table(df)
+                if agg:
+                    # Prefer robust section aggregation when it yields complete totals
+                    sheet_results['metrics'].update(agg)
+                    sheet_results['confidence'] = max(sheet_results['confidence'], 0.8)
+            except Exception:
+                pass
+
             # Calculate sheet confidence
             if sheet_results['matched_columns']:
                 sheet_results['confidence'] = min(sheet_results['confidence'], 1.0)
@@ -403,6 +413,15 @@ class IntelligentDataExtractor:
                     sheet_results['metrics'][metric] = self._extract_values_by_pattern(df, pattern_match)
                     sheet_results['confidence'] += 0.15
             
+            # Section-aware aggregation fallback
+            try:
+                agg = self._aggregate_section_table(df)
+                if agg:
+                    sheet_results['metrics'].update(agg)
+                    sheet_results['confidence'] = max(sheet_results['confidence'], 0.8)
+            except Exception:
+                pass
+
             if sheet_results['patterns_found']:
                 sheet_results['confidence'] = min(sheet_results['confidence'], 1.0)
                 total_confidence += sheet_results['confidence']
@@ -443,6 +462,15 @@ class IntelligentDataExtractor:
                     sheet_results['metrics'][metric] = self._extract_by_context(df, context_info)
                     sheet_results['confidence'] += context_info['confidence'] * 0.2
             
+            # Section-aware aggregation fallback
+            try:
+                agg = self._aggregate_section_table(df)
+                if agg:
+                    sheet_results['metrics'].update(agg)
+                    sheet_results['confidence'] = max(sheet_results['confidence'], 0.8)
+            except Exception:
+                pass
+
             if sheet_results['context_analysis']:
                 sheet_results['confidence'] = min(sheet_results['confidence'], 1.0)
                 total_confidence += sheet_results['confidence']
@@ -485,6 +513,15 @@ class IntelligentDataExtractor:
                     sheet_results['metrics'][metric] = self._extract_values_by_prediction(df, ml_prediction)
                     sheet_results['confidence'] += ml_prediction['confidence'] * 0.3
             
+            # Section-aware aggregation fallback
+            try:
+                agg = self._aggregate_section_table(df)
+                if agg:
+                    sheet_results['metrics'].update(agg)
+                    sheet_results['confidence'] = max(sheet_results['confidence'], 0.8)
+            except Exception:
+                pass
+
             if sheet_results['ml_predictions']:
                 sheet_results['confidence'] = min(sheet_results['confidence'], 1.0)
                 total_confidence += sheet_results['confidence']
@@ -1134,3 +1171,66 @@ class IntelligentDataExtractor:
                 'success': False,
                 'error': str(e)
             }
+
+    def _aggregate_section_table(self, df: pd.DataFrame) -> Optional[Dict[str, float]]:
+        """Aggregate totals from Section/Item/Amount style tables.
+
+        Expected columns (case-insensitive):
+        - section: e.g., 'Revenue', 'Cost of Sales', 'Operating Expenses', 'Other Income/Expenses'
+        - item: description (optional)
+        - amount: numeric value (KES)
+        """
+        try:
+            cols_lower = {c.lower(): c for c in df.columns}
+            # Find likely columns
+            section_col = next((orig for key, orig in cols_lower.items() if 'section' in key or 'category' in key), None)
+            amount_col = next((orig for key, orig in cols_lower.items() if 'amount' in key or 'kes' in key or 'value' in key), None)
+            if not section_col or not amount_col:
+                return None
+
+            # Normalize data
+            w = df[[section_col, amount_col]].copy()
+            w.columns = ['section', 'amount']
+            # Coerce numeric amount
+            def to_float(x):
+                try:
+                    if isinstance(x, str):
+                        y = x.replace(',', '').replace('KES', '').strip()
+                        if '(' in y and ')' in y:
+                            y = '-' + y.replace('(', '').replace(')', '')
+                        return float(y)
+                    return float(x)
+                except Exception:
+                    return 0.0
+            w['amount'] = w['amount'].apply(to_float)
+            w['section_norm'] = w['section'].astype(str).str.lower()
+
+            # Aggregate by high-level sections
+            def sum_where(pred):
+                return float(w.loc[pred, 'amount'].sum())
+
+            rev = sum_where(w['section_norm'].str.contains('revenue'))
+            cost = sum_where(w['section_norm'].str.contains('cost of') | w['section_norm'].str.contains('costs') | w['section_norm'].str.contains('cost of sales') | w['section_norm'].str.contains('cogs'))
+            opex = sum_where(w['section_norm'].str.contains('operating expense'))
+
+            # Other income/expenses adjustments if present
+            other_inc = sum_where(w['section_norm'].str.contains('interest income') | w['section_norm'].str.contains('other income'))
+            other_exp = sum_where(w['section_norm'].str.contains('interest expense') | w['section_norm'].str.contains('other expense'))
+
+            gross = rev - cost if rev else 0.0
+            op_inc = gross - opex if rev else 0.0
+            net_inc = op_inc + other_inc + other_exp  # other_exp expected negative if entered with minus
+
+            if rev <= 0:
+                return None
+
+            return {
+                'total_revenue': rev,
+                'cost_of_revenue': max(0.0, cost),
+                'gross_profit': gross,
+                'total_operating_expenses': max(0.0, opex),
+                'operating_income': op_inc,
+                'net_income': net_inc,
+            }
+        except Exception:
+            return None
