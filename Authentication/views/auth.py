@@ -23,6 +23,18 @@ from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
 
+def _apply_api_security_headers(response):
+    """Ensure production-ready headers on API JSON responses."""
+    try:
+        response["Content-Type"] = "application/json; charset=utf-8"
+        response["Cache-Control"] = "no-store"
+        response["Pragma"] = "no-cache"
+        response["X-Content-Type-Options"] = "nosniff"
+    except Exception:
+        pass
+    return response
+
+
 def issue_tokens_for_user(user, role=None, corporate_id=None):
     refresh = RefreshToken.for_user(user)
     # Add custom claims to refresh token
@@ -41,18 +53,18 @@ def login_user(request):
     password = data.get("password")
 
     if not username or not password:
-        return JsonResponse({"error": "Username and password required"}, status=400)
+        return _apply_api_security_headers(JsonResponse({"error": "Username and password required"}, status=400))
 
     try:
         user = CustomUser.objects.get(username=username)
     except CustomUser.DoesNotExist:
-        return JsonResponse({"error": "Invalid credentials"}, status=401)
+        return _apply_api_security_headers(JsonResponse({"error": "Invalid credentials"}, status=401))
 
     if not user.is_active and not user.is_superuser:
-        return JsonResponse({"error": "User is suspended"}, status=401)
+        return _apply_api_security_headers(JsonResponse({"error": "User is suspended"}, status=401))
 
     if not check_password(password, user.password):
-        return JsonResponse({"error": "Invalid password"}, status=401)
+        return _apply_api_security_headers(JsonResponse({"error": "Invalid password"}, status=401))
 
     # Initialize role and corporate_id
     corporate_user = CorporateUser.objects.filter(id=user.id).first()
@@ -78,10 +90,10 @@ def login_user(request):
             }])
             TransactionLogBase.log("OTP_SENT", user=user, message="OTP sent due to expiration")
 
-            return JsonResponse({
+            return _apply_api_security_headers(JsonResponse({
                 "message": "OTP expired. A new one has been sent to your email.",
                 "otp_required": True
-            })
+            }))
 
     # Ensure user is active after login (especially for superusers)
     if not user.is_active:
@@ -99,7 +111,8 @@ def login_user(request):
         "organisation_id": corporate_id,
         "role": role or ("superuser" if user.is_superuser else None),
     })
-    return response
+    response["Authorization"] = f"Bearer {access_token}"
+    return _apply_api_security_headers(response)
 
 @csrf_exempt
 def verify_otp(request):
@@ -107,15 +120,15 @@ def verify_otp(request):
     otp_code = data.get("otp")
 
     if not otp_code:
-        return JsonResponse({"error": "OTP required"}, status=400)
+        return _apply_api_security_headers(JsonResponse({"error": "OTP required"}, status=400))
 
     try:
         user = CustomUser.objects.get(otp_code=otp_code)
     except CustomUser.DoesNotExist:
-        return JsonResponse({"error": "Invalid OTP"}, status=400)
+        return _apply_api_security_headers(JsonResponse({"error": "Invalid OTP"}, status=400))
 
     if not user.last_otp_sent_at or (now() - user.last_otp_sent_at > timedelta(hours=24)):
-        return JsonResponse({"error": "OTP expired"}, status=400)
+        return _apply_api_security_headers(JsonResponse({"error": "OTP expired"}, status=400))
 
     user.otp_code = None
     user.last_otp_sent_at = now()
@@ -139,7 +152,7 @@ def verify_otp(request):
         "otp_required": False
     })
     response["Authorization"] = f"Bearer {access_token}"
-    return response
+    return _apply_api_security_headers(response)
 
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.utils.decorators import method_decorator
