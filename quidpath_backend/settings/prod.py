@@ -21,10 +21,17 @@ ALLOWED_HOSTS = os.environ.get(
 # ====================================
 # 🧩 CSRF & CORS CONFIGURATION
 # ====================================
-CSRF_TRUSTED_ORIGINS = [
-    "https://quidpath.com",
-    "https://www.quidpath.com",
-]
+# CSRF trusted origins must include scheme (Django 4+). Allow override via env.
+_env_csrf = os.environ.get("CSRF_TRUSTED_ORIGINS", "").strip()
+if _env_csrf:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _env_csrf.split(",") if o.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        "https://quidpath.com",
+        "https://www.quidpath.com",
+        # wildcard subdomains (admin/api) — Django supports wildcard with scheme
+        "https://*.quidpath.com",
+    ]
 
 # --- CORS CONFIGURATION ---
 CORS_ALLOW_ALL_ORIGINS = False  # GOOD: Override base.py
@@ -69,8 +76,10 @@ MEDIA_ROOT = BASE_DIR / "media"
 # 🧱 SECURITY MIDDLEWARE HEADERS
 # ====================================
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
