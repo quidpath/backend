@@ -50,13 +50,13 @@ class FinancialDataProcessor:
         safe_revenue = revenue.replace(0, np.nan)
 
         df['profit_margin'] = (df['netIncome'] / safe_revenue).fillna(0)
-        df['profit_margin'] = np.clip(df['profit_margin'], 0, 1)
+        df['profit_margin'] = np.clip(df['profit_margin'], -1, 1)
 
         df['gross_margin'] = (df['grossProfit'] / safe_revenue).fillna(0)
-        df['gross_margin'] = np.clip(df['gross_margin'], 0, 1)
+        df['gross_margin'] = np.clip(df['gross_margin'], -1, 1)
 
         df['operating_margin'] = (df['operatingIncome'] / safe_revenue).fillna(0)
-        df['operating_margin'] = np.clip(df['operating_margin'], 0, 1)
+        df['operating_margin'] = np.clip(df['operating_margin'], -1, 1)
 
         # Cost ratios
         df['cost_revenue_ratio'] = (df['costOfRevenue'] / safe_revenue).fillna(0)

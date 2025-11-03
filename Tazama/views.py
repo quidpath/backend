@@ -697,12 +697,35 @@ def get_financial_dashboard(request):
 
         analyses_data = []
         for analysis in recent_analyses:
+            base_preds = analysis.predictions or {}
+            inp = analysis.input_data or {}
+            # Recompute display predictions from input totals if available
+            try:
+                tr = float(inp.get('totalRevenue', 0) or 0)
+                ni = float(inp.get('netIncome', 0) or 0)
+                oi = float(inp.get('operatingIncome', 0) or 0)
+                gp = float(inp.get('grossProfit', 0) or 0)
+                cor = float(inp.get('costOfRevenue', 0) or 0)
+                opex = float(inp.get('totalOperatingExpenses', 0) or 0)
+                def sratio(num, den):
+                    return max(0.0, min(1.0, (num / den) if den and den > 0 else 0.0))
+                display_preds = {
+                    'profit_margin': sratio(ni, tr),
+                    'operating_margin': sratio(oi, tr),
+                    'cost_revenue_ratio': sratio(cor, tr),
+                    'expense_ratio': sratio(opex, tr),
+                    'gross_margin': sratio(gp, tr),
+                } if tr > 0 else {}
+            except Exception:
+                display_preds = {}
+
             analyses_data.append({
                 'id': str(analysis.id),
                 'date': analysis.created_at.date().isoformat(),
                 'datetime': analysis.created_at.isoformat(),
-                'predictions': analysis.predictions or {},
-                'input_data': analysis.input_data or {},
+                'predictions': base_preds,
+                'display_predictions': display_preds if display_preds else base_preds,
+                'input_data': inp,
                 'recommendations_count': len(
                     analysis.recommendations.get('immediate_actions', [])) if analysis.recommendations else 0,
                 'risk_level': analysis.risk_assessment.get('overall_risk',
@@ -768,10 +791,10 @@ def get_financial_dashboard(request):
         for analysis in reversed(analyses_data):
             trend_data.append({
                 'date': analysis['date'],
-                'profit_margin': analysis['predictions'].get('profit_margin', 0),
-                'operating_margin': analysis['predictions'].get('operating_margin', 0),
-                'cost_revenue_ratio': analysis['predictions'].get('cost_revenue_ratio', 0),
-                'expense_ratio': analysis['predictions'].get('expense_ratio', 0),
+                'profit_margin': analysis.get('display_predictions', {}).get('profit_margin', analysis['predictions'].get('profit_margin', 0)),
+                'operating_margin': analysis.get('display_predictions', {}).get('operating_margin', analysis['predictions'].get('operating_margin', 0)),
+                'cost_revenue_ratio': analysis.get('display_predictions', {}).get('cost_revenue_ratio', analysis['predictions'].get('cost_revenue_ratio', 0)),
+                'expense_ratio': analysis.get('display_predictions', {}).get('expense_ratio', analysis['predictions'].get('expense_ratio', 0)),
                 'risk_level': analysis['risk_level']
             })
 
