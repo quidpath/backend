@@ -19,6 +19,13 @@ from Accounting.views.invoice import (
 )
 from Accounting.views.journals import create_journal_entry, list_journal_entries, get_journal_entry, \
     update_journal_entry, delete_journal_entry
+from Accounting.views.journal_actions import post_journal_entry, unpost_journal_entry, duplicate_journal_entry
+from Accounting.views.ledger import list_ledger, download_ledger
+from Accounting.views.trial_balance import get_trial_balance, download_trial_balance
+from Accounting.views.aging_reports import get_aging_report, download_aging_report
+from Accounting.views.aged_invoices import get_aged_invoices, download_aged_invoices
+from Accounting.views.summary_reports import get_sales_summary, get_purchases_summary, get_expenses_summary
+from Accounting.views.default_accounts import seed_default_accounts
 from Accounting.views.lpo import (
     list_purchase_orders, get_purchase_order, update_purchase_order,
     delete_purchase_order, save_purchase_order_draft, create_and_post_purchase_order
@@ -32,6 +39,9 @@ from Accounting.views.vendor_view import (
 from Accounting.views.vendor_bill import (
     create_vendor_bill, update_vendor_bill, list_vendor_bills,
     get_vendor_bill, delete_vendor_bill, convert_purchase_order_to_vendor_bill, list_po
+)
+from Accounting.views.expenses import (
+    create_expense, list_expenses, get_expense, update_expense, delete_expense
 )
 
 
@@ -84,6 +94,13 @@ urlpatterns = [
     path('vendor-bill/delete/', delete_vendor_bill, name='delete_vendor_bill'),
     path('vendor-bill/convert-purchase-order/', convert_purchase_order_to_vendor_bill, name='convert_purchase_order_to_vendor_bill'),
 
+    # Expense Endpoints
+    path('expense/create/', create_expense, name='create_expense'),
+    path('expense/list/', list_expenses, name='list_expenses'),
+    path('expense/get/', get_expense, name='get_expense'),
+    path('expense/update/', update_expense, name='update_expense'),
+    path('expense/delete/', delete_expense, name='delete_expense'),
+
     # Tax Rate Endpoint
     path('get-tax-rate/', get_tax_rate, name='get_tax_rate'),
 
@@ -106,13 +123,41 @@ urlpatterns = [
     path('account-sub-types/update/',update_account_sub_type, name='update_account_sub_type'),
     path('account-sub-types/delete/',delete_account_sub_type, name='delete_account_sub_type'),
 
-# Journal Entry URLs
+    # Journal Entry URLs
     path('journal/create/', create_journal_entry, name='create_journal_entry'),
     path('journal/list/',list_journal_entries, name='list_journal_entries'),
     path('journal/get/',get_journal_entry, name='get_journal_entry'),
     path('journal/update/',update_journal_entry, name='update_journal_entry'),
     path('journal/delete/',delete_journal_entry, name='delete_journal_entry'),
+    path('journal/post/', post_journal_entry, name='post_journal_entry'),
+    path('journal/unpost/', unpost_journal_entry, name='unpost_journal_entry'),
+    path('journal/duplicate/', duplicate_journal_entry, name='duplicate_journal_entry'),
 
+    # General Ledger URLs
+    path('ledger/list/', list_ledger, name='list_ledger'),
+    path('ledger/download/', download_ledger, name='download_ledger'),
+
+    # Trial Balance URLs
+    path('trial-balance/', get_trial_balance, name='get_trial_balance'),
+    path('trial-balance/download/', download_trial_balance, name='download_trial_balance'),
+
+    # Aging Reports URLs
+    path('reports/aging/', get_aging_report, name='get_aging_report'),
+    path('reports/aging/download/', download_aging_report, name='download_aging_report'),
+    
+    # Aged Invoices URLs (detailed invoice aging)
+    path('reports/aged-invoices/', get_aged_invoices, name='get_aged_invoices'),
+    path('reports/aged-invoices/download/', download_aged_invoices, name='download_aged_invoices'),
+
+    # Summary Reports URLs
+    path('reports/sales-summary/', get_sales_summary, name='get_sales_summary'),
+    path('reports/purchases-summary/', get_purchases_summary, name='get_purchases_summary'),
+    path('reports/expenses-summary/', get_expenses_summary, name='get_expenses_summary'),
+
+    # Default Accounts URLs
+    path('accounts/seed-defaults/', seed_default_accounts, name='seed_default_accounts'),
+
+    # Financial Reports URLs (existing)
     path('generate-pl/', generate_profit_loss_report, name='generate-pl'),
     path('generate-income-statement/', generate_income_statement_report, name='generate-income-statement'),
     path('generate-bs/', generate_balance_sheet_report, name='generate-bs'),
@@ -120,6 +165,12 @@ urlpatterns = [
     path('retrieve-report/', retrieve_financial_report, name='retrieve-report'),
     path('download-report/', download_financial_report, name='download-report'),
 
+    # Financial Reports Aliases (for frontend compatibility)
+    path('generate-profit-loss-report/', generate_profit_loss_report, name='generate-profit-loss-report'),
+    path('generate-balance-sheet-report/', generate_balance_sheet_report, name='generate-balance-sheet-report'),
+    path('generate-cash-flow-report/', generate_cash_flow_report, name='generate-cash-flow-report'),
+
+    # Financial Reports Direct Access URLs
     path("reports/balance-sheet/", get_balance_sheet, name="get_balance_sheet"),
     path("reports/income-statement/",get_income_statement, name="get_income_statement"),
     path("reports/profit-and-loss/", get_profit_and_loss, name="get_profit_and_loss"),

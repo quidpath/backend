@@ -894,6 +894,9 @@ def list_accounts(request):
     """
     List all chart of account entries for the user's corporate, categorized by type.
 
+    Expected data (optional):
+    - include_balances: Boolean (default: False) - Include current balance for each account
+
     Returns:
     - 200: List of accounts with total count and type counts
     - 400: Bad request (missing corporate)
@@ -927,6 +930,8 @@ def list_accounts(request):
         if not corporate_id:
             return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
 
+        include_balances = data.get("include_balances", False)
+
         # Accounts
         accounts = registry.database(
             model_name="Account",
@@ -934,8 +939,67 @@ def list_accounts(request):
             data={"corporate_id": corporate_id}
         )
 
-        serialized_accounts = [
-            {
+        # Calculate balances if requested
+        account_balances = {}
+        if include_balances:
+            from datetime import date
+            from collections import defaultdict
+            from decimal import Decimal
+
+            # Get all posted journal entries
+            journal_entries = registry.database(
+                model_name="JournalEntry",
+                operation="filter",
+                data={"corporate_id": corporate_id, "is_posted": True}
+            )
+
+            je_ids = {je["id"] for je in journal_entries}
+
+            # Get all journal entry lines
+            all_lines = registry.database(
+                model_name="JournalEntryLine",
+                operation="filter",
+                data={}
+            )
+
+            lines = [line for line in all_lines if line["journal_entry_id"] in je_ids]
+
+            # Calculate balances per account
+            balances = defaultdict(lambda: {"debit": Decimal("0.00"), "credit": Decimal("0.00")})
+            for line in lines:
+                account_id = line["account_id"]
+                balances[account_id]["debit"] += Decimal(str(line.get("debit", 0)))
+                balances[account_id]["credit"] += Decimal(str(line.get("credit", 0)))
+
+            # Get account types for normal balance
+            account_type_map = {}
+            for acc in accounts:
+                if acc.get("account_type_id"):
+                    account_types = registry.database(
+                        model_name="AccountType",
+                        operation="filter",
+                        data={"id": acc.get("account_type_id")}
+                    )
+                    if account_types:
+                        normal_balance = account_types[0].get("normal_balance", "DEBIT")
+                        account_type_map[acc["id"]] = normal_balance
+
+            # Calculate final balances
+            for account_id, bal in balances.items():
+                debit = bal["debit"]
+                credit = bal["credit"]
+                normal_balance = account_type_map.get(account_id, "DEBIT")
+                
+                if normal_balance == "DEBIT":
+                    balance = debit - credit
+                else:
+                    balance = credit - debit
+                
+                account_balances[account_id] = str(balance)
+
+        serialized_accounts = []
+        for acc in accounts:
+            account_data = {
                 "id": str(acc.get("id")),
                 "code": acc.get("code"),
                 "name": acc.get("name"),
@@ -944,8 +1008,9 @@ def list_accounts(request):
                 "description": acc.get("description", ""),
                 "is_active": acc.get("is_active", True),
             }
-            for acc in accounts
-        ]
+            if include_balances:
+                account_data["balance"] = account_balances.get(acc.get("id"), "0.00")
+            serialized_accounts.append(account_data)
 
         # Type counts
         type_counts = {}
