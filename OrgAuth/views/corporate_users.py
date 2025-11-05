@@ -195,7 +195,7 @@ def create_corporate_user(request):
                 <li>Username: <strong>{full_user.username}</strong></li>
                 <li>Password: <strong>{raw_password}</strong></li>
             </ul>
-            <p>Please login at <a href="https://yourplatform.com/login">https://yourplatform.com/login</a> and change your password after your first login.</p>
+            <p>Please login at <a href="https://quidpath.com/SignIn">https://quidpath.com/SignIn</a> and change your password after your first login.</p>
             <p>Regards,<br/>Quidpath Team</p>
         """
 
