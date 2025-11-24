@@ -1,4 +1,4 @@
-# 🤖 Tazama AI - Intelligent Financial Analysis & Fraud Detection System
+# Tazama AI - Intelligent Financial Analysis & Fraud Detection System
 
 > **Enterprise-grade financial statement analysis with automatic reconciliation and forensic fraud detection**
 
@@ -9,7 +9,7 @@
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 - [Overview](#overview)
 - [Key Features](#key-features)
 - [System Architecture](#system-architecture)
@@ -26,7 +26,7 @@
 
 ---
 
-## 🎯 Overview
+## Overview
 
 **Tazama AI** is a production-ready financial analysis system that combines **intelligent reconciliation** with **forensic fraud detection** to provide accurate, actionable insights for lending, underwriting, and investment decisions.
 
@@ -34,25 +34,25 @@
 
 Traditional fraud detection systems flag **data entry errors** as **fraud**, creating false positives that slow down business processes. Tazama AI solves this by:
 
-✅ **Auto-correcting arithmetic errors** before fraud analysis  
-✅ **Distinguishing honest mistakes from intentional fraud**  
-✅ **Providing clear, actionable recommendations**  
-✅ **Using industry-standard benchmarks** for fair evaluation  
+- **Auto-correcting arithmetic errors** before fraud analysis  
+- **Distinguishing honest mistakes from intentional fraud**  
+- **Providing clear, actionable recommendations**  
+- **Using industry-standard benchmarks** for fair evaluation  
 
 ### What Makes Tazama AI Different
 
 | Traditional Systems | Tazama AI |
 |---------------------|-----------|
-| ❌ Flags typos as "CRITICAL FRAUD" | ✅ Auto-corrects and downgrades to "DATA ERROR" |
-| ❌ No context - just red flags | ✅ Detailed explanations with formulas |
-| ❌ All-or-nothing scoring | ✅ Graduated risk levels with lending recommendations |
-| ❌ High false positive rate | ✅ Accurate fraud detection, low false positives |
+| Flags typos as "CRITICAL FRAUD" | Auto-corrects and downgrades to "DATA ERROR" |
+| No context - just red flags | Detailed explanations with formulas |
+| All-or-nothing scoring | Graduated risk levels with lending recommendations |
+| High false positive rate | Accurate fraud detection, low false positives |
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
-### 1. 🔧 Intelligent Financial Reconciliation
+### 1. Intelligent Financial Reconciliation
 
 Automatically validates and corrects financial statements according to accounting principles:
 
@@ -69,7 +69,7 @@ Automatically validates and corrects financial statements according to accountin
   - Logs all corrections with detailed reasoning
   - Provides lending recommendations
 
-### 2. 🔍 Forensic Fraud Detection
+### 2. Forensic Fraud Detection
 
 Enterprise-grade fraud detection using multiple methodologies:
 
@@ -81,18 +81,18 @@ Enterprise-grade fraud detection using multiple methodologies:
 - **Expense Pattern Verification** - Validates operational expense reasonableness
 - **Profitability Anomaly Detection** - Identifies unrealistic margins
 
-### 3. 📊 Risk Scoring System
+### 3. Risk Scoring System
 
 **0-100 Point Scale** with graduated risk levels:
 
 | Score | Risk Level | Recommendation |
 |-------|-----------|----------------|
-| 0-24 | 🟢 LOW | PROCEED - Statement appears sound |
-| 25-49 | 🟡 MODERATE | PROCEED WITH CAUTION - Some concerns present |
-| 50-74 | 🟠 HIGH | WAIT - Request clarification before proceeding |
-| 75-100 | 🔴 CRITICAL | DO NOT PROCEED - Multiple fraud indicators |
+| 0-24 | LOW | PROCEED - Statement appears sound |
+| 25-49 | MODERATE | PROCEED WITH CAUTION - Some concerns present |
+| 50-74 | HIGH | WAIT - Request clarification before proceeding |
+| 75-100 | CRITICAL | DO NOT PROCEED - Multiple fraud indicators |
 
-### 4. 🎯 Industry Benchmarks
+### 4. Industry Benchmarks
 
 Fair evaluation using realistic financial standards:
 
@@ -107,7 +107,7 @@ Fair evaluation using realistic financial standards:
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -169,7 +169,7 @@ Fair evaluation using realistic financial standards:
 
 ---
 
-## 🔄 How It Works
+## How It Works
 
 ### Input Processing
 
@@ -178,12 +178,12 @@ Fair evaluation using realistic financial standards:
 financial_data = {
     'revenue': 3200000,
     'costOfGoodsSold': 200000,
-    'grossProfit': 3300000,          # ❌ Wrong (should be 3,000,000)
+    'grossProfit': 3300000,          # Wrong (should be 3,000,000)
     'otherIncome': 96000,
     'operatingExpenses': 50000,
-    'financeCosts': -38400,          # ❌ Negative (should be positive)
-    'incomeTaxExpense': -372480,     # ❌ Negative (should be positive)
-    'netProfit': 869120              # ❌ Wrong
+    'financeCosts': -38400,          # Negative (should be positive)
+    'incomeTaxExpense': -372480,     # Negative (should be positive)
+    'netProfit': 869120              # Wrong
 }
 ```
 
@@ -194,12 +194,12 @@ financial_data = {
 reconciled_data = {
     'revenue': 3200000,
     'cost_of_goods_sold': 200000,
-    'gross_profit': 3000000,         # ✅ Corrected: Revenue - COGS
+    'gross_profit': 3000000,         # Corrected: Revenue - COGS
     'other_income': 96000,
     'operating_expenses': 50000,
-    'finance_costs': 38400,          # ✅ Converted to positive
-    'income_tax_expense': 372480,    # ✅ Converted to positive
-    'net_profit': 2635120            # ✅ Recalculated: PBT - Tax
+    'finance_costs': 38400,          # Converted to positive
+    'income_tax_expense': 372480,    # Converted to positive
+    'net_profit': 2635120            # Recalculated: PBT - Tax
 }
 
 # Detailed corrections logged
@@ -223,8 +223,8 @@ fraud_analysis = {
     'fraud_score': 45,              # Initial score on reconciled data
     'fraud_probability': 'MEDIUM',
     'red_flags': [
-        '⚠️ Operating expenses only 1.6% of revenue - unusually low',
-        'ℹ️ Zero interest expense for company with KES 3.2M revenue'
+        'Operating expenses only 1.6% of revenue - unusually low',
+        'Zero interest expense for company with KES 3.2M revenue'
     ]
 }
 ```
@@ -255,8 +255,8 @@ if reconciliation_successful:
     "overall_risk": "LOW"
   },
   "fraud_red_flags": [
-    "ℹ️ DATA QUALITY: 7 arithmetic corrections applied to statement before analysis",
-    "⚠️ LOW: Operating expenses only 1.6% of revenue - verify if accurate"
+    "DATA QUALITY: 7 arithmetic corrections applied to statement before analysis",
+    "LOW: Operating expenses only 1.6% of revenue - verify if accurate"
   ],
   "margins": {
     "profit_margin": 82.35,
@@ -268,7 +268,7 @@ if reconciliation_successful:
 
 ---
 
-## 📊 Real-World Example
+## Real-World Example
 
 ### Scenario: SME Loan Application
 
@@ -279,22 +279,22 @@ if reconciliation_successful:
 
 | Line Item | Amount (KES) | Status |
 |-----------|--------------|--------|
-| Revenue | 3,200,000 | ✅ Correct |
-| Cost of Goods Sold | 200,000 | ✅ Correct |
-| **Gross Profit** | **3,300,000** | ❌ **WRONG** (should be 3,000,000) |
-| Other Income | 96,000 | ✅ Correct |
-| **Operating Income Before OPEX** | **1,856,000** | ❌ **WRONG** |
-| Operating Expenses | 50,000 | ✅ Correct |
-| **Operating Profit** | **1,280,000** | ❌ **WRONG** |
-| **Finance Costs** | **-38,400** | ❌ **WRONG** (negative) |
-| **Profit Before Tax** | **1,241,600** | ❌ **WRONG** |
-| **Income Tax Expense** | **-372,480** | ❌ **WRONG** (negative) |
-| **Net Profit** | **869,120** | ❌ **WRONG** |
+| Revenue | 3,200,000 | Correct |
+| Cost of Goods Sold | 200,000 | Correct |
+| **Gross Profit** | **3,300,000** | **WRONG** (should be 3,000,000) |
+| Other Income | 96,000 | Correct |
+| **Operating Income Before OPEX** | **1,856,000** | **WRONG** |
+| Operating Expenses | 50,000 | Correct |
+| **Operating Profit** | **1,280,000** | **WRONG** |
+| **Finance Costs** | **-38,400** | **WRONG** (negative) |
+| **Profit Before Tax** | **1,241,600** | **WRONG** |
+| **Income Tax Expense** | **-372,480** | **WRONG** (negative) |
+| **Net Profit** | **869,120** | **WRONG** |
 
-#### Traditional System Response ❌
+#### Traditional System Response
 
 ```
-🚨 CRITICAL FRAUD DETECTED
+CRITICAL FRAUD DETECTED
 Risk Score: 78/100
 Recommendation: REJECT APPLICATION
 
@@ -307,10 +307,10 @@ Red Flags:
 
 **Result**: Loan rejected, legitimate business loses opportunity
 
-#### Tazama AI Response ✅
+#### Tazama AI Response
 
 ```
-✅ STATEMENT RECONCILED
+STATEMENT RECONCILED
 Risk Score: 23/100 (LOW)
 Recommendation: PROCEED - Arithmetic errors corrected
 
@@ -331,7 +331,7 @@ Risk Assessment:
 - Margins: Profitable and sustainable
 - Data Quality: Corrected, now accurate
 
-💼 Lending Recommendation:
+Lending Recommendation:
 PROCEED - Statement has been reconciled. Company shows 
 strong profitability (82.35% net margin). Arithmetic 
 errors were data entry mistakes, not fraud indicators.
@@ -341,7 +341,7 @@ errors were data entry mistakes, not fraud indicators.
 
 ---
 
-## 📡 API Documentation
+## API Documentation
 
 ### Endpoint: Analyze Financial Data
 
@@ -421,8 +421,8 @@ Authorization: Bearer <token>
       "liquidity_risk": "LOW"
     },
     "fraud_red_flags": [
-      "ℹ️ DATA QUALITY: 7 arithmetic corrections applied to statement before analysis",
-      "⚠️ LOW: Operating expenses only 1.6% of revenue - unusually low"
+      "DATA QUALITY: 7 arithmetic corrections applied to statement before analysis",
+      "LOW: Operating expenses only 1.6% of revenue - unusually low"
     ],
     "brutally_honest_recommendations": [
       {
@@ -447,7 +447,7 @@ Authorization: Bearer <token>
 
 ---
 
-## 💻 Installation
+## Installation
 
 ### Prerequisites
 
@@ -515,7 +515,7 @@ docker-compose exec backend python manage.py migrate
 
 ---
 
-## 🎮 Usage
+## Usage
 
 ### Via Web Interface
 
@@ -577,14 +577,14 @@ if result.is_reconciled:
     print(f"Corrections made: {len(result.corrections)}")
     
 if result.fraud_risk == 'LOW':
-    print("✅ PROCEED with lending")
+    print("PROCEED with lending")
 else:
-    print(f"⚠️ {result.lending_recommendation}")
+    print(f"{result.lending_recommendation}")
 ```
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ### Run Test Suite
 
@@ -617,22 +617,22 @@ coverage html
 ### Sample Test Results
 
 ```
-✅ Test 1: Legitimate Business
+Test 1: Legitimate Business
    Input: Clean financial data
    Result: Fraud Score = 7/100, Risk = LOW
    Status: PASS
 
-✅ Test 2: Data Entry Errors (Your Example)
+Test 2: Data Entry Errors (Your Example)
    Input: 7 arithmetic errors
    Result: 7 corrections applied, Score = 23/100, Risk = LOW
    Status: PASS
 
-✅ Test 3: Fraudulent Statement
+Test 3: Fraudulent Statement
    Input: Manipulated financials
    Result: Fraud Score = 58/100, Risk = HIGH
    Status: PASS
 
-✅ Test 4: Loss-Making Company
+Test 4: Loss-Making Company
    Input: Legitimate losses
    Result: Score = 0/100, Risk = LOW (no false positive)
    Status: PASS
@@ -640,33 +640,33 @@ coverage html
 
 ---
 
-## 💼 Use Cases
+## Use Cases
 
-### 1. 🏦 Banking & Lending
+### 1. Banking & Lending
 
 **Challenge**: Evaluate loan applications quickly without manual review  
 **Solution**: Auto-correct statements, assess risk, provide lending recommendation  
 **Benefit**: Faster approvals, reduced false rejections, better risk management
 
-### 2. 💰 Investment Screening
+### 2. Investment Screening
 
 **Challenge**: Analyze multiple investment opportunities efficiently  
 **Solution**: Automated financial analysis with fraud detection  
 **Benefit**: Quick screening, identify red flags early, focus on promising deals
 
-### 3. 📊 SME Credit Scoring
+### 3. SME Credit Scoring
 
 **Challenge**: Assess creditworthiness of small businesses with poor data quality  
 **Solution**: Reconcile messy financials, provide fair evaluation  
 **Benefit**: Include more SMEs in formal credit system, reduce bias
 
-### 4. 🔍 Audit & Compliance
+### 4. Audit & Compliance
 
 **Challenge**: Identify financial statement irregularities  
 **Solution**: Automated validation and fraud detection  
 **Benefit**: Faster audits, catch issues early, document findings
 
-### 5. 📈 Underwriting
+### 5. Underwriting
 
 **Challenge**: Accurate risk assessment for insurance/bonds  
 **Solution**: Comprehensive financial analysis with industry benchmarks  
@@ -674,7 +674,7 @@ coverage html
 
 ---
 
-## 🔧 Technical Details
+## Technical Details
 
 ### Tech Stack
 
@@ -728,41 +728,41 @@ frontend/
 
 ### Security
 
-- ✅ JWT-based authentication
-- ✅ Role-based access control (RBAC)
-- ✅ API rate limiting
-- ✅ Data encryption at rest and in transit
-- ✅ Audit logging
-- ✅ GDPR compliant
+- JWT-based authentication
+- Role-based access control (RBAC)
+- API rate limiting
+- Data encryption at rest and in transit
+- Audit logging
+- GDPR compliant
 
 ---
 
-## 📈 Roadmap
+## Roadmap
 
 ### Version 2.0 (Q2 2025)
-- [ ] Machine learning model training on corrected data
-- [ ] Multi-currency support
-- [ ] Batch analysis for multiple statements
-- [ ] Historical trend analysis
-- [ ] Industry-specific benchmarks (retail, manufacturing, services)
+- Machine learning model training on corrected data
+- Multi-currency support
+- Batch analysis for multiple statements
+- Historical trend analysis
+- Industry-specific benchmarks (retail, manufacturing, services)
 
 ### Version 2.1 (Q3 2025)
-- [ ] Balance sheet analysis
-- [ ] Cash flow statement analysis
-- [ ] Financial ratio deep-dive
-- [ ] Peer comparison
-- [ ] Predictive analytics (bankruptcy risk)
+- Balance sheet analysis
+- Cash flow statement analysis
+- Financial ratio deep-dive
+- Peer comparison
+- Predictive analytics (bankruptcy risk)
 
 ### Version 3.0 (Q4 2025)
-- [ ] Real-time data ingestion
-- [ ] Integration with accounting software (QuickBooks, Xero)
-- [ ] Mobile app (iOS/Android)
-- [ ] White-label solution
-- [ ] Advanced visualization dashboard
+- Real-time data ingestion
+- Integration with accounting software (QuickBooks, Xero)
+- Mobile app (iOS/Android)
+- White-label solution
+- Advanced visualization dashboard
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Here's how you can help:
 
@@ -808,7 +808,7 @@ git push origin feature/amazing-feature
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
@@ -838,7 +838,7 @@ SOFTWARE.
 
 ---
 
-## 📞 Support & Contact
+## Support & Contact
 
 ### Documentation
 - **Full Documentation**: [docs.tazama-ai.com](https://docs.tazama-ai.com)
@@ -857,9 +857,9 @@ SOFTWARE.
 
 ---
 
-## 🏆 Acknowledgments
+## Acknowledgments
 
-Built with ❤️ using:
+Built with best-in-class technology:
 - [Django](https://www.djangoproject.com/)
 - [React](https://reactjs.org/)
 - [Material-UI](https://mui.com/)
@@ -869,7 +869,7 @@ Special thanks to all contributors and the open-source community!
 
 ---
 
-## 📊 Stats
+## Stats
 
 ![GitHub stars](https://img.shields.io/github/stars/yourusername/tazama-ai?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/yourusername/tazama-ai?style=social)
@@ -881,11 +881,10 @@ Special thanks to all contributors and the open-source community!
 
 <div align="center">
 
-**⭐ Star us on GitHub — it helps!**
+**Star us on GitHub — it helps!**
 
-Made with ❤️ by the Tazama AI Team
+Made with dedication by the Tazama AI Team
 
 [Website](https://tazama-ai.com) • [Documentation](https://docs.tazama-ai.com) • [API](https://api.tazama-ai.com) • [Blog](https://blog.tazama-ai.com)
 
 </div>
-
