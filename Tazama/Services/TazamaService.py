@@ -310,6 +310,31 @@ class TazamaAnalysisService:
                 target_columns=request_obj.model_used.target_columns
             )
 
+            # ✅ STRICT MODE: Validate input_data before analysis
+            if not request_obj.input_data:
+                raise Exception("Input data is None or empty - cannot proceed with analysis")
+            
+            # ✅ DEBUG: Print complete JSON data before feeding to model
+            logger.info("=" * 80)
+            logger.info("📤 JSON DATA BEING FED TO MODEL (REQUEST %s):", request_id)
+            logger.info("=" * 80)
+            try:
+                json_str = json.dumps(request_obj.input_data, indent=2, default=str)
+                logger.info(json_str)
+            except Exception as e:
+                logger.error(f"Failed to serialize input_data to JSON: {e}")
+                logger.info(f"Raw input_data: {request_obj.input_data}")
+            logger.info("=" * 80)
+            
+            # Log input_data summary for debugging
+            logger.info(f"📊 Input data summary:")
+            logger.info(f"   Revenue: {request_obj.input_data.get('totalRevenue', 0):,.0f}")
+            logger.info(f"   COGS: {request_obj.input_data.get('cogs', 0):,.0f}")
+            logger.info(f"   Gross Profit: {request_obj.input_data.get('grossProfit', 0):,.0f}")
+            logger.info(f"   Operating Expenses: {request_obj.input_data.get('totalOperatingExpenses', 0):,.0f}")
+            logger.info(f"   Operating Income: {request_obj.input_data.get('operatingIncome', 0):,.0f}")
+            logger.info(f"   Net Income: {request_obj.input_data.get('netIncome', 0):,.0f}")
+            
             # Run analysis
             analysis_results = optimizer.analyze_income_statement(request_obj.input_data)
 
@@ -333,9 +358,16 @@ class TazamaAnalysisService:
             request_obj.recommendations = analysis_results['recommendations']
             request_obj.risk_assessment = analysis_results['risk_assessment']
             request_obj.confidence_scores = analysis_results.get('confidence_scores', {})
+            request_obj.truth_report = analysis_results.get('truth_report', {})  # ✅ Save truth report
             request_obj.processing_time_seconds = processing_time
             request_obj.status = 'completed'
             request_obj.save()
+            
+            # ✅ LOG: Verify truth report was generated
+            if request_obj.truth_report and request_obj.truth_report.get('brutally_honest_recommendations'):
+                logger.info(f"✅ Truth report generated with {len(request_obj.truth_report['brutally_honest_recommendations'])} brutal recommendations")
+            else:
+                logger.warning(f"⚠️ Truth report is empty or missing recommendations")
 
             return True, "Analysis completed successfully"
 
@@ -431,13 +463,42 @@ class ModelTrainingService:
             # If dataset provided, use it instead of DB query
             if dataset is not None:
                 df = dataset.copy()
+                
+                # Ensure symbol column exists
                 if 'symbol' not in df.columns:
                     if 'corporate_id' in df.columns:
                         df['symbol'] = df['corporate_id'].astype(str)
+                    elif 'stock' in df.columns:
+                        df['symbol'] = df['stock'].astype(str)
                     else:
                         df['symbol'] = 'UNKNOWN'
                 else:
                     df['symbol'] = df['symbol'].astype(str)
+                
+                # Ensure date column exists and is properly formatted
+                if 'date' not in df.columns:
+                    if 'endDate' in df.columns:
+                        df['date'] = pd.to_datetime(df['endDate'], errors='coerce')
+                    elif 'period_date' in df.columns:
+                        df['date'] = pd.to_datetime(df['period_date'], errors='coerce')
+                    else:
+                        raise ValueError("No date column found in dataset. Expected 'date', 'endDate', or 'period_date'")
+                else:
+                    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+                
+                # Ensure frequency column exists (for quarterly vs annual differentiation)
+                if 'frequency' not in df.columns:
+                    # Infer frequency from date patterns if not present
+                    df['frequency'] = df.apply(
+                        lambda row: 'quarterly' if pd.notna(row['date']) and row['date'].month in [3, 6, 9, 12] else 'annual',
+                        axis=1
+                    )
+                
+                # Drop rows with invalid dates
+                df = df.dropna(subset=['date'])
+                
+                # Sort by symbol, frequency, and date for proper time series ordering
+                df = df.sort_values(['symbol', 'frequency', 'date'])
             else:
                 # ✅ FIXED: Use corporate instead of corporate_id in filter
                 if corporate_id:
@@ -455,9 +516,14 @@ class ModelTrainingService:
 
                 df_data = []
                 for record in training_data:
+                    # Infer frequency from period_date (quarterly if month is 3, 6, 9, or 12)
+                    period_date = record.period_date
+                    frequency = 'quarterly' if period_date.month in [3, 6, 9, 12] else 'annual'
+                    
                     df_data.append({
                         'corporate_id': record.corporate.id,  # ✅ Changed from record.corporate_id
-                        'date': record.period_date,
+                        'date': period_date,
+                        'frequency': frequency,
                         'totalRevenue': float(record.total_revenue),
                         'costOfRevenue': float(record.cost_of_revenue),
                         'grossProfit': float(record.gross_profit),
@@ -469,6 +535,10 @@ class ModelTrainingService:
 
                 df = pd.DataFrame(df_data)
                 df['symbol'] = df['corporate_id'].astype(str)
+                df['date'] = pd.to_datetime(df['date'])
+                
+                # Sort by symbol, frequency, and date for proper time series ordering
+                df = df.sort_values(['symbol', 'frequency', 'date'])
 
             # Validate minimum data requirements
             if len(df) < 50:
@@ -527,6 +597,18 @@ class ModelTrainingService:
             lstm_df = X.copy()
             lstm_df['symbol'] = metadata['symbol']
             lstm_df['date'] = metadata['date']
+            
+            # Preserve frequency information if available in original dataframe
+            if 'frequency' in df.columns:
+                # Map frequency back to lstm_df using symbol and date
+                freq_map = df.set_index(['symbol', 'date'])['frequency'].to_dict()
+                lstm_df['frequency'] = lstm_df.apply(
+                    lambda row: freq_map.get((row['symbol'], pd.Timestamp(row['date'])), 'unknown'),
+                    axis=1
+                )
+            else:
+                lstm_df['frequency'] = 'unknown'
+            
             for i, target_col in enumerate(processor.target_columns):
                 lstm_df[target_col] = y.iloc[:, i]
 

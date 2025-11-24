@@ -5,8 +5,16 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install dependencies (including bash so the script works properly)
-RUN apt-get update && apt-get install -y \
-    bash libpq-dev gcc build-essential postgresql-client \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    gcc \
+    build-essential \
+    libgobject-2.0-0 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    shared-mime-info \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python packages

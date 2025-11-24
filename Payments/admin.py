@@ -1,6 +1,6 @@
 # Payments/admin.py
 from django.contrib import admin
-from .models import RecordPayment, RecordPaymentLine, VendorPayment, VendorPaymentLine
+from .models import RecordPayment, RecordPaymentLine, VendorPayment, VendorPaymentLine, PaymentProvider
 
 
 class RecordPaymentLineInline(admin.TabularInline):
@@ -39,3 +39,12 @@ class VendorPaymentAdmin(admin.ModelAdmin):
     search_fields = ( "payment_number", "reference_number")
     date_hierarchy = "payment_date"
     inlines = [VendorPaymentLineInline]
+
+
+@admin.register(PaymentProvider)
+class PaymentProviderAdmin(admin.ModelAdmin):
+    list_display = ("id", "corporate", "provider_type", "name", "is_active", "is_default", "test_mode", "created_at")
+    list_filter = ("provider_type", "is_active", "is_default", "test_mode", "created_at")
+    search_fields = ("name", "corporate__name")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-created_at",)

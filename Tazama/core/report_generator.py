@@ -13,6 +13,14 @@ import matplotlib.pyplot as plt
 import io
 import base64
 import logging
+from .template_manager import TazamaTemplateManager
+
+# Optional WeasyPrint import for PDF generation
+try:
+    from weasyprint import HTML, CSS
+    WEASYPRINT_AVAILABLE = True
+except ImportError:
+    WEASYPRINT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +31,7 @@ class TazamaReportGenerator:
     def __init__(self):
         self.reports_dir = os.path.join(settings.MEDIA_ROOT, 'financial_reports')
         os.makedirs(self.reports_dir, exist_ok=True)
+        self.template_manager = TazamaTemplateManager()
 
     def generate_report(self, analysis_request, format_type='html'):
         """Generate report in specified format"""
@@ -38,148 +47,29 @@ class TazamaReportGenerator:
             raise ValueError(f"Unsupported format: {format_type}")
 
     def generate_html_report(self, analysis_request):
-        """Generate comprehensive HTML report with professional styling and optimization insights"""
-
-        # Generate visualizations
-        charts = self._generate_charts(analysis_request)
-
-        # Get data
-        predictions = analysis_request.predictions or {}
-        recommendations = analysis_request.recommendations or {}
-        risk_assessment = analysis_request.risk_assessment or {}
-        confidence_scores = analysis_request.confidence_scores or {}
-        optimization_analysis = getattr(analysis_request, 'optimization_analysis', {})
-
-        # Format metric values
-        def format_metric(value):
-            try:
-                num_val = float(value)
-                return f"{num_val:.2%}"
-            except:
-                return str(value)
-
-        # Build predictions HTML
-        predictions_html = self._build_predictions_html(predictions, confidence_scores)
-
-        # Build recommendations HTML
-        recommendations_html = self._build_recommendations_html(recommendations)
-
-        # Build risk assessment HTML
-        risk_html, risk_factors_html = self._build_risk_html(risk_assessment)
+        """Generate comprehensive HTML report using template management engine"""
         
-        # Build optimization analysis HTML
-        optimization_html = self._build_optimization_html(optimization_analysis)
-
-        # Get risk factors count
-        risk_factors = risk_assessment.get('risk_factors', [])
-        total_recommendations = sum(len(v) if isinstance(v, list) else 0 for v in recommendations.values())
-
-        # Complete HTML template
-        html_template = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tazama Financial Analysis Report</title>
-    <style>
-        {self._get_report_css()}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>Tazama Financial Analysis</h1>
-            <div class="subtitle">AI-Powered Financial Intelligence Report</div>
-            <div class="meta">
-                <span>Generated: {analysis_request.created_at.strftime('%B %d, %Y at %I:%M %p')}</span> |
-                <span>Processing Time: {float(analysis_request.processing_time_seconds or 0):.2f}s</span> |
-                <span>Model: {analysis_request.model_used.name if analysis_request.model_used else 'N/A'}</span>
-            </div>
-        </div>
-
-        <!-- Executive Summary -->
-        <div class="section">
-            <h2 class="section-title">Executive Summary</h2>
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-header">
-                        <h3>Overall Risk</h3>
-                    </div>
-                    <div class="metric-value">{risk_assessment.get('overall_risk', 'N/A')}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-header">
-                        <h3>Total Recommendations</h3>
-                    </div>
-                    <div class="metric-value">{total_recommendations}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-header">
-                        <h3>Risk Factors</h3>
-                    </div>
-                    <div class="metric-value">{len(risk_factors)}</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Financial Predictions -->
-        <div class="section">
-            <h2 class="section-title">Financial Predictions</h2>
-            <div class="metrics-grid">
-                {predictions_html}
-            </div>
-            {charts.get('predictions', '')}
-        </div>
-
-        <!-- Recommendations -->
-        <div class="section">
-            <h2 class="section-title">Strategic Recommendations</h2>
-            {recommendations_html}
-        </div>
-
-        <!-- Risk Assessment -->
-        <div class="section">
-            <h2 class="section-title">Risk Assessment</h2>
-            <div class="risk-grid">
-                {risk_html}
-            </div>
-
-            {f'''
-            <div class="risk-factors">
-                <h4>Identified Risk Factors</h4>
-                <ul>
-                    {risk_factors_html}
-                </ul>
-            </div>
-            ''' if risk_factors_html else ''}
-        </div>
-
-        <!-- Financial Optimization Analysis -->
-        {optimization_html}
-
-        <!-- Footer -->
-        <div class="footer">
-            <div class="logo">Tazama</div>
-            <p>AI-Powered Financial Intelligence for Small Businesses</p>
-            <p style="margin-top: 10px; font-size: 0.9em;">
-                &copy; 2025 Tazama. All rights reserved. | Confidential Report
-            </p>
-        </div>
-    </div>
-</body>
-</html>
-        """
-
-        # Save HTML report
-        filename = f"financial_analysis_{analysis_request.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        filepath = os.path.join(self.reports_dir, filename)
-
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(html_template)
-
-        return filepath, 'text/html'
+        try:
+            # Generate visualizations
+            charts = self._generate_charts(analysis_request)
+            
+            # Use template manager to render report
+            rendered_html = self.template_manager.render_report(analysis_request, charts=charts)
+            
+            # Save HTML report
+            filename = f"financial_analysis_{analysis_request.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            filepath = os.path.join(self.reports_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(rendered_html)
+            
+            logger.info(f"HTML report generated successfully: {filepath}")
+            return filepath, 'text/html'
+            
+        except Exception as e:
+            logger.error(f"Error generating HTML report: {e}", exc_info=True)
+            # Fallback to basic report
+            return self._generate_fallback_html(analysis_request)
 
     def _get_report_css(self):
         """Return CSS styling for HTML report"""
@@ -800,7 +690,37 @@ class TazamaReportGenerator:
             pdf.cell(w, h, "Error rendering text", border, 1, align)
 
     def _generate_pdf_report(self, analysis_request):
-        """Generate PDF report"""
+        """Generate PDF report from HTML using WeasyPrint for professional formatting"""
+        if WEASYPRINT_AVAILABLE:
+            try:
+                # Generate HTML report first using template manager
+                charts = self._generate_charts(analysis_request)
+                rendered_html = self.template_manager.render_report(analysis_request, charts=charts)
+                
+                # Generate PDF from HTML using WeasyPrint
+                filename = f"financial_analysis_{analysis_request.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                filepath = os.path.join(self.reports_dir, filename)
+                
+                # Convert HTML to PDF
+                HTML(string=rendered_html).write_pdf(
+                    filepath,
+                    stylesheets=[CSS(self.template_manager.styles_path)]
+                )
+                
+                logger.info(f"PDF report generated successfully: {filepath}")
+                return filepath, 'application/pdf'
+                
+            except Exception as e:
+                logger.error(f"Error generating PDF with WeasyPrint: {e}", exc_info=True)
+                # Fallback to FPDF
+                return self._generate_pdf_fallback(analysis_request)
+        else:
+            # Fallback to FPDF if WeasyPrint is not available
+            logger.warning("WeasyPrint not available, using FPDF fallback")
+            return self._generate_pdf_fallback(analysis_request)
+    
+    def _generate_pdf_fallback(self, analysis_request):
+        """Fallback PDF generation using FPDF"""
         filename = f"financial_analysis_{analysis_request.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         filepath = os.path.join(self.reports_dir, filename)
 
@@ -917,6 +837,25 @@ class TazamaReportGenerator:
             raise Exception(f"PDF generation failed: {str(e)}")
 
         return filepath, 'application/pdf'
+    
+    def _generate_fallback_html(self, analysis_request):
+        """Generate fallback HTML report if template rendering fails"""
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head><title>Tazama Financial Analysis Report</title></head>
+        <body>
+            <h1>Financial Analysis Report</h1>
+            <p>Analysis ID: {analysis_request.id}</p>
+            <p>Generated: {analysis_request.created_at}</p>
+        </body>
+        </html>
+        """
+        filename = f"financial_analysis_{analysis_request.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        filepath = os.path.join(self.reports_dir, filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        return filepath, 'text/html'
 
     def _generate_json_report(self, analysis_request):
         """Generate JSON report"""

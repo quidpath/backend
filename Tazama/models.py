@@ -127,6 +127,7 @@ class TazamaAnalysisRequest(BaseModel):
     recommendations = models.JSONField(default=dict)
     risk_assessment = models.JSONField(default=dict)
     confidence_scores = models.JSONField(default=dict)
+    truth_report = models.JSONField(default=dict)  # ✅ Brutal truth report with specific recommendations
 
     # Request status
     status = models.CharField(

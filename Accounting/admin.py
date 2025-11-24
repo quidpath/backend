@@ -14,6 +14,10 @@ from Accounting.models.sales import (
     TaxRate, PurchaseOrderLine, VendorBillLine, PurchaseOrder, VendorBill
 )
 from Accounting.models.vendor import Vendor
+from Accounting.models.inventory import Warehouse, InventoryItem, StockMovement
+from Accounting.models.attachments import DocumentAttachment
+from Accounting.models.audit import AuditLog
+from Accounting.models.recurring import RecurringTransaction
 
 
 # === Inlines ===
@@ -146,3 +150,59 @@ class VendorBillAdmin(admin.ModelAdmin):
     search_fields = ('number', 'vendor__first_name', 'vendor__last_name', 'vendor__company_name')
     list_filter = ('status', 'date', 'due_date')
     inlines = [VendorBillLineInline]
+
+
+# === Inventory Management ===
+@admin.register(Warehouse)
+class WarehouseAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'code', 'corporate', 'city', 'country', 'is_active', 'is_default')
+    search_fields = ('name', 'code', 'city', 'country')
+    list_filter = ('corporate', 'is_active', 'is_default', 'country')
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(InventoryItem)
+class InventoryItemAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'sku', 'corporate', 'category', 'quantity_on_hand', 'quantity_available', 
+                    'unit_cost', 'selling_price', 'is_active')
+    search_fields = ('name', 'sku', 'barcode', 'category')
+    list_filter = ('corporate', 'category', 'is_active', 'valuation_method')
+    readonly_fields = ('created_at', 'updated_at', 'quantity_available')
+
+
+@admin.register(StockMovement)
+class StockMovementAdmin(admin.ModelAdmin):
+    list_display = ('id', 'item', 'warehouse', 'movement_type', 'quantity', 'movement_date', 'status', 'reference_number')
+    search_fields = ('item__name', 'item__sku', 'reference_number', 'notes')
+    list_filter = ('movement_type', 'status', 'movement_date', 'warehouse')
+    readonly_fields = ('created_at', 'updated_at')
+
+
+# === Document Attachments ===
+@admin.register(DocumentAttachment)
+class DocumentAttachmentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'file_name', 'corporate', 'uploaded_by', 'content_type', 'object_id', 
+                    'file_size', 'is_public', 'created_at')
+    search_fields = ('file_name', 'description')
+    list_filter = ('corporate', 'content_type', 'is_public', 'mime_type', 'created_at')
+    readonly_fields = ('created_at', 'updated_at', 'checksum')
+
+
+# === Audit Logs ===
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'corporate', 'action_type', 'model_name', 'object_id_str', 
+                    'ip_address', 'created_at')
+    search_fields = ('user__username', 'model_name', 'description', 'ip_address')
+    list_filter = ('action_type', 'model_name', 'corporate', 'created_at')
+    readonly_fields = ('created_at', 'updated_at')
+
+
+# === Recurring Transactions ===
+@admin.register(RecurringTransaction)
+class RecurringTransactionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'corporate', 'transaction_type', 'frequency', 'status', 
+                    'start_date', 'end_date', 'next_run_at', 'last_run_at')
+    search_fields = ('name', 'description')
+    list_filter = ('transaction_type', 'frequency', 'status', 'corporate', 'created_at')
+    readonly_fields = ('created_at', 'updated_at', 'last_run_at')

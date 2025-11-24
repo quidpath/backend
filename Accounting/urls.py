@@ -43,6 +43,16 @@ from Accounting.views.vendor_bill import (
 from Accounting.views.expenses import (
     create_expense, list_expenses, get_expense, update_expense, delete_expense
 )
+from Accounting.views.document_sending import send_invoice, send_quote, send_lpo
+from Accounting.views.attachments import upload_attachment, list_attachments, delete_attachment
+from Accounting.views.inventory import (
+    create_warehouse, list_warehouses, update_warehouse, delete_warehouse,
+    create_inventory_item, list_inventory_items, update_inventory_item, delete_inventory_item,
+    create_stock_movement, list_stock_movements
+)
+from Accounting.views.audit import list_audit_logs
+from Accounting.views.recurring import list_recurring_transactions, update_recurring_transaction
+from Accounting.views.currency import get_currency_rates, refresh_currency_rates
 
 
 urlpatterns = [
@@ -68,6 +78,7 @@ urlpatterns = [
     path("quotation/update/", update_quotation, name="update_quotation"),
     path("quotation/delete/", delete_quotation, name="delete_quotation"),
     path("quotation/invoice-quote/", convert_quotation_to_invoice, name="convert_quote_to_invoice"),
+    path("quotation/<uuid:quote_id>/send/", send_quote, name="send_quote"),
 
     # Invoice Endpoints
     path("invoice/save-draft/", save_invoice_draft, name="save_invoice_draft"),
@@ -76,6 +87,7 @@ urlpatterns = [
     path("invoice/get/", get_invoice, name="get_invoice"),
     path("invoice/update/", update_invoice, name="update_invoice"),
     path("invoice/delete/", delete_invoice, name="delete_invoice"),
+    path("invoice/<uuid:invoice_id>/send/", send_invoice, name="send_invoice"),
 
     # Purchase Order Endpoints
     path('purchase-orders/save-draft/', save_purchase_order_draft, name='save_purchase_order_draft'),
@@ -84,6 +96,7 @@ urlpatterns = [
     path('purchase-orders/get/', get_purchase_order, name='get_purchase_order'),
     path('purchase-orders/update/', update_purchase_order, name='update_purchase_order'),
     path('purchase-orders/delete/', delete_purchase_order, name='delete_purchase_order'),
+    path('purchase-orders/<uuid:lpo_id>/send/', send_lpo, name='send_lpo'),
 
     # Vendor Bill Endpoints
     path('vendor-bill/create/', create_vendor_bill, name='create_vendor_bill'),
@@ -175,4 +188,37 @@ urlpatterns = [
     path("reports/income-statement/",get_income_statement, name="get_income_statement"),
     path("reports/profit-and-loss/", get_profit_and_loss, name="get_profit_and_loss"),
     path("reports/cash-flow-statement/", get_cash_flow_statement, name="get_cash_flow_statement"),
+    
+    # Document Attachments
+    path('attachments/upload/', upload_attachment, name='upload_attachment'),
+    path('attachments/list/', list_attachments, name='list_attachments'),
+    path('attachments/<uuid:attachment_id>/delete/', delete_attachment, name='delete_attachment'),
+    
+    # Inventory Management
+    # Warehouses
+    path('warehouses/create/', create_warehouse, name='create_warehouse'),
+    path('warehouses/list/', list_warehouses, name='list_warehouses'),
+    path('warehouses/<uuid:warehouse_id>/update/', update_warehouse, name='update_warehouse'),
+    path('warehouses/<uuid:warehouse_id>/delete/', delete_warehouse, name='delete_warehouse'),
+    
+    # Inventory Items
+    path('inventory-items/create/', create_inventory_item, name='create_inventory_item'),
+    path('inventory-items/list/', list_inventory_items, name='list_inventory_items'),
+    path('inventory-items/<uuid:item_id>/update/', update_inventory_item, name='update_inventory_item'),
+    path('inventory-items/<uuid:item_id>/delete/', delete_inventory_item, name='delete_inventory_item'),
+    
+    # Stock Movements
+    path('stock-movements/create/', create_stock_movement, name='create_stock_movement'),
+    path('stock-movements/list/', list_stock_movements, name='list_stock_movements'),
+    
+    # Audit Logs
+    path('audit-logs/list/', list_audit_logs, name='list_audit_logs'),
+    
+    # Recurring Transactions
+    path('recurring-transactions/list/', list_recurring_transactions, name='list_recurring_transactions'),
+    path('recurring-transactions/<uuid:transaction_id>/update/', update_recurring_transaction, name='update_recurring_transaction'),
+    
+    # Currency Rates
+    path('currency/rates/', get_currency_rates, name='get_currency_rates'),
+    path('currency/rates/refresh/', refresh_currency_rates, name='refresh_currency_rates'),
 ]

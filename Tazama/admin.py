@@ -46,3 +46,24 @@ class FinancialReportAdmin(admin.ModelAdmin):
     list_display = ['title', 'corporate_id', 'report_type', 'report_format', 'download_count', 'generated_at']
     list_filter = ['report_type', 'report_format', 'generated_at']
     search_fields = ['title', 'corporate_id']
+
+@admin.register(DashboardMetric)
+class DashboardMetricAdmin(admin.ModelAdmin):
+    list_display = ['id', 'corporate', 'metric_type', 'metric_name', 'metric_value', 'period_start', 'period_end', 'is_active']
+    list_filter = ['metric_type', 'is_active', 'corporate', 'period_start']
+    search_fields = ['metric_name', 'metric_type']
+    readonly_fields = ['created_at', 'calculation_date']
+
+@admin.register(ModelPredictionLog)
+class ModelPredictionLogAdmin(admin.ModelAdmin):
+    list_display = ['id', 'model', 'corporate', 'model_version', 'processing_time_ms', 'is_validated', 'timestamp']
+    list_filter = ['model', 'corporate', 'is_validated', 'timestamp']
+    search_fields = ['model_version', 'input_hash']
+    readonly_fields = ['timestamp', 'created_at']
+
+@admin.register(SystemConfiguration)
+class SystemConfigurationAdmin(admin.ModelAdmin):
+    list_display = ['id', 'config_type', 'config_key', 'is_active', 'created_at']
+    list_filter = ['config_type', 'is_active', 'created_at']
+    search_fields = ['config_key', 'description']
+    readonly_fields = ['created_at', 'updated_at']

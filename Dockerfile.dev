@@ -2,22 +2,32 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# ✅ Install system deps
-RUN apt-get update && apt-get install -y \
-    libpq-dev gcc build-essential \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    gcc \
+    build-essential \
+    libgobject-2.0-0 \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    shared-mime-info \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# ✅ Copy ALL requirements for proper resolution
+# Copy requirements
 COPY requirements/ /app/requirements/
 
-# ✅ Install dev dependencies (includes base.txt)
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements/dev.txt
 
-# ✅ Copy the rest of the project
+# ✅ Install OCR dependencies
+RUN pip install --no-cache-dir paddlepaddle paddleocr
+
+# Copy project
 COPY . /app
 
-# ✅ Expose Django dev server port
 EXPOSE 8000
 
-# ✅ Default command for dev mode
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

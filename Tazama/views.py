@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from decimal import Decimal
 from datetime import datetime, date, timedelta
+from dateutil.relativedelta import relativedelta
 
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
@@ -263,6 +264,8 @@ def analyze_financial_data(request):
         )
         corporate = corporate_user.corporate
 
+        strict_service = EnhancedFinancialDataService()
+
         # Get financial data
         financial_data = data.get('financial_data')
         upload_id = data.get('upload_id')
@@ -276,7 +279,9 @@ def analyze_financial_data(request):
         if upload_id:
             try:
                 upload_record = FinancialDataUpload.objects.get(id=upload_id, corporate_id=corporate.id)
-                qs = ProcessedFinancialData.objects.filter(upload=upload_record).order_by('-period_date')
+                # ✅ FIXED: Order by created_at first to get the most recent upload
+                # ✅ CRITICAL: Always get the LATEST processed data, even if an analysis already exists
+                qs = ProcessedFinancialData.objects.filter(upload=upload_record).order_by('-created_at', '-period_date')
                 latest_data = qs.exclude(total_revenue=0).first() or \
                               qs.exclude(
                                   total_revenue=0,
@@ -290,6 +295,10 @@ def analyze_financial_data(request):
 
                 if not latest_data:
                     return ResponseProvider(message="No processed data found for this upload", code=400).bad_request()
+                
+                # ✅ LOGGING: Show which record we're using
+                logger.info(f"📊 Using ProcessedFinancialData record: ID={latest_data.id}, Created={latest_data.created_at}")
+                logger.info(f"   Revenue: {latest_data.total_revenue:,.2f}, OPEX: {latest_data.total_operating_expenses:,.2f}, NI: {latest_data.net_income:,.2f}")
 
                 # Build robust financial snapshot with derivations if needed
                 tr = float(latest_data.total_revenue or 0)
@@ -300,35 +309,64 @@ def analyze_financial_data(request):
                 ni = float(latest_data.net_income or 0)
                 rd = float(latest_data.research_development or 0)
 
-                # Derivations
-                if gp == 0 and (tr or cr):
-                    gp = max(0.0, tr - cr)
-                if oi == 0 and (gp or opex):
-                    oi = gp - opex
-                if ni == 0 and oi:
-                    ni = oi
-
+                # ✅ CRITICAL: Log extracted values for debugging
+                logger.info(f"📊 Extracted from database (Record ID={latest_data.id}, Created={latest_data.created_at}):")
+                logger.info(f"   Revenue: {tr:,.0f}, COGS: {cr:,.0f}, GP: {gp:,.0f}, OPEX: {opex:,.0f}, OI: {oi:,.0f}, NI: {ni:,.0f}")
+                if opex == 0.0:
+                    logger.warning(f"⚠️ Operating Expenses is 0.0 in database record ID={latest_data.id}")
+                    logger.warning(f"   This may be an old record. Check if a newer record exists with correct OPEX.")
+                
+                # ✅ STRICT MODE: Use ONLY the extracted values - NO modifications, NO calculations, NO corrections
+                # Log warnings for inconsistencies but DO NOT fix them
+                if tr > 0 and ni > 0 and tr < ni:
+                    logger.warning(f"⚠️ STRICT MODE: Revenue ({tr:,.0f}) < Net Income ({ni:,.0f}) - using values as-is (no correction)")
+                
+                if oi > gp and gp > 0:
+                    logger.warning(f"⚠️ STRICT MODE: Operating Income ({oi:,.0f}) > Gross Profit ({gp:,.0f}) - mathematically impossible, but using as-is")
+                
+                # ✅ STRICT MODE: Use exact values from database - no calculations, no tax deductions, no corrections
                 financial_data = {
                     'totalRevenue': tr,
                     'costOfRevenue': cr,
                     'grossProfit': gp,
                     'totalOperatingExpenses': opex,
                     'operatingIncome': oi,
-                    'netIncome': ni,
+                    'netIncome': ni,  # ✅ Use exact value - no tax deductions
                     'researchDevelopment': rd,
+                    'incomeTaxExpense': 0,  # Only include if explicitly in the statement
                 }
+                
+                # ✅ FINAL VALIDATION: Log final financial data being sent to model (STRICT MODE - no modifications)
+                logger.info(f"📊 STRICT MODE - Final financial_data for analysis (exact values from database):")
+                logger.info(f"   Revenue: {tr:,.0f}, COGS: {cr:,.0f}, GP: {gp:,.0f}, OPEX: {opex:,.0f}, OI: {oi:,.0f}, NI: {ni:,.0f}")
             except FinancialDataUpload.DoesNotExist:
                 return ResponseProvider(message="Upload record not found", code=404).not_found()
 
         # ✅ CRITICAL FIX: Calculate ALL features that the model expects
-        total_revenue = financial_data.get('totalRevenue', 0)
-        cost_of_revenue = financial_data.get('costOfRevenue', 0)
-        gross_profit = financial_data.get('grossProfit', 0)
-        total_expenses = financial_data.get('totalOperatingExpenses', 0)
-        operating_income = financial_data.get('operatingIncome', 0)
-        net_income = financial_data.get('netIncome', 0)
-        rd_expenses = financial_data.get('researchDevelopment', 0)
+        total_revenue = float(financial_data.get('totalRevenue', 0) or 0)
+        cost_of_revenue = float(financial_data.get('costOfRevenue', 0) or 0)
+        gross_profit = float(financial_data.get('grossProfit', 0) or 0)
+        total_expenses = float(financial_data.get('totalOperatingExpenses', 0) or 0)
+        operating_income = float(financial_data.get('operatingIncome', 0) or 0)
+        net_income = float(financial_data.get('netIncome', 0) or 0)
+        rd_expenses = float(financial_data.get('researchDevelopment', 0) or 0)
 
+        # ✅ STRICT MODE: NO corrections, NO calculations - use values exactly as extracted
+        # Log inconsistencies but DO NOT modify values
+        if total_revenue > 0 and cost_of_revenue > 0:
+            cost_ratio = cost_of_revenue / total_revenue
+            expense_ratio = total_expenses / total_revenue if total_expenses > 0 else 0
+            if cost_ratio < 0.15 and expense_ratio < 0.10 and total_expenses > 0:
+                logger.warning(f"⚠️ STRICT MODE: Unusual ratios detected (cost: {cost_ratio:.2%}, expense: {expense_ratio:.2%}) - using values as-is (no correction)")
+
+        if total_expenses == 0 and gross_profit > 0 and operating_income > 0:
+            logger.warning(f"⚠️ STRICT MODE: Operating Expenses is 0 but GP ({gross_profit:,.0f}) and OI ({operating_income:,.0f}) exist - using 0 as-is (no calculation)")
+
+        # ✅ CORRECT FORMULAS (verified):
+        # Profit Margin = Net Income / Total Revenue
+        # Operating Margin = Operating Income / Total Revenue  
+        # Cost Ratio = Cost of Revenue / Total Revenue
+        # Expense Ratio = Operating Expenses / Total Revenue
         if total_revenue > 0:
             financial_data['profit_margin'] = (net_income / total_revenue)
             financial_data['operating_margin'] = (operating_income / total_revenue)
@@ -337,6 +375,11 @@ def analyze_financial_data(request):
             financial_data['gross_margin'] = (gross_profit / total_revenue)
             financial_data['rd_intensity'] = (rd_expenses / total_revenue)
             financial_data['revenue_per_expense'] = (total_revenue / max(total_expenses, 1))
+            
+            # ✅ Validate expense ratio is not zero when expenses exist
+            if financial_data['expense_ratio'] == 0 and total_expenses > 0:
+                financial_data['expense_ratio'] = total_expenses / total_revenue
+                logger.warning(f"⚠️ Recalculated expense_ratio: {financial_data['expense_ratio']}")
         else:
             financial_data['profit_margin'] = 0
             financial_data['operating_margin'] = 0
@@ -377,13 +420,17 @@ def analyze_financial_data(request):
                     'operational_risk': 'LOW',
                     'risk_factors': []
                 }
+                truth_report = strict_service._generate_truth_report(financial_data, predictions)
+                logger.info(f"📤 Fallback mode - Generated truth report with {len(truth_report.get('brutally_honest_recommendations', []))} recommendations")
                 return ResponseProvider(
                     data={
                         "analysis_id": None,
+                        "input_data": financial_data,  # ✅ Include input_data
                         "predictions": predictions,
                         "recommendations": {},
                         "risk_assessment": risk_assessment,
                         "confidence_scores": { 'overall': 0.7 },
+                        "truth_report": truth_report,  # ✅ Already included
                         "processing_time": 0.05,
                         "model_used": { 'id': None, 'name': 'Fallback', 'type': 'traditional', 'version': '1.0' }
                     },
@@ -391,24 +438,41 @@ def analyze_financial_data(request):
                     code=200
                 ).success()
 
+            # ✅ STRICT MODE: Validate financial_data before creating analysis request
+            if not financial_data:
+                logger.error(f"❌ ERROR: financial_data is None or empty - cannot create analysis request")
+                return ResponseProvider(message="Financial data is empty or invalid", code=400).bad_request()
+            
+            # Validate that we have at least revenue
+            if not financial_data.get('totalRevenue', 0):
+                logger.warning(f"⚠️ STRICT MODE: Total Revenue is 0 - proceeding with analysis using exact extracted values")
+            
             # Proceed with model-backed analysis
             analysis_service = TazamaAnalysisService()
             request_obj = analysis_service.create_analysis_request(
                 corporate=corporate,
                 user=corporate_user,
-                input_data=financial_data,
+                input_data=financial_data,  # ✅ STRICT MODE: Use exact extracted values
                 request_type=analysis_type
             )
 
-            # Update request object with validated features
-            request_obj.input_data = financial_data
+            # ✅ STRICT MODE: Ensure input_data is set with exact extracted values (no modifications)
+            request_obj.input_data = financial_data.copy()
             request_obj.save()
+            logger.info(f"✅ STRICT MODE: Created analysis request with exact extracted values (no modifications)")
 
             # Execute analysis
             success, message = analysis_service.run_analysis(request_obj.id)
 
             if success:
                 request_obj.refresh_from_db()
+                
+                # ✅ CRITICAL: Ensure input_data is saved correctly with operating expenses
+                # Refresh input_data to ensure it includes all fields
+                if not request_obj.input_data or request_obj.input_data.get('totalOperatingExpenses', 0) == 0:
+                    request_obj.input_data = financial_data
+                    request_obj.save()
+                    logger.info(f"✅ Updated analysis request input_data with correct operating expenses: {financial_data.get('totalOperatingExpenses', 0):,.0f}")
 
                 TransactionLogBase.log(
                     transaction_type="FINANCIAL_ANALYSIS_COMPLETED",
@@ -428,13 +492,69 @@ def analyze_financial_data(request):
                 if hasattr(request_obj, 'optimization_analysis'):
                     optimization_analysis = request_obj.optimization_analysis
 
+                # ✅ STRICT MODE: Use exact extracted financial_data - no calculations, no modifications
+                # Ensure input_data is always set (use extracted values from database)
+                response_input_data = financial_data.copy() if financial_data else {}
+                
+                # ✅ CRITICAL: Ensure input_data is set on the request object (prevents "Empty or None" error)
+                if financial_data:
+                    response_input_data = financial_data.copy()
+                    # Update stored input_data to match extracted values (strict mode - no modifications)
+                    if not request_obj.input_data or request_obj.input_data != financial_data:
+                        request_obj.input_data = financial_data.copy()
+                        request_obj.save()
+                        logger.info(f"✅ STRICT MODE: Updated stored input_data with exact extracted values (no modifications)")
+                else:
+                    logger.error(f"❌ ERROR: financial_data is empty or None - cannot proceed with analysis")
+                    return ResponseProvider(message="Financial data is empty or invalid", code=400).bad_request()
+                
+                # ✅ VALIDATION: Log what we're sending
+                logger.info(f"📤 Sending analysis response with input_data:")
+                logger.info(f"   Revenue: {response_input_data.get('totalRevenue', 0):,.2f}")
+                logger.info(f"   OPEX: {response_input_data.get('totalOperatingExpenses', 0):,.2f}")
+                logger.info(f"   Net Income: {response_input_data.get('netIncome', 0):,.2f}")
+                logger.info(f"   Expense Ratio: {response_input_data.get('expense_ratio', 0):.4f} ({response_input_data.get('expense_ratio', 0) * 100:.2f}%)")
+                
+                # ✅ STRICT MODE: Log inconsistencies but DO NOT calculate or modify values
+                if response_input_data.get('totalOperatingExpenses', 0) == 0 and response_input_data.get('totalRevenue', 0) > 0:
+                    logger.warning(f"⚠️ STRICT MODE: Operating Expenses is 0 but Revenue exists - using 0 as-is (no calculation)")
+                    logger.warning(f"   Revenue: {response_input_data.get('totalRevenue', 0):,.2f}")
+                    logger.warning(f"   Operating Income: {response_input_data.get('operatingIncome', 0):,.2f}")
+                    logger.warning(f"   Gross Profit: {response_input_data.get('grossProfit', 0):,.2f}")
+                
+                # ✅ CRITICAL FIX: ALWAYS use the truth_report that was saved to database
+                truth_report = request_obj.truth_report or {}
+                logger.info("="* 80)
+                logger.info(f"📤 TRUTH REPORT CHECK FOR ANALYSIS ID: {request_obj.id}")
+                logger.info(f"   Truth report exists: {bool(truth_report)}")
+                logger.info(f"   Truth report keys: {list(truth_report.keys()) if truth_report else 'None'}")
+                if truth_report.get('brutally_honest_recommendations'):
+                    logger.info(f"   ✅ Recommendations count: {len(truth_report['brutally_honest_recommendations'])}")
+                    logger.info(f"   ✅ First recommendation: {truth_report['brutally_honest_recommendations'][0] if truth_report['brutally_honest_recommendations'] else 'None'}")
+                else:
+                    logger.error(f"❌ CRITICAL: No recommendations in truth_report! Regenerating immediately...")
+                    truth_report = strict_service._generate_truth_report(response_input_data, request_obj.predictions or {})
+                    logger.info(f"   Regenerated truth_report has recommendations: {bool(truth_report.get('brutally_honest_recommendations'))}")
+                    if truth_report.get('brutally_honest_recommendations'):
+                        logger.info(f"   ✅ Regenerated {len(truth_report['brutally_honest_recommendations'])} recommendations")
+                        # Save regenerated truth_report back to database
+                        request_obj.truth_report = truth_report
+                        request_obj.save()
+                        logger.info(f"   ✅ Saved regenerated truth_report to database")
+                
+                logger.info(f"   Truth report fraud flags: {len(truth_report.get('fraud_red_flags', []))} flags")
+                logger.info(f"   Truth report overall risk: {truth_report.get('risk_assessment', {}).get('overall_risk', 'UNKNOWN')}")
+                logger.info("=" * 80)
+
                 return ResponseProvider(
                     data={
                         "analysis_id": request_obj.id,
+                        "input_data": response_input_data,  # ✅ ADD: Include input_data for frontend
                         "predictions": request_obj.predictions,
                         "recommendations": request_obj.recommendations,
                         "risk_assessment": request_obj.risk_assessment,
                         "confidence_scores": request_obj.confidence_scores,
+                        "truth_report": truth_report,  # ✅ Now uses saved truth_report from database!
                         "optimization_analysis": optimization_analysis,
                         "processing_time": request_obj.processing_time_seconds,
                         "model_used": {
@@ -451,6 +571,10 @@ def analyze_financial_data(request):
             return ResponseProvider(message=f"Analysis failed: {message}", code=500).exception()
         except Exception as e:
             # As a last resort, return fallback without raising
+            logger.error(f"❌ Exception in analysis: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
             predictions = {
                 'profit_margin': float(financial_data.get('profit_margin', 0)),
                 'operating_margin': float(financial_data.get('operating_margin', 0)),
@@ -458,19 +582,30 @@ def analyze_financial_data(request):
                 'cost_revenue_ratio': float(financial_data.get('cost_revenue_ratio', 0)),
                 'expense_ratio': float(financial_data.get('expense_ratio', 0))
             }
+            # ✅ STRICT MODE: If analysis failed, mark as HIGH risk (something went wrong)
             risk_assessment = {
-                'overall_risk': 'LOW',
-                'profitability_risk': 'LOW',
-                'operational_risk': 'LOW',
-                'risk_factors': []
+                'overall_risk': 'HIGH',
+                'profitability_risk': 'HIGH',
+                'operational_risk': 'HIGH',
+                'risk_factors': ['Analysis failed - requires manual review', 'Unable to complete automated risk assessment']
             }
+            # ✅ Generate truth report even in exception case
+            try:
+                truth_report = strict_service._generate_truth_report(financial_data, predictions)
+                logger.info(f"📤 Exception fallback - Generated truth report with {len(truth_report.get('brutally_honest_recommendations', []))} recommendations")
+            except:
+                truth_report = {}
+                logger.error(f"❌ Failed to generate truth report in exception fallback")
+            
             return ResponseProvider(
                 data={
                     "analysis_id": None,
+                    "input_data": financial_data,  # ✅ Include input_data
                     "predictions": predictions,
                     "recommendations": {},
                     "risk_assessment": risk_assessment,
                     "confidence_scores": { 'overall': 0.6 },
+                    "truth_report": truth_report,  # ✅ Include truth_report
                     "processing_time": 0.01,
                     "model_used": { 'id': None, 'name': 'Fallback', 'type': 'traditional', 'version': '1.0' }
                 },
@@ -566,6 +701,27 @@ def get_financial_dashboard(request):
                 operating_income = gross_profit - total_operating_expenses
             # If taxes were tracked, they would be subtracted; otherwise keep provided net_income
 
+            # ✅ CRITICAL: Always recalculate ratios from actual values (source of truth)
+            # This ensures ratios are accurate even if stored values are incorrect
+            calculated_ratios = {}
+            if total_revenue and total_revenue > 0:
+                calculated_ratios = {
+                    "profit_margin": max(0.0, min(1.0, net_income / total_revenue)),
+                    "operating_margin": max(0.0, min(1.0, operating_income / total_revenue)),
+                    "gross_margin": max(0.0, min(1.0, gross_profit / total_revenue)),
+                    "cost_revenue_ratio": max(0.0, min(2.0, cost_of_revenue / total_revenue)),
+                    "expense_ratio": max(0.0, min(2.0, total_operating_expenses / total_revenue)),
+                }
+            else:
+                calculated_ratios = {
+                    "profit_margin": 0.0,
+                    "operating_margin": 0.0,
+                    "gross_margin": 0.0,
+                    "cost_revenue_ratio": 0.0,
+                    "expense_ratio": 0.0,
+                }
+            
+            # ✅ Use calculated ratios (always accurate) instead of stored values
             snapshot = {
                 "total_revenue": total_revenue,
                 "cost_of_revenue": cost_of_revenue,
@@ -573,19 +729,26 @@ def get_financial_dashboard(request):
                 "total_operating_expenses": total_operating_expenses,
                 "operating_income": operating_income,
                 "net_income": net_income,
-                "profit_margin": float(pfd.profit_margin or 0) if pfd.profit_margin is not None else None,
-                "operating_margin": float(pfd.operating_margin or 0) if pfd.operating_margin is not None else None,
-                "gross_margin": float(pfd.gross_margin or 0) if pfd.gross_margin is not None else None,
-                "cost_revenue_ratio": float(pfd.cost_revenue_ratio or 0) if pfd.cost_revenue_ratio is not None else None,
-                "expense_ratio": float(pfd.expense_ratio or 0) if pfd.expense_ratio is not None else None,
-                "rd_intensity": float(pfd.rd_intensity or 0) if pfd.rd_intensity is not None else None,
-                "revenue_growth": float(pfd.revenue_growth or 0) if pfd.revenue_growth is not None else None,
+                "profit_margin": calculated_ratios["profit_margin"],
+                "operating_margin": calculated_ratios["operating_margin"],
+                "gross_margin": calculated_ratios["gross_margin"],
+                "cost_revenue_ratio": calculated_ratios["cost_revenue_ratio"],
+                "expense_ratio": calculated_ratios["expense_ratio"],
+                "rd_intensity": float(pfd.rd_intensity or 0) if pfd.rd_intensity is not None else 0.0,
+                "revenue_growth": float(pfd.revenue_growth or 0) if pfd.revenue_growth is not None else 0.0,
                 "additional_features": pfd.additional_features or {},
             }
+            
+            # ✅ LOGGING: Show calculated ratios for debugging
+            if total_operating_expenses == 0.0 and total_revenue > 0:
+                logger.warning(f"⚠️ Dashboard: Operating Expenses is 0, expense_ratio will be 0")
+            else:
+                logger.info(f"✅ Dashboard: Calculated expense_ratio = {calculated_ratios['expense_ratio']:.4f} "
+                           f"({calculated_ratios['expense_ratio'] * 100:.2f}%) from OPEX={total_operating_expenses:,.2f}, Revenue={total_revenue:,.2f}")
 
-            # Debug logging of snapshot before currency conversion
+            # ✅ ENHANCED LOGGING: Show which record and what data is being used
             try:
-                print({
+                debug_data = {
                     "debug_snapshot_before_fx": {
                         "total_revenue": snapshot["total_revenue"],
                         "cost_of_revenue": snapshot["cost_of_revenue"],
@@ -594,9 +757,16 @@ def get_financial_dashboard(request):
                         "operating_income": snapshot["operating_income"],
                         "net_income": snapshot["net_income"],
                     }
-                })
-            except Exception:
-                pass
+                }
+                print(debug_data)
+                # ✅ Also log to logger for better visibility
+                logger.info(f"📊 Dashboard Snapshot (before FX): Revenue={snapshot['total_revenue']:,.2f}, "
+                           f"OPEX={snapshot['total_operating_expenses']:,.2f}, "
+                           f"OI={snapshot['operating_income']:,.2f}, NI={snapshot['net_income']:,.2f}")
+                if snapshot["total_operating_expenses"] == 0.0:
+                    logger.warning(f"⚠️ Dashboard showing Operating Expenses = 0.0 - this may be old data!")
+            except Exception as e:
+                logger.error(f"Error in debug logging: {e}")
 
             return snapshot
 
@@ -632,8 +802,9 @@ def get_financial_dashboard(request):
                 resolved_statement_date = candidate_date
 
             # Fallback: if nothing specified, use the most recent processed snapshot and its date
+            # ✅ FIXED: Order by created_at first (most recent upload), then period_date
             if not resolved_statement_date:
-                pfd_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id).order_by('-period_date')
+                pfd_qs = ProcessedFinancialData.objects.filter(corporate_id=corporate_id).order_by('-created_at', '-period_date')
                 resolved_snapshot = pfd_qs.first()
                 if not resolved_snapshot:
                     return ResponseProvider(
@@ -641,6 +812,9 @@ def get_financial_dashboard(request):
                         code=404
                     ).not_found()
                 resolved_statement_date = resolved_snapshot.period_date
+                # ✅ LOGGING: Show which record is being used
+                logger.info(f"📊 Dashboard using latest record: ID={resolved_snapshot.id}, Created={resolved_snapshot.created_at}, "
+                           f"OPEX={resolved_snapshot.total_operating_expenses:,.2f}")
 
             # Final gate: ensure snapshot exists
             if not resolved_snapshot:
@@ -719,6 +893,29 @@ def get_financial_dashboard(request):
             except Exception:
                 display_preds = {}
 
+            # Extract date and frequency metadata from predictions
+            date_metadata = {}
+            if isinstance(base_preds, dict):
+                # Extract date metadata from predictions
+                if 'projection_date' in base_preds:
+                    date_metadata['projection_date'] = base_preds.get('projection_date')
+                if 'frequency' in base_preds:
+                    date_metadata['frequency'] = base_preds.get('frequency')
+                if 'next_quarter_date' in base_preds:
+                    date_metadata['next_quarter_date'] = base_preds.get('next_quarter_date')
+                if 'next_quarter_year' in base_preds:
+                    date_metadata['next_quarter_year'] = base_preds.get('next_quarter_year')
+                if 'next_quarter_quarter' in base_preds:
+                    date_metadata['next_quarter_quarter'] = base_preds.get('next_quarter_quarter')
+                if 'next_annual_date' in base_preds:
+                    date_metadata['next_annual_date'] = base_preds.get('next_annual_date')
+                if 'next_annual_year' in base_preds:
+                    date_metadata['next_annual_year'] = base_preds.get('next_annual_year')
+            
+            # Also check if date_metadata exists in the analysis request (from EnhancedFinancialOptimizer)
+            # This would be stored in a separate field if we added it to the model
+            # For now, we'll extract from predictions as above
+            
             analyses_data.append({
                 'id': str(analysis.id),
                 'date': analysis.created_at.date().isoformat(),
@@ -735,11 +932,13 @@ def get_financial_dashboard(request):
                 'processing_time': round(analysis.processing_time_seconds,
                                          2) if analysis.processing_time_seconds else 0,
                 'confidence_scores': analysis.confidence_scores or {},
+                'truth_report': analysis.truth_report or {},  # ✅ Include truth report for dashboard
                 'model_info': {
                     'name': analysis.model_used.name,
                     'type': analysis.model_used.model_type,
                     'version': analysis.model_used.version
-                } if analysis.model_used else None
+                } if analysis.model_used else None,
+                'date_metadata': date_metadata if date_metadata else None
             })
 
         # ✅ Get uploads summary
@@ -1036,11 +1235,57 @@ def get_financial_dashboard(request):
             if 'input_data' in item and isinstance(item['input_data'], dict):
                 item['input_data'] = convert_nested(item['input_data'], rate)
 
+        # Determine frequency from statement date
+        statement_frequency = 'quarterly' if resolved_statement_date.month in [3, 6, 9, 12] else 'annual'
+        
+        # Calculate next period dates based on frequency
+        next_period_info = {}
+        if statement_frequency == 'quarterly':
+            next_quarter_date = resolved_statement_date + relativedelta(months=3)
+            next_period_info = {
+                'next_quarter_date': next_quarter_date.isoformat(),
+                'next_quarter_year': next_quarter_date.year,
+                'next_quarter_quarter': ((next_quarter_date.month - 1) // 3) + 1
+            }
+        else:
+            next_annual_date = resolved_statement_date + relativedelta(years=1)
+            next_period_info = {
+                'next_annual_date': next_annual_date.isoformat(),
+                'next_annual_year': next_annual_date.year
+            }
+        
+        # Add date metadata to intelligent analysis if not already present
+        if isinstance(converted_intelligent, dict):
+            if 'date_metadata' not in converted_intelligent:
+                converted_intelligent['date_metadata'] = {}
+            converted_intelligent['date_metadata'].update({
+                'statement_date': resolved_statement_date.isoformat(),
+                'frequency': statement_frequency,
+                **next_period_info
+            })
+        
+        # ✅ Get the latest truth report for dashboard display
+        # Find the most recent analysis with a valid truth report containing recommendations
+        latest_truth_report = {}
+        for analysis in all_analyses[:10]:  # Check last 10 analyses
+            truth_report = analysis.truth_report or {}
+            if (truth_report and
+                truth_report.get('brutally_honest_recommendations') and
+                len(truth_report.get('brutally_honest_recommendations', [])) > 0):
+                latest_truth_report = truth_report
+                logger.info(f"📤 Dashboard: Found truth_report with {len(truth_report.get('brutally_honest_recommendations', []))} recommendations from analysis {analysis.id}")
+                break
+
+        if not latest_truth_report:
+            logger.warning("📤 Dashboard: No valid truth_report found in recent analyses - this may cause frontend display issues")
+        
         # Build dashboard response
         dashboard_data = {
             "alignment": {
                 "reference_statement_date": resolved_statement_date.isoformat(),
                 "source": "upload_id" if upload_id else ("explicit_date" if statement_date_str else "latest_snapshot"),
+                "frequency": statement_frequency,
+                **next_period_info
             },
             "currency": {
                 "code": requested_currency,
@@ -1050,6 +1295,7 @@ def get_financial_dashboard(request):
                 "timestamp": currency_info.get('timestamp')
             },
             "intelligent_analysis": converted_intelligent,
+            "truth_report": latest_truth_report,  # ✅ Latest truth report for dashboard display
             'summary': {
                 'total_analyses': total_analyses,
                 'total_uploads': total_uploads,
@@ -1058,7 +1304,11 @@ def get_financial_dashboard(request):
                 'risk_distribution': risk_distribution
             },
             'recent_analyses': analyses_data,
-            'statement_snapshot': converted_snapshot,
+            'statement_snapshot': {
+                **converted_snapshot,
+                'period_date': resolved_statement_date.isoformat(),
+                'frequency': statement_frequency
+            },
             'trends': {
                 'data': trend_data
             },
@@ -1147,14 +1397,37 @@ def train_model(request):
 
         df_annual = pd.read_csv(annual_path)
         df_annual["frequency"] = "annual"
+        # Convert endDate to date column for consistency
+        if 'endDate' in df_annual.columns:
+            df_annual['date'] = pd.to_datetime(df_annual['endDate'], errors='coerce')
+        elif 'date' not in df_annual.columns:
+            raise ValueError("No date column found in annual data")
 
         df_quarterly = pd.read_csv(quarterly_path)
         df_quarterly["frequency"] = "quarterly"
+        # Convert endDate to date column for consistency
+        if 'endDate' in df_quarterly.columns:
+            df_quarterly['date'] = pd.to_datetime(df_quarterly['endDate'], errors='coerce')
+        elif 'date' not in df_quarterly.columns:
+            raise ValueError("No date column found in quarterly data")
 
         dataset = pd.concat([df_annual, df_quarterly], ignore_index=True)
 
+        # Ensure date column is properly formatted and drop rows with invalid dates
+        dataset = dataset.dropna(subset=['date'])
+        dataset['date'] = pd.to_datetime(dataset['date'])
+        
+        # Ensure symbol column exists (use 'stock' if available, otherwise create from symbol)
+        if 'stock' in dataset.columns and 'symbol' not in dataset.columns:
+            dataset['symbol'] = dataset['stock'].astype(str)
+        elif 'symbol' not in dataset.columns:
+            dataset['symbol'] = 'UNKNOWN'
+
         # Optional preprocessing
         dataset = dataset.dropna(how="all")  # drop fully empty rows
+        
+        # Sort by symbol, frequency, and date for proper time series ordering
+        dataset = dataset.sort_values(['symbol', 'frequency', 'date'])
 
         # ✅ Pass dataset into training service
         training_service = ModelTrainingService()

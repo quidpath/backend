@@ -95,7 +95,8 @@ class FinancialDataProcessor:
 
         metadata = {
             "symbol": df["symbol"].values,
-            "date": pd.to_datetime(df["date"]).values if "date" in df.columns else None
+            "date": pd.to_datetime(df["date"]).values if "date" in df.columns else None,
+            "frequency": df["frequency"].values if "frequency" in df.columns else None
         }
 
         return X, y, metadata
@@ -250,29 +251,55 @@ class UnifiedFinancialModels:
         return metrics
 
     def train_lstm_model(self, df, sequence_length=10, batch_size=32, epochs=50, learning_rate=0.001):
-        """Train LSTM model for time series prediction"""
-        logger.info("Training LSTM model...")
+        """Train LSTM model for time series prediction with frequency-aware processing"""
+        logger.info("Training LSTM model with frequency-aware processing...")
 
         try:
-            # Group by symbol and create sequences
+            # Group by symbol and frequency, then create sequences
+            # This ensures quarterly and annual data are handled separately
             sequences = []
             targets = []
+            sequence_frequencies = []  # Track frequency for each sequence
+
+            # Check if frequency column exists
+            has_frequency = 'frequency' in df.columns
 
             for symbol in df['symbol'].unique():
                 symbol_data = df[df['symbol'] == symbol].sort_values('date')
 
-                if len(symbol_data) < sequence_length + 1:
-                    continue
+                if has_frequency:
+                    # Process quarterly and annual data separately
+                    for frequency in ['quarterly', 'annual']:
+                        freq_data = symbol_data[symbol_data['frequency'] == frequency].sort_values('date')
+                        
+                        if len(freq_data) < sequence_length + 1:
+                            continue
 
-                # Prepare features and targets
-                feature_data = symbol_data[self.target_columns].values
+                        # Prepare features and targets
+                        feature_data = freq_data[self.target_columns].values
 
-                # Create sequences
-                for i in range(len(feature_data) - sequence_length):
-                    seq = feature_data[i:i + sequence_length]
-                    target = feature_data[i + sequence_length]
-                    sequences.append(seq)
-                    targets.append(target)
+                        # Create sequences for this frequency
+                        for i in range(len(feature_data) - sequence_length):
+                            seq = feature_data[i:i + sequence_length]
+                            target = feature_data[i + sequence_length]
+                            sequences.append(seq)
+                            targets.append(target)
+                            sequence_frequencies.append(frequency)
+                else:
+                    # Fallback: process all data together if no frequency column
+                    if len(symbol_data) < sequence_length + 1:
+                        continue
+
+                    # Prepare features and targets
+                    feature_data = symbol_data[self.target_columns].values
+
+                    # Create sequences
+                    for i in range(len(feature_data) - sequence_length):
+                        seq = feature_data[i:i + sequence_length]
+                        target = feature_data[i + sequence_length]
+                        sequences.append(seq)
+                        targets.append(target)
+                        sequence_frequencies.append('unknown')
 
             if len(sequences) == 0:
                 logger.warning("Not enough data to create sequences for LSTM training")
@@ -280,6 +307,11 @@ class UnifiedFinancialModels:
 
             sequences = np.array(sequences)
             targets = np.array(targets)
+            
+            # Log frequency distribution
+            if has_frequency and sequence_frequencies:
+                freq_counts = pd.Series(sequence_frequencies).value_counts()
+                logger.info(f"Sequence frequency distribution: {freq_counts.to_dict()}")
 
             # Scale data
             n_samples, n_timesteps, n_features = sequences.shape
@@ -476,18 +508,73 @@ class EnhancedFinancialOptimizer:
             logger.warning("FinancialOptimizationService not available")
 
     def analyze_income_statement(self, income_data):
-        """Comprehensive analysis of income statement data with advanced optimization"""
+        """Comprehensive analysis of income statement data with advanced optimization and date-centered projections"""
+        # ✅ LOG: Debug incoming income_data
+        logger.info(f"🔍 analyze_income_statement received income_data type: {type(income_data)}")
+        if isinstance(income_data, dict):
+            logger.info(f"🔍 income_data keys: {list(income_data.keys())}")
+            logger.info(f"🔍 income_data sample values: {dict(list(income_data.items())[:10])}")
+        elif hasattr(income_data, 'columns'):
+            logger.info(f"🔍 income_data columns: {list(income_data.columns)}")
+            logger.info(f"🔍 income_data shape: {income_data.shape}")
+        
         # Process input data
         processed_data = self._process_input_data(income_data)
+        logger.info(f"🔍 After _process_input_data, shape: {processed_data.shape if hasattr(processed_data, 'shape') else 'Unknown'}")
 
+        # Extract date and frequency information for date-centered projections
+        statement_date = None
+        frequency = None
+        
+        if isinstance(income_data, dict):
+            # Try to extract date from input data
+            for date_key in ['date', 'endDate', 'period_date', 'statement_date']:
+                if date_key in income_data:
+                    try:
+                        statement_date = pd.to_datetime(income_data[date_key])
+                        break
+                    except:
+                        pass
+            
+            # Try to extract frequency
+            if 'frequency' in income_data:
+                frequency = income_data['frequency']
+            elif statement_date is not None:
+                # Infer frequency from date (quarterly if month is 3, 6, 9, or 12)
+                if statement_date.month in [3, 6, 9, 12]:
+                    frequency = 'quarterly'
+                else:
+                    frequency = 'annual'
+        
         # Make predictions
         predictions = self._make_predictions(processed_data)
+
+        # Add date-centered projection information
+        if statement_date is not None:
+            predictions['projection_date'] = statement_date.isoformat()
+            predictions['frequency'] = frequency or 'unknown'
+            
+            # Calculate next period dates based on frequency
+            if frequency == 'quarterly':
+                # Next quarter (always 3 months ahead)
+                next_date = statement_date + pd.DateOffset(months=3)
+                predictions['next_quarter_date'] = next_date.isoformat()
+                predictions['next_quarter_year'] = next_date.year
+                predictions['next_quarter_quarter'] = ((next_date.month - 1) // 3) + 1
+            elif frequency == 'annual':
+                # Next year
+                next_date = statement_date + pd.DateOffset(years=1)
+                predictions['next_annual_date'] = next_date.isoformat()
+                predictions['next_annual_year'] = next_date.year
 
         # Generate recommendations
         recommendations = self._generate_comprehensive_recommendations(processed_data, predictions)
 
         # Generate risk assessment
         risk_assessment = self._assess_financial_risks(processed_data, predictions)
+        
+        # ✅ Generate BRUTAL TRUTH REPORT
+        truth_report = self._generate_truth_report(income_data, predictions)
         
         # Advanced optimization analysis
         optimization_analysis = {}
@@ -504,17 +591,48 @@ class EnhancedFinancialOptimizer:
             'predictions': predictions,
             'recommendations': recommendations,
             'risk_assessment': risk_assessment,
+            'truth_report': truth_report,  # ✅ Include truth report in response
             'input_analysis': self._analyze_input_quality(processed_data),
             'confidence_scores': self._calculate_confidence_scores(processed_data, predictions),
-            'optimization_analysis': optimization_analysis
+            'optimization_analysis': optimization_analysis,
+            'date_metadata': {
+                'statement_date': statement_date.isoformat() if statement_date is not None else None,
+                'frequency': frequency,
+                'projection_type': 'quarterly' if frequency == 'quarterly' else ('annual' if frequency == 'annual' else 'unknown')
+            }
         }
 
     def _process_input_data(self, data):
-        """Process and validate input data - ensure it's in DataFrame format"""
+        """Process and validate input data - ensure it's in DataFrame format with date and frequency awareness"""
+        # ✅ STRICT MODE: Validate input data is not None or empty
+        if data is None:
+            raise ValueError("Input data is None - cannot process")
+        
         if isinstance(data, dict):
+            if not data:
+                raise ValueError("Input data dictionary is empty - cannot process")
             df = pd.DataFrame([data])
         else:
+            if data is None or (isinstance(data, pd.DataFrame) and data.empty):
+                raise ValueError("Input data is None or empty DataFrame - cannot process")
             df = data.copy()
+
+        # Ensure date column exists and is properly formatted
+        if 'date' not in df.columns:
+            for date_key in ['endDate', 'period_date', 'statement_date']:
+                if date_key in df.columns:
+                    df['date'] = pd.to_datetime(df[date_key], errors='coerce')
+                    break
+        
+        # Ensure frequency column exists
+        if 'frequency' not in df.columns:
+            if 'date' in df.columns:
+                # Infer frequency from date
+                df['frequency'] = df['date'].apply(
+                    lambda x: 'quarterly' if pd.notna(x) and x.month in [3, 6, 9, 12] else 'annual'
+                )
+            else:
+                df['frequency'] = 'unknown'
 
         # The data should already have all features calculated from the view
         # Just ensure it's in the right format
@@ -523,9 +641,15 @@ class EnhancedFinancialOptimizer:
     def _make_predictions(self, data):
         """Make predictions using trained models"""
         try:
+            # ✅ LOG: Debug input data
+            logger.info(f"🔍 _make_predictions received data with shape: {data.shape if hasattr(data, 'shape') else 'Unknown'}")
+            logger.info(f"🔍 _make_predictions data columns: {list(data.columns) if hasattr(data, 'columns') else 'No columns'}")
+            logger.info(f"🔍 _make_predictions data head: {data.head().to_dict() if hasattr(data, 'head') else data}")
+            
             # ✅ CRITICAL FIX: Ensure we're using the exact features the model expects
             # The feature_columns should match what was used during training
             expected_features = self.feature_columns
+            logger.info(f"🔍 Expected features: {expected_features}")
 
             # Create a DataFrame with only the expected features
             features_df = pd.DataFrame()
@@ -533,13 +657,18 @@ class EnhancedFinancialOptimizer:
             for feature in expected_features:
                 if feature in data.columns:
                     features_df[feature] = data[feature]
+                    logger.info(f"✅ Found feature '{feature}' with value: {data[feature].iloc[0] if len(data) > 0 else 'empty'}")
                 else:
                     # If feature is missing, set to 0
-                    logger.warning(f"Feature '{feature}' not found in input data, setting to 0")
+                    logger.warning(f"⚠️ Feature '{feature}' not found in input data, setting to 0")
                     features_df[feature] = 0
 
             # Fill any NaN values with 0
             features_df = features_df.fillna(0)
+            
+            # ✅ LOG: Debug features_df before prediction
+            logger.info(f"🔍 features_df shape: {features_df.shape}")
+            logger.info(f"🔍 features_df head: {features_df.head().to_dict()}")
 
             # Make predictions
             predictions = self.models.predict(features_df, use_lstm=False)
@@ -583,7 +712,11 @@ class EnhancedFinancialOptimizer:
         return confidence_scores
 
     def _generate_comprehensive_recommendations(self, data, predictions):
-        """Generate detailed optimization recommendations"""
+        """
+        ✅ DISABLED: Generic recommendations replaced by truth report
+        This method now returns empty recommendations. All real recommendations 
+        come from truth_report with specific numbers based on actual financials.
+        """
         recommendations = {
             'immediate_actions': [],
             'cost_optimization': [],
@@ -592,61 +725,9 @@ class EnhancedFinancialOptimizer:
             'operational_efficiency': [],
             'strategic_initiatives': []
         }
-
-        # Extract current metrics
-        current_revenue = float(data.get('totalRevenue', pd.Series([0])).iloc[0])
-        current_profit_margin = predictions.get('profit_margin', 0)
-        current_operating_margin = predictions.get('operating_margin', 0)
-        current_cost_ratio = predictions.get('cost_revenue_ratio', 0)
-        current_expense_ratio = predictions.get('expense_ratio', 0)
-
-        # Generate recommendations based on predictions
-        if current_profit_margin < -0.05:
-            recommendations['immediate_actions'].append({
-                'priority': 'CRITICAL',
-                'action': 'Emergency Profitability Review',
-                'description': 'Company is experiencing significant losses. Immediate cost reduction and revenue protection measures required.',
-                'timeline': '1-2 weeks',
-                'impact': 'Business survival'
-            })
-
-        if current_cost_ratio > 0.7:
-            potential_savings = current_revenue * 0.05
-            recommendations['cost_optimization'].append({
-                'priority': 'HIGH',
-                'action': 'Supply Chain Optimization',
-                'description': 'Cost of goods sold is high. Negotiate better supplier terms, optimize inventory management.',
-                'potential_savings': f'${potential_savings:,.0f}',
-                'timeline': '3-6 months'
-            })
-
-        if current_expense_ratio > 0.4:
-            recommendations['cost_optimization'].append({
-                'priority': 'MEDIUM',
-                'action': 'Operational Expense Review',
-                'description': 'Operating expenses are elevated. Review administrative costs, eliminate redundancies.',
-                'timeline': '2-4 months'
-            })
-
-        if current_profit_margin < 0.15 and current_profit_margin > 0:
-            recommendations['profitability_improvements'].append({
-                'priority': 'HIGH',
-                'action': 'Profit Margin Enhancement Program',
-                'description': 'Implement comprehensive pricing strategy review and cost management program.',
-                'target': '15-20% profit margin',
-                'timeline': '6-9 months'
-            })
-
-        # Add revenue enhancement recommendations
-        if current_revenue > 0:
-            recommendations['revenue_enhancement'].append({
-                'priority': 'MEDIUM',
-                'action': 'Revenue Growth Initiatives',
-                'description': 'Focus on expanding market share, customer acquisition, and product diversification.',
-                'target': f'Increase revenue by 10-15% to ${current_revenue * 1.15:,.0f}',
-                'timeline': '6-12 months'
-            })
-
+        
+        # ✅ Return empty - truth report handles all recommendations with brutal honesty
+        logger.info("✅ Skipping generic recommendations - truth report will provide specific data-driven recommendations")
         return recommendations
 
     def _assess_financial_risks(self, data, predictions):
@@ -718,6 +799,81 @@ class EnhancedFinancialOptimizer:
             )
 
         return analysis
+    
+    def _generate_truth_report(self, financial_data: Dict[str, Any], predictions: Dict[str, float] | None = None) -> Dict[str, Any]:
+        """
+        ✅ Generate BRUTAL TRUTH REPORT with specific numbers
+        Build a strict-truth report that shows the exact state without sugarcoating.
+        """
+        def _num(*keys: str) -> float:
+            for key in keys:
+                if key in financial_data and financial_data[key] is not None:
+                    try:
+                        return float(financial_data[key])
+                    except (ValueError, TypeError):
+                        continue
+            return 0.0
+        
+        revenue = _num('totalRevenue', 'total_revenue', 'Revenue', 'revenue')
+        cost = _num('costOfRevenue', 'cost_of_revenue', 'cogs')
+        gross_profit = _num('grossProfit', 'gross_profit')
+        operating_expenses = _num('totalOperatingExpenses', 'total_operating_expenses', 'operatingExpenses')
+        operating_income = _num('operatingIncome', 'operating_income')
+        net_income = _num('netIncome', 'net_income')
+        interest_expense = _num('interestExpense', 'interest_expense')
+        taxes = _num('incomeTaxExpense', 'income_tax_expense', 'taxes')
+        
+        reported = {
+            'total_revenue': revenue,
+            'cost_of_revenue': cost,
+            'gross_profit': gross_profit,
+            'operating_expenses': operating_expenses,
+            'operating_income': operating_income,
+            'net_income': net_income,
+            'interest_expense': interest_expense,
+            'taxes': taxes
+        }
+        
+        predicted = predictions or {}
+        summary_points: List[str] = []
+        fraud_flags: List[str] = []
+        discrepancies: List[Dict[str, Any]] = []
+        honest_recs: List[Dict[str, Any]] = []
+        
+        def fmt_amount(value: float) -> str:
+            return f"KES {value:,.0f}"
+        
+        summary_points.append(f"Reported revenue: {fmt_amount(revenue)}")
+        summary_points.append(f"Reported net income: {fmt_amount(net_income)}")
+        summary_points.append(f"Reported operating expenses: {fmt_amount(operating_expenses)}")
+        
+        # Use the enhanced fraud detection from EnhancedFinancialDataService
+        try:
+            from Tazama.Services.EnhancedFinancialDataService import EnhancedFinancialDataService
+            logger.info("✅ Importing EnhancedFinancialDataService for truth report generation")
+            service = EnhancedFinancialDataService()
+            full_truth_report = service._generate_truth_report(financial_data, predictions)
+            
+            # ✅ LOG: Verify truth report was generated
+            if full_truth_report and full_truth_report.get('brutally_honest_recommendations'):
+                logger.info(f"✅ Truth report generated successfully with {len(full_truth_report['brutally_honest_recommendations'])} recommendations")
+                logger.info(f"✅ Truth report keys: {list(full_truth_report.keys())}")
+            else:
+                logger.warning(f"⚠️ Truth report generated but has no recommendations. Keys: {list(full_truth_report.keys()) if full_truth_report else 'None'}")
+            
+            return full_truth_report
+        except Exception as e:
+            logger.error(f"❌ Failed to generate truth report: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Return minimal truth report on error
+            return {
+                'executive_summary': {'overall_risk': 'UNKNOWN', 'summary_points': []},
+                'brutally_honest_recommendations': [],
+                'fraud_red_flags': [],
+                'risk_assessment': {'overall_risk': 'UNKNOWN'},
+                'profitability_table': []
+            }
 
 
 

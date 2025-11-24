@@ -46,6 +46,29 @@ def create_corporate(request):
             corporate_name = corporate.name
             corporate_id = corporate.id
 
+        # ✅ Create 30-day free trial subscription
+        try:
+            from Payments.models.organization_billing import OrganizationSubscription
+            from django.utils import timezone
+            from datetime import timedelta
+            from decimal import Decimal
+            
+            trial_end = timezone.now().date() + timedelta(days=30)
+            OrganizationSubscription.objects.create(
+                corporate_id=corporate_id,
+                plan_type="basic",
+                status="trial",
+                monthly_price_usd=Decimal('0.00'),
+                start_date=timezone.now().date(),
+                end_date=trial_end,
+                max_users=5,
+                current_users=1,
+            )
+            logger.info(f"Created 30-day trial subscription for corporate {corporate_name}")
+        except Exception as e:
+            logger.error(f"Failed to create trial subscription: {str(e)}", exc_info=True)
+            # Don't fail corporate creation if trial creation fails
+
         # ✅ Log the creation
         TransactionLogBase.log("CORPORATE_CREATED", user=None, message=f"Corporate {corporate_name} created",request=request)
 

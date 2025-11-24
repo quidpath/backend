@@ -174,6 +174,12 @@ class Invoices(BaseModel):
         ("OVERDUE", "OVERDUE"),
         ("CANCELLED", "CANCELLED"),
     ]
+    PAYMENT_STATUS_CHOICES = [
+        ("unpaid", "Unpaid"),
+        ("partial", "Partially Paid"),
+        ("paid", "Paid"),
+        ("overpaid", "Overpaid"),
+    ]
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="invoices")
     corporate = models.ForeignKey(Corporate, on_delete=models.CASCADE, related_name="invoices")
     proforma_invoice = models.ForeignKey(ProformaInvoice, on_delete=models.SET_NULL, null=True, blank=True, related_name="invoices")
@@ -182,6 +188,10 @@ class Invoices(BaseModel):
     date = models.DateField()
     number = models.CharField(max_length=255, unique=True)
     status = models.CharField(max_length=255, choices=STATUS, default="DRAFT")
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="unpaid")
+    payment_reference = models.CharField(max_length=255, blank=True, null=True)  # Payment reference from gateway
+    currency = models.CharField(max_length=3, default="USD")  # USD, KES, etc.
+    exchange_rate_to_usd = models.DecimalField(max_digits=12, decimal_places=6, default=Decimal('1.0'))  # Rate at invoice creation
     due_date = models.DateField()
     comments = models.CharField(max_length=255, blank=True)
     terms = models.CharField(max_length=255, blank=True)
@@ -195,6 +205,17 @@ class Invoices(BaseModel):
     total_discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     receivable_account = models.ForeignKey("Accounting.Account", on_delete=models.PROTECT, related_name='invoices_as_receivable',blank=True, null=True)
     journal_entry = models.ForeignKey("Accounting.JournalEntry", on_delete=models.SET_NULL, blank=True, null=True)
+    issued_at = models.DateTimeField(null=True, blank=True)  # When invoice was issued/sent
+    paid_at = models.DateTimeField(null=True, blank=True)  # When invoice was fully paid
+    receipt_pdf_url = models.URLField(blank=True, null=True)  # S3 URL for receipt PDF
+    is_reconciled = models.BooleanField(default=False)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['payment_status']),
+            models.Index(fields=['corporate', 'date']),
+            models.Index(fields=['payment_reference']),
+        ]
 
     def __str__(self):
         return f"{self.number} - {self.customer}"

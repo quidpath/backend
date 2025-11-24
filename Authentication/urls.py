@@ -2,6 +2,7 @@ from django.urls import path
 
 from Authentication.views.ForgotPassword import forgot_password, verify_pass_otp, reset_password
 from Authentication.views.UserProfile import corporateuser_update_profile
+from Authentication.views.change_password import change_password
 from Authentication.views.auth import (
     login_user,
     logout_user,
@@ -28,4 +29,5 @@ urlpatterns = [
 
     path("user-profile-update/", corporateuser_update_profile, name="user-profile"),
     path("corp-user-update/", corporate_update_profile, name="corp-profile"),
+    path("change-password/", change_password, name="change_password"),
 ]

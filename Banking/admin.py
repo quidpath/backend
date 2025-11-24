@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from Banking.models import BankAccount, BankTransaction, BankReconciliation, InternalTransfer, BankCharge
+from Banking.models import BankAccount, BankTransaction, BankReconciliation, InternalTransfer, BankCharge, PaymentMethod
 from OrgAuth.models import Corporate, CorporateUser
 from Authentication.models.role import Role
 
@@ -42,5 +42,13 @@ class BankChargeAdmin(admin.ModelAdmin):
     list_display = ("id","bank_account", "charge_type", "amount", "description", "charge_date","linked_transaction", "created_at")
     search_fields = ("charge_date", "charge_type")
     list_filter = ("created_at", "charge_date")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-created_at",)
+
+@admin.register(PaymentMethod)
+class PaymentMethodAdmin(admin.ModelAdmin):
+    list_display = ("id", "corporate", "method_type", "last4", "provider", "is_default", "created_at")
+    search_fields = ("method_type", "provider", "last4")
+    list_filter = ("method_type", "is_default", "created_at")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("-created_at",)
