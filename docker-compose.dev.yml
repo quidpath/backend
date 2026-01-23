@@ -12,10 +12,12 @@ services:
       - .env.dev
     environment:
       DJANGO_SETTINGS_MODULE: quidpath_backend.settings.dev
+      BILLING_SERVICE_URL: http://billing-backend-dev:8002/api/billing  # Use container name for inter-service communication
     depends_on:
       - db
     networks:
       - backend_net   # 👈 attach to custom network
+      - quidpath_network  # Shared network for billing service communication
 
   db:
         image: postgres:15
@@ -38,3 +40,5 @@ volumes:
 networks:
   backend_net:
     driver: bridge
+  quidpath_network:
+    external: true  # Shared network for microservices communication

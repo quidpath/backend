@@ -29,8 +29,7 @@ COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
 # Environment variables
-ENV DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod \
-    SECRET_KEY=u$8e@()u=d*jy+nmle1t&9$#c7w(gxd&a7p&n$$pd&kw3w-oru
+ENV DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod
 
 # Expose Django port
 EXPOSE 8000

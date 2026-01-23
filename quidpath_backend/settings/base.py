@@ -38,7 +38,6 @@ INSTALLED_APPS = [
     "Banking",
     "Accounting",
     "Payments",
-    "Tazama",
 ]
 
 MIDDLEWARE = [
@@ -51,6 +50,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "quidpath_backend.core.middleware.subscription_middleware.SubscriptionMiddleware",
 ]
 
 ROOT_URLCONF = "quidpath_backend.urls"
@@ -117,6 +117,12 @@ SMTP_PASS = os.environ.get("SMTP_PASSWORD")
 SMTP_USE_TLS = True
 SMTP_USE_SSL = False
 DEFAULT_FROM_EMAIL = "noreply@quidpath.com"
+
+# Billing Service Configuration
+BILLING_SERVICE_URL = os.environ.get(
+    "BILLING_SERVICE_URL",
+    "http://localhost:8002/api/billing"
+)
 
 # Internationalization
 LANGUAGE_CODE = "en-us"

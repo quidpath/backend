@@ -1,0 +1,380 @@
+name: Backend CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'quidpath-backend/**'
+      - '.github/workflows/ci-cd-backend.yml'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'quidpath-backend/**'
+      - '.github/workflows/ci-cd-backend.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  PYTHON_VERSION: '3.11'
+  DOCKER_REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/quidpath-backend
+
+jobs:
+  # Code Quality & Security Checks
+  code-quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./quidpath-backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/base.txt
+          pip install black flake8 pylint bandit safety mypy isort
+
+      - name: Code formatting check (Black)
+        working-directory: ./quidpath-backend
+        run: |
+          black --check --diff .
+
+      - name: Import sorting check (isort)
+        working-directory: ./quidpath-backend
+        run: |
+          isort --check-only --diff .
+
+      - name: Linting (Flake8)
+        working-directory: ./quidpath-backend
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Type checking (mypy)
+        working-directory: ./quidpath-backend
+        run: |
+          mypy . --ignore-missing-imports --no-strict-optional || true
+
+      - name: Security vulnerability scan (Bandit)
+        working-directory: ./quidpath-backend
+        run: |
+          bandit -r . -f json -o bandit-report.json || true
+          bandit -r . -ll
+
+      - name: Dependency vulnerability scan (Safety)
+        working-directory: ./quidpath-backend
+        run: |
+          safety check --json --output safety-report.json || true
+          safety check
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            ./quidpath-backend/bandit-report.json
+            ./quidpath-backend/safety-report.json
+          retention-days: 30
+
+  # Django-specific checks
+  django-checks:
+    name: Django Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./quidpath-backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/base.txt
+
+      - name: Run Django system check
+        working-directory: ./quidpath-backend
+        env:
+          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
+          SECRET_KEY: test-secret-key-for-ci
+          DEBUG: 'False'
+          DJANGO_SETTINGS_MODULE: quidpath_backend.settings.test
+        run: |
+          python manage.py check --deploy
+          python manage.py check
+
+      - name: Check for migrations
+        working-directory: ./quidpath-backend
+        env:
+          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
+          SECRET_KEY: test-secret-key-for-ci
+          DJANGO_SETTINGS_MODULE: quidpath_backend.settings.test
+        run: |
+          python manage.py makemigrations --check --dry-run
+
+  # Build Docker image
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [code-quality, django-checks]
+    timeout-minutes: 20
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./quidpath-backend
+          file: ./quidpath-backend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Image digest
+        run: echo "Image digest: ${{ steps.build.outputs.digest }}"
+
+  # Security scanning of Docker image
+  docker-security-scan:
+    name: Docker Image Security Scan
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.build.outputs.image-tag }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, docker-security-scan]
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://staging-api.quidpath.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to staging via SSM
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID_STAGING }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy QuidPath Backend - Build #${{ github.run_number }}" \
+            --parameters 'commands=["cd /opt/quidpath-backend && git pull && docker-compose pull && docker-compose up -d --build"]' \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Health check
+        run: |
+          sleep 30
+          curl -f https://staging-api.quidpath.com/api/auth/health/ || exit 1
+
+      - name: Notify deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Staging deployment ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  # Deploy to Production
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, docker-security-scan]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://api.quidpath.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PRODUCTION }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Create deployment backup
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID_PRODUCTION }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Backup before deployment #${{ github.run_number }}" \
+            --parameters 'commands=["cd /opt/quidpath-backend && docker-compose exec -T db pg_dump -U $POSTGRES_USER $POSTGRES_DB > /backups/pre-deploy-$(date +%Y%m%d-%H%M%S).sql"]' \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to production (blue-green)
+        run: |
+          # Deploy new version
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID_PRODUCTION }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy QuidPath Backend - Build #${{ github.run_number }}" \
+            --parameters 'commands=["cd /opt/quidpath-backend && git pull && docker-compose pull && docker-compose up -d --build --no-deps backend"]' \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Wait for deployment
+        run: sleep 60
+
+      - name: Health check
+        run: |
+          for i in {1..10}; do
+            if curl -f https://api.quidpath.com/api/auth/health/; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Health check attempt $i failed, retrying..."
+            sleep 10
+          done
+          echo "Health check failed after 10 attempts"
+          exit 1
+
+      - name: Run database migrations
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID_PRODUCTION }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Run migrations - Build #${{ github.run_number }}" \
+            --parameters 'commands=["cd /opt/quidpath-backend && docker-compose exec -T backend python manage.py migrate --noinput"]' \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Collect static files
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID_PRODUCTION }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Collect static files - Build #${{ github.run_number }}" \
+            --parameters 'commands=["cd /opt/quidpath-backend && docker-compose exec -T backend python manage.py collectstatic --noinput"]' \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Final health check
+        run: |
+          curl -f https://api.quidpath.com/api/auth/health/ || exit 1
+
+      - name: Notify deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Production deployment ${{ job.status }} - Build #${{ github.run_number }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+      - name: Create GitHub release
+        if: success()
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            Production deployment successful
+            - Build: #${{ github.run_number }}
+            - Commit: ${{ github.sha }}
+            - Image: ${{ needs.build.outputs.image-tag }}
+          draft: false
+          prerelease: false

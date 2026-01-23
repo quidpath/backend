@@ -1,9 +1,8 @@
 """
-Excel financial extractor package for Tazama AI.
+Excel financial extractor package for QuidPath ERP.
 
 This module exposes the high-level `FinancialExtractor` class that can be
-used inside Django microservices to turn messy Excel income statements into a
-validated JSON payload.
+used to extract and process financial data from Excel files.
 """
 
 from .extractor import FinancialExtractor

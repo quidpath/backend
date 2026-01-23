@@ -26,6 +26,7 @@ urlpatterns = [
     path('', include('Banking.urls')),
     path('', include('Accounting.urls')),
     path('', include('Payments.urls')),
-    path('', include('Tazama.urls')),
-]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    path('api/billing/', include('quidpath_backend.core.urls_billing')),
+    path('api/internal/', include('quidpath_backend.core.urls_internal')),  # Internal APIs for microservices
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

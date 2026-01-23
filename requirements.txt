@@ -1,5 +1,4 @@
-# Tazama AI - Complete Requirements
-# This file includes all dependencies needed for the Tazama AI system
+# QuidPath ERP - Requirements
 # For production, use: pip install -r requirements/prod.txt
 # For development, use: pip install -r requirements/dev.txt
 
@@ -20,38 +19,20 @@ requests
 # Image Processing
 Pillow
 
-# Machine Learning and Data Science
-torch
-torchvision
+# Data Processing
 pandas
 numpy
-scikit-learn
-joblib
-
-# Data Visualization
-plotly
-matplotlib
 
 # Excel and CSV Processing
 openpyxl
 xlrd
 
-# PDF Generation
-fpdf2
-weasyprint
-
 # String Matching and Fuzzy Search
 fuzzywuzzy
 python-Levenshtein
-rapidfuzz>=3.0.0  # ✅ UPGRADE: Fast fuzzy string matching (optional but recommended)
 
 # Date and Time Utilities
 python-dateutil
-
-# OCR and Image Processing (PaddleOCR)
-paddlepaddle
-paddleocr
-pdf2image
 
 # Encoding Detection
 chardet

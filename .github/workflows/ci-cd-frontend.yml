@@ -1,0 +1,281 @@
+name: Frontend CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'quidpath-erp-frontend/**'
+      - '.github/workflows/ci-cd-frontend.yml'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'quidpath-erp-frontend/**'
+      - '.github/workflows/ci-cd-frontend.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/quidpath-frontend
+
+jobs:
+  # Code Quality Checks
+  lint-and-type-check:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ./quidpath-erp-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./quidpath-erp-frontend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: ./quidpath-erp-frontend
+        run: npm run lint || true
+
+      - name: Run TypeScript type check
+        working-directory: ./quidpath-erp-frontend
+        run: npx tsc --noEmit
+
+      - name: Check code formatting (Prettier)
+        working-directory: ./quidpath-erp-frontend
+        run: |
+          npx prettier --check "**/*.{ts,tsx,js,jsx,json,css,md}" || true
+
+  # Security audit
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ./quidpath-erp-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./quidpath-erp-frontend
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: ./quidpath-erp-frontend
+        run: |
+          npm audit --audit-level=moderate || true
+          npm audit --json > npm-audit-report.json || true
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: npm-audit-report
+          path: ./quidpath-erp-frontend/npm-audit-report.json
+          retention-days: 30
+
+  # Build and test
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: [lint-and-type-check, security-audit]
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ./quidpath-erp-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./quidpath-erp-frontend
+        run: npm ci
+
+      - name: Build Next.js application
+        working-directory: ./quidpath-erp-frontend
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://api.quidpath.com/
+          NODE_ENV: production
+        run: npm run build
+
+      - name: Analyze bundle size
+        working-directory: ./quidpath-erp-frontend
+        run: |
+          du -sh .next/ || true
+          find .next -name "*.js" -exec du -h {} \; | sort -rh | head -20 || true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-build
+          path: ./quidpath-erp-frontend/.next
+          retention-days: 1
+
+  # Build Docker image
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build-docker.outputs.digest }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build-docker
+        uses: docker/build-push-action@v5
+        with:
+          context: ./quidpath-erp-frontend
+          file: ./quidpath-erp-frontend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  # Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-docker]
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://staging.quidpath.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to staging
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID_STAGING }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy QuidPath Frontend - Build #${{ github.run_number }}" \
+            --parameters 'commands=["cd /opt/quidpath-frontend && git pull && docker-compose pull && docker-compose up -d --build"]' \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Health check
+        run: |
+          sleep 30
+          curl -f https://staging.quidpath.com/ || exit 1
+
+  # Deploy to Production
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-docker]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://quidpath.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PRODUCTION }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to production
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID_PRODUCTION }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy QuidPath Frontend - Build #${{ github.run_number }}" \
+            --parameters 'commands=["cd /opt/quidpath-frontend && git pull && docker-compose pull && docker-compose up -d --build --no-deps frontend"]' \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Wait for deployment
+        run: sleep 60
+
+      - name: Health check
+        run: |
+          for i in {1..10}; do
+            if curl -f https://quidpath.com/; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Health check attempt $i failed, retrying..."
+            sleep 10
+          done
+          echo "Health check failed after 10 attempts"
+          exit 1
+
+      - name: Final health check
+        run: |
+          curl -f https://quidpath.com/ || exit 1
+
+      - name: Notify deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Frontend Production deployment ${{ job.status }} - Build #${{ github.run_number }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
