@@ -1,72 +1,307 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.pyc
-*.pyo
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
 
-# Virtual environment
+# C extensions
+*.pyd
+
+# Virtual environments
 venv/
 env/
+ENV/
 .venv/
-.env/
+env.bak/
+venv.bak/
 
-# Django stuff
+# Django / Python
 *.log
 *.pot
 *.pyc
+*.pyo
+*.pyd
+.Python
 *.sqlite3
 *.db
 db.sqlite3
-.idea/
+db.sqlite3-journal
+*.db-shm
+*.db-wal
 
-
-# Media and static files (optional if not managed in version control)
+# Django specific
 media/
 staticfiles/
 static_root/
 static/
+local_settings.py
+*.local
 
-# VSCode and IDE settings
+# Environment variables
+.env
+.env.*
+!.env.example
+.envrc
+
+# IDE - VSCode
 .vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IDE - PyCharm
 .idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# IDE - Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# IDE - Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# IDE - Emacs
+*~
+\#*\#
+.\#*
 
 # OS files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
-# Environment files
-.env
-.env.*
+# Migrations (keep structure, ignore content if needed)
+# Uncomment if you want to ignore migrations
+# **/migrations/*.py
+# !**/migrations/__init__.py
 
-# Migrations (optional: remove if you want to track them)
-**/migrations/*.pyc
-**/migrations/__pycache__/
-**/migrations/*.py
-!**/migrations/__init__.py
-
-# pytest cache
+# Testing
 .pytest_cache/
-.cache/
-
-# Coverage reports
-htmlcov/
+.tox/
+.nox/
 .coverage
 .coverage.*
+htmlcov/
+.hypothesis/
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
 
-# MyPy
+# Type checking
 .mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
 
-# Pipenv
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
 Pipfile.lock
 
+# poetry
+poetry.lock
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
 # Docker
-*.pid
 docker-compose.override.yml
+.dockerignore
+*.pid
 
-# Pyright
-pyrightconfig.json
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+*.swp
+*.swo
+*~
+backup.sql
+*.sql.backup
 
-# Node (if using npm or yarn for frontend assets)
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Node modules (if any)
 node_modules/
+npm-debug.log
+yarn-error.log
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Next.js (if any frontend code)
+.next/
+out/
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# AWS
+.aws-sam/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Secrets and credentials
+secrets/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+credentials.json
+service-account.json
+
+# Database dumps
+*.sql
+*.dump
+*.sql.gz
+
+# Profile photos and user uploads
+profile_photos/
+corporates/logos/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+!public/**/*.svg
+!public/**/*.png
+!public/**/*.jpg
+
+# Excel files and uploads
+*.xlsx
+*.xls
+*.csv
+uploads/
+excel_uploads/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# MacOS
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Windows
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/# Project specific
+ipv4_ranges.txt
+ipv6_ranges.txt
+GitHubActionsSSMPolicy.json

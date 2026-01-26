@@ -4,7 +4,7 @@ services:
     container_name: postgres_prod
     restart: unless-stopped
     volumes:
-      - /mnt/ebs/postgres_data:/var/lib/postgresql/data
+      - /mnt/quidpath-data/postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -23,7 +23,7 @@ services:
     container_name: django-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -31,8 +31,8 @@ services:
       # ✅ CLEANUP: Relying completely on the .env file is cleaner
       - .env
     volumes:
-      - /mnt/ebs/media:/app/media
-      - /mnt/ebs/staticfiles:/app/staticfiles
+      - /mnt/quidpath-data/media:/app/media
+      - /mnt/quidpath-data/staticfiles:/app/staticfiles
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/api/auth/health/ || exit 1"]
       interval: 30s
@@ -42,33 +42,6 @@ services:
     networks:
       - quidpath_network
 
-  nginx:
-    image: nginx:latest
-    container_name: nginx_prod
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - /mnt/ebs/certbot/conf:/etc/letsencrypt:ro
-      - /mnt/ebs/certbot/www:/var/www/certbot:ro
-      - /mnt/ebs/staticfiles:/var/www/static:ro
-      - /mnt/ebs/media:/var/www/media:ro
-    depends_on:
-      - backend
-    networks:
-      - quidpath_network
-
-  certbot:
-    image: certbot/certbot
-    container_name: certbot
-    volumes:
-      - /mnt/ebs/certbot/conf:/etc/letsencrypt
-      - /mnt/ebs/certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-    networks:
-      - quidpath_network
 
 networks:
   quidpath_network:
@@ -80,4 +53,4 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ebs/postgres_data
+      device: /mnt/quidpath-data/postgres
