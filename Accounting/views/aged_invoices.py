@@ -1,14 +1,16 @@
 # aged_invoices.py
 import csv
-from decimal import Decimal
-from datetime import datetime, date, timedelta
-from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse
 from collections import defaultdict
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 
 
 def _safe_parse_date(value):
@@ -45,9 +47,11 @@ def get_aged_invoices(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -58,14 +62,18 @@ def get_aged_invoices(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse parameters
         as_of_date_raw = data.get("as_of_date")
@@ -88,16 +96,14 @@ def get_aged_invoices(request):
             invoice_filter["customer_id"] = customer_id
 
         invoices = registry.database(
-            model_name="Invoices",
-            operation="filter",
-            data=invoice_filter
+            model_name="Invoices", operation="filter", data=invoice_filter
         )
 
         # Get customer payments
         all_payments = registry.database(
             model_name="RecordPayment",
             operation="filter",
-            data={"corporate_id": corporate_id}
+            data={"corporate_id": corporate_id},
         )
 
         # Calculate outstanding per invoice
@@ -105,15 +111,23 @@ def get_aged_invoices(request):
         for payment in all_payments:
             inv_id = payment.get("invoice_id")
             if inv_id:
-                amount = Decimal(str(payment.get("amount_received", payment.get("amount_disbursed", 0))))
+                amount = Decimal(
+                    str(
+                        payment.get(
+                            "amount_received", payment.get("amount_disbursed", 0)
+                        )
+                    )
+                )
                 invoice_payments[inv_id] += amount
 
         # Get customer information
-        customer_ids = {inv.get("customer_id") for inv in invoices if inv.get("customer_id")}
+        customer_ids = {
+            inv.get("customer_id") for inv in invoices if inv.get("customer_id")
+        }
         customers = registry.database(
             model_name="Customer",
             operation="filter",
-            data={"id__in": list(customer_ids), "corporate_id": corporate_id}
+            data={"id__in": list(customer_ids), "corporate_id": corporate_id},
         )
         customer_map = {c["id"]: c for c in customers}
 
@@ -123,7 +137,7 @@ def get_aged_invoices(request):
             "current": Decimal("0.00"),
             "buckets": {bucket: Decimal("0.00") for bucket in aging_buckets},
             "over": Decimal("0.00"),
-            "total": Decimal("0.00")
+            "total": Decimal("0.00"),
         }
 
         for invoice in invoices:
@@ -179,7 +193,7 @@ def get_aged_invoices(request):
                 "days_overdue": days_overdue,
                 "aging_bucket": bucket,
                 "comments": invoice.get("comments", ""),
-                "terms": invoice.get("terms", "")
+                "terms": invoice.get("terms", ""),
             }
 
             aged_invoices.append(invoice_data)
@@ -198,19 +212,21 @@ def get_aged_invoices(request):
         aged_invoices.sort(key=lambda x: x["days_overdue"], reverse=True)
 
         # Group by customer
-        customer_aging = defaultdict(lambda: {
-            "current": Decimal("0.00"),
-            "buckets": {bucket: Decimal("0.00") for bucket in aging_buckets},
-            "over": Decimal("0.00"),
-            "total": Decimal("0.00"),
-            "invoices": []
-        })
+        customer_aging = defaultdict(
+            lambda: {
+                "current": Decimal("0.00"),
+                "buckets": {bucket: Decimal("0.00") for bucket in aging_buckets},
+                "over": Decimal("0.00"),
+                "total": Decimal("0.00"),
+                "invoices": [],
+            }
+        )
 
         for inv in aged_invoices:
             customer_id_key = inv.get("customer_id") or "unknown"
             customer_aging[customer_id_key]["invoices"].append(inv)
             outstanding = Decimal(inv["outstanding"])
-            
+
             bucket = inv["aging_bucket"]
             if bucket == "current":
                 customer_aging[customer_id_key]["current"] += outstanding
@@ -218,7 +234,7 @@ def get_aged_invoices(request):
                 customer_aging[customer_id_key]["over"] += outstanding
             else:
                 customer_aging[customer_id_key]["buckets"][bucket] += outstanding
-            
+
             customer_aging[customer_id_key]["total"] += outstanding
 
         # Build customer summary
@@ -227,16 +243,20 @@ def get_aged_invoices(request):
             if cust_id == "unknown":
                 continue
             customer = customer_map.get(cust_id, {})
-            customer_summary.append({
-                "customer_id": cust_id,
-                "customer_name": customer.get("name", ""),
-                "customer_code": customer.get("code", ""),
-                "current": str(aging_data["current"]),
-                "buckets": {str(k): str(v) for k, v in aging_data["buckets"].items()},
-                "over": str(aging_data["over"]),
-                "total": str(aging_data["total"]),
-                "invoice_count": len(aging_data["invoices"])
-            })
+            customer_summary.append(
+                {
+                    "customer_id": cust_id,
+                    "customer_name": customer.get("name", ""),
+                    "customer_code": customer.get("code", ""),
+                    "current": str(aging_data["current"]),
+                    "buckets": {
+                        str(k): str(v) for k, v in aging_data["buckets"].items()
+                    },
+                    "over": str(aging_data["over"]),
+                    "total": str(aging_data["total"]),
+                    "invoice_count": len(aging_data["invoices"]),
+                }
+            )
 
         # Sort by total outstanding (descending)
         customer_summary.sort(key=lambda x: Decimal(x["total"]), reverse=True)
@@ -250,13 +270,18 @@ def get_aged_invoices(request):
                 "current": str(aging_totals["current"]),
                 "buckets": {str(k): str(v) for k, v in aging_totals["buckets"].items()},
                 "over": str(aging_totals["over"]),
-                "total": str(aging_totals["total"])
+                "total": str(aging_totals["total"]),
             },
             "statistics": {
                 "total_invoices": len(aged_invoices),
                 "total_customers": len(customer_summary),
-                "average_days_overdue": sum(inv["days_overdue"] for inv in aged_invoices) / len(aged_invoices) if aged_invoices else 0
-            }
+                "average_days_overdue": (
+                    sum(inv["days_overdue"] for inv in aged_invoices)
+                    / len(aged_invoices)
+                    if aged_invoices
+                    else 0
+                ),
+            },
         }
 
         TransactionLogBase.log(
@@ -304,9 +329,11 @@ def download_aged_invoices(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -318,8 +345,10 @@ def download_aged_invoices(request):
 
         # Parse the response data
         from django.http import JsonResponse
-        if hasattr(aging_data, 'content'):
+
+        if hasattr(aging_data, "content"):
             import json
+
             response_data = json.loads(aging_data.content)
             invoices = response_data.get("data", {}).get("invoices", [])
         else:
@@ -328,10 +357,12 @@ def download_aged_invoices(request):
             corporate_users = registry.database(
                 model_name="CorporateUser",
                 operation="filter",
-                data={"customuser_ptr_id": user_id, "is_active": True}
+                data={"customuser_ptr_id": user_id, "is_active": True},
             )
             if not corporate_users:
-                return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+                return ResponseProvider(
+                    message="User has no corporate association", code=400
+                ).bad_request()
 
             corporate_id = corporate_users[0]["corporate_id"]
             invoices = []
@@ -339,22 +370,24 @@ def download_aged_invoices(request):
         # Build CSV rows
         csv_rows = []
         for inv in invoices:
-            csv_rows.append({
-                "Invoice Number": inv.get("number", ""),
-                "Invoice Date": inv.get("invoice_date", ""),
-                "Due Date": inv.get("due_date", ""),
-                "Customer Name": inv.get("customer_name", ""),
-                "Customer Code": inv.get("customer_code", ""),
-                "Customer Email": inv.get("customer_email", ""),
-                "Sub Total": inv.get("sub_total", "0.00"),
-                "Tax Total": inv.get("tax_total", "0.00"),
-                "Total": inv.get("total", "0.00"),
-                "Paid": inv.get("paid", "0.00"),
-                "Outstanding": inv.get("outstanding", "0.00"),
-                "Days Overdue": inv.get("days_overdue", 0),
-                "Aging Bucket": inv.get("aging_bucket", ""),
-                "Status": inv.get("status", "")
-            })
+            csv_rows.append(
+                {
+                    "Invoice Number": inv.get("number", ""),
+                    "Invoice Date": inv.get("invoice_date", ""),
+                    "Due Date": inv.get("due_date", ""),
+                    "Customer Name": inv.get("customer_name", ""),
+                    "Customer Code": inv.get("customer_code", ""),
+                    "Customer Email": inv.get("customer_email", ""),
+                    "Sub Total": inv.get("sub_total", "0.00"),
+                    "Tax Total": inv.get("tax_total", "0.00"),
+                    "Total": inv.get("total", "0.00"),
+                    "Paid": inv.get("paid", "0.00"),
+                    "Outstanding": inv.get("outstanding", "0.00"),
+                    "Days Overdue": inv.get("days_overdue", 0),
+                    "Aging Bucket": inv.get("aging_bucket", ""),
+                    "Status": inv.get("status", ""),
+                }
+            )
 
         # Sort by days overdue
         csv_rows.sort(key=lambda x: x.get("Days Overdue", 0), reverse=True)
@@ -365,11 +398,25 @@ def download_aged_invoices(request):
         filename = f"aged_invoices_{corporate_id}_{as_of_date}.csv"
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
-        writer = csv.DictWriter(response, fieldnames=[
-            "Invoice Number", "Invoice Date", "Due Date", "Customer Name", "Customer Code",
-            "Customer Email", "Sub Total", "Tax Total", "Total", "Paid", "Outstanding",
-            "Days Overdue", "Aging Bucket", "Status"
-        ])
+        writer = csv.DictWriter(
+            response,
+            fieldnames=[
+                "Invoice Number",
+                "Invoice Date",
+                "Due Date",
+                "Customer Name",
+                "Customer Code",
+                "Customer Email",
+                "Sub Total",
+                "Tax Total",
+                "Total",
+                "Paid",
+                "Outstanding",
+                "Days Overdue",
+                "Aging Bucket",
+                "Status",
+            ],
+        )
         writer.writeheader()
         writer.writerows(csv_rows)
 
@@ -394,4 +441,3 @@ def download_aged_invoices(request):
         return ResponseProvider(
             message="An error occurred while exporting aged invoices", code=500
         ).exception()
-

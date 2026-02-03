@@ -1,14 +1,14 @@
 import traceback
-from django.views.decorators.csrf import csrf_exempt
-from django.core.exceptions import ValidationError, ObjectDoesNotExist
+
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db.models import Q
+from django.views.decorators.csrf import csrf_exempt
 
 from Accounting.models.vendor import Vendor
+from OrgAuth.models import Corporate
+from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.json_response import ResponseProvider
-
-from OrgAuth.models import Corporate
 
 
 @csrf_exempt
@@ -18,12 +18,17 @@ def create_vendor(request):
     corporate_id = data.get("corporate")
 
     if not category or not corporate_id:
-        return ResponseProvider(message="Category and corporate ID are required", code=400).bad_request()
+        return ResponseProvider(
+            message="Category and corporate ID are required", code=400
+        ).bad_request()
 
     # Validate category against CATEGORY_CHOICES
     valid_categories = [choice[0] for choice in Vendor.CATEGORY_CHOICES]
     if category not in valid_categories:
-        return ResponseProvider(message=f"Invalid category. Must be one of: {', '.join(valid_categories)}", code=400).bad_request()
+        return ResponseProvider(
+            message=f"Invalid category. Must be one of: {', '.join(valid_categories)}",
+            code=400,
+        ).bad_request()
 
     try:
         corporate = Corporate.objects.get(id=corporate_id)
@@ -46,7 +51,7 @@ def create_vendor(request):
             country=data.get("country"),
             tax_id=data.get("tax_id"),
             is_active=data.get("is_active", True),
-            notes=data.get("notes")
+            notes=data.get("notes"),
         )
         vendor.clean()  # Run model validation
         vendor.save()
@@ -66,14 +71,22 @@ def create_vendor(request):
             "tax_id": vendor.tax_id,
             "is_active": vendor.is_active,
             "notes": vendor.notes,
-            "created_at": vendor.created_at.isoformat() if hasattr(vendor, 'created_at') else None,
-            "updated_at": vendor.updated_at.isoformat() if hasattr(vendor, 'updated_at') else None,
+            "created_at": (
+                vendor.created_at.isoformat() if hasattr(vendor, "created_at") else None
+            ),
+            "updated_at": (
+                vendor.updated_at.isoformat() if hasattr(vendor, "updated_at") else None
+            ),
         }
-        return ResponseProvider(message="Vendor created successfully", data=vendor_data).success()
+        return ResponseProvider(
+            message="Vendor created successfully", data=vendor_data
+        ).success()
     except ValidationError as e:
         return ResponseProvider(message=str(e), code=400).bad_request()
     except Exception as e:
-        return ResponseProvider(message=f"Failed to create vendor: {str(e)}", code=500).exception()
+        return ResponseProvider(
+            message=f"Failed to create vendor: {str(e)}", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -90,9 +103,11 @@ def list_vendors(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -102,19 +117,23 @@ def list_vendors(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"corporate_id": corporate_id, "is_active": True}
+            data={"corporate_id": corporate_id, "is_active": True},
         )
 
         serialized_vendors = [
@@ -143,7 +162,7 @@ def list_vendors(request):
         return ResponseProvider(
             data={"vendors": serialized_vendors},
             message="Vendors retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -157,10 +176,14 @@ def get_vendor(request):
     corporate_id = data.get("corporate")
 
     if not vendor_id or not corporate_id:
-        return ResponseProvider(message="Vendor ID and corporate ID are required", code=400).bad_request()
+        return ResponseProvider(
+            message="Vendor ID and corporate ID are required", code=400
+        ).bad_request()
 
     try:
-        vendor = Vendor.objects.get(id=vendor_id, corporate_id=corporate_id, is_active=True)
+        vendor = Vendor.objects.get(
+            id=vendor_id, corporate_id=corporate_id, is_active=True
+        )
         vendor_data = {
             "id": str(vendor.id),
             "category": vendor.category,
@@ -177,14 +200,22 @@ def get_vendor(request):
             "tax_id": vendor.tax_id,
             "is_active": vendor.is_active,
             "notes": vendor.notes,
-            "created_at": vendor.created_at.isoformat() if hasattr(vendor, 'created_at') else None,
-            "updated_at": vendor.updated_at.isoformat() if hasattr(vendor, 'updated_at') else None,
+            "created_at": (
+                vendor.created_at.isoformat() if hasattr(vendor, "created_at") else None
+            ),
+            "updated_at": (
+                vendor.updated_at.isoformat() if hasattr(vendor, "updated_at") else None
+            ),
         }
-        return ResponseProvider(message="Vendor fetched successfully", data=vendor_data).success()
+        return ResponseProvider(
+            message="Vendor fetched successfully", data=vendor_data
+        ).success()
     except ObjectDoesNotExist:
         return ResponseProvider(message="Vendor not found", code=404).bad_request()
     except Exception as e:
-        return ResponseProvider(message=f"Failed to fetch vendor: {str(e)}", code=500).exception()
+        return ResponseProvider(
+            message=f"Failed to fetch vendor: {str(e)}", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -194,10 +225,14 @@ def update_vendor(request):
     corporate_id = data.get("corporate")
 
     if not vendor_id or not corporate_id:
-        return ResponseProvider(message="Vendor ID and corporate ID are required", code=400).bad_request()
+        return ResponseProvider(
+            message="Vendor ID and corporate ID are required", code=400
+        ).bad_request()
 
     try:
-        vendor = Vendor.objects.get(id=vendor_id, corporate_id=corporate_id, is_active=True)
+        vendor = Vendor.objects.get(
+            id=vendor_id, corporate_id=corporate_id, is_active=True
+        )
     except ObjectDoesNotExist:
         return ResponseProvider(message="Vendor not found", code=404).bad_request()
 
@@ -206,11 +241,26 @@ def update_vendor(request):
         if "category" in data:
             valid_categories = [choice[0] for choice in Vendor.CATEGORY_CHOICES]
             if data["category"] not in valid_categories:
-                return ResponseProvider(message=f"Invalid category. Must be one of: {', '.join(valid_categories)}", code=400).bad_request()
+                return ResponseProvider(
+                    message=f"Invalid category. Must be one of: {', '.join(valid_categories)}",
+                    code=400,
+                ).bad_request()
 
         for field in [
-            "category", "company_name", "first_name", "last_name", "email", "phone",
-            "address", "city", "state", "zip_code", "country", "tax_id", "is_active", "notes"
+            "category",
+            "company_name",
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+            "address",
+            "city",
+            "state",
+            "zip_code",
+            "country",
+            "tax_id",
+            "is_active",
+            "notes",
         ]:
             if field in data:
                 setattr(vendor, field, data.get(field))
@@ -233,14 +283,22 @@ def update_vendor(request):
             "tax_id": vendor.tax_id,
             "is_active": vendor.is_active,
             "notes": vendor.notes,
-            "created_at": vendor.created_at.isoformat() if hasattr(vendor, 'created_at') else None,
-            "updated_at": vendor.updated_at.isoformat() if hasattr(vendor, 'updated_at') else None,
+            "created_at": (
+                vendor.created_at.isoformat() if hasattr(vendor, "created_at") else None
+            ),
+            "updated_at": (
+                vendor.updated_at.isoformat() if hasattr(vendor, "updated_at") else None
+            ),
         }
-        return ResponseProvider(message="Vendor updated successfully", data=vendor_data).success()
+        return ResponseProvider(
+            message="Vendor updated successfully", data=vendor_data
+        ).success()
     except ValidationError as e:
         return ResponseProvider(message=str(e), code=400).bad_request()
     except Exception as e:
-        return ResponseProvider(message=f"Failed to update vendor: {str(e)}", code=500).exception()
+        return ResponseProvider(
+            message=f"Failed to update vendor: {str(e)}", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -250,17 +308,23 @@ def delete_vendor(request):
     corporate_id = data.get("corporate")
 
     if not vendor_id or not corporate_id:
-        return ResponseProvider(message="Vendor ID and corporate ID are required", code=400).bad_request()
+        return ResponseProvider(
+            message="Vendor ID and corporate ID are required", code=400
+        ).bad_request()
 
     try:
-        vendor = Vendor.objects.get(id=vendor_id, corporate_id=corporate_id, is_active=True)
+        vendor = Vendor.objects.get(
+            id=vendor_id, corporate_id=corporate_id, is_active=True
+        )
         vendor.is_active = False
         vendor.save()
         return ResponseProvider(message="Vendor deleted successfully").success()
     except ObjectDoesNotExist:
         return ResponseProvider(message="Vendor not found", code=404).bad_request()
     except Exception as e:
-        return ResponseProvider(message=f"Failed to delete vendor: {str(e)}", code=500).exception()
+        return ResponseProvider(
+            message=f"Failed to delete vendor: {str(e)}", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -271,10 +335,14 @@ def search_vendors(request):
     search_term = data.get("search", "").strip()
 
     if not corporate_id:
-        return ResponseProvider(message="Corporate ID is required", code=400).bad_request()
+        return ResponseProvider(
+            message="Corporate ID is required", code=400
+        ).bad_request()
 
     if not search_term:
-        return ResponseProvider(message="Search term is required", code=400).bad_request()
+        return ResponseProvider(
+            message="Search term is required", code=400
+        ).bad_request()
 
     try:
         corporate = Corporate.objects.get(id=corporate_id)
@@ -283,12 +351,14 @@ def search_vendors(request):
 
     try:
         vendors = Vendor.objects.filter(
-            Q(corporate=corporate) & Q(is_active=True) & (
-                Q(company_name__icontains=search_term) |
-                Q(first_name__icontains=search_term) |
-                Q(last_name__icontains=search_term) |
-                Q(email__icontains=search_term) |
-                Q(phone__icontains=search_term)
+            Q(corporate=corporate)
+            & Q(is_active=True)
+            & (
+                Q(company_name__icontains=search_term)
+                | Q(first_name__icontains=search_term)
+                | Q(last_name__icontains=search_term)
+                | Q(email__icontains=search_term)
+                | Q(phone__icontains=search_term)
             )
         )
 
@@ -309,8 +379,12 @@ def search_vendors(request):
                 "tax_id": v.tax_id,
                 "is_active": v.is_active,
                 "notes": v.notes,
-                "created_at": v.created_at.isoformat() if hasattr(v, 'created_at') else None,
-                "updated_at": v.updated_at.isoformat() if hasattr(v, 'updated_at') else None,
+                "created_at": (
+                    v.created_at.isoformat() if hasattr(v, "created_at") else None
+                ),
+                "updated_at": (
+                    v.updated_at.isoformat() if hasattr(v, "updated_at") else None
+                ),
             }
             for v in vendors
         ]
@@ -318,10 +392,14 @@ def search_vendors(request):
         response_data = {
             "vendors": vendor_list,
             "count": len(vendor_list),
-            "search_term": search_term
+            "search_term": search_term,
         }
-        return ResponseProvider(message="Vendors search completed", data=response_data).success()
+        return ResponseProvider(
+            message="Vendors search completed", data=response_data
+        ).success()
 
     except Exception as e:
         print(f"Full error traceback: {traceback.format_exc()}")
-        return ResponseProvider(message=f"Failed to search vendors: {str(e)}", code=500).exception()
+        return ResponseProvider(
+            message=f"Failed to search vendors: {str(e)}", code=500
+        ).exception()

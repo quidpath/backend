@@ -1,16 +1,19 @@
 # invoices.py
-from decimal import Decimal, InvalidOperation
-from django.views.decorators.csrf import csrf_exempt
+import ast
+import json
+import re
 from collections import Counter
-import json, ast, re
+from decimal import Decimal, InvalidOperation
+
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
 
 from Accounting.views.Quote import to_decimal
 from quidpath_backend import settings
 from quidpath_backend.core.utils.AccountingService import AccountingService
 from quidpath_backend.core.utils.DocsEmail import DocumentNotificationHandler
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
@@ -19,9 +22,7 @@ def normalize_taxable_id(raw, registry):
     """Normalize taxable_id and ensure it's a valid TaxRate ID."""
     if not raw:
         default_rate = registry.database(
-            model_name="TaxRate",
-            operation="filter",
-            data={"code": "exempt"}
+            model_name="TaxRate", operation="filter", data={"code": "exempt"}
         )
         if default_rate:
             return default_rate[0]["id"]
@@ -29,7 +30,7 @@ def normalize_taxable_id(raw, registry):
     if isinstance(raw, dict) and raw.get("id"):
         return raw.get("id")
     if isinstance(raw, str):
-        s = raw.strip().strip('\'"“”‘’')
+        s = raw.strip().strip("'\"“”‘’")
         if s.startswith("{") and s.endswith("}"):
             try:
                 d = json.loads(s.replace("'", '"'))
@@ -54,9 +55,11 @@ def save_invoice_draft(request):
     user = metadata.get("user")
 
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -66,38 +69,57 @@ def save_invoice_draft(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         required_fields = ["customer", "date", "number", "due_date"]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
-                                        code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         customers = registry.database(
             model_name="Customer",
             operation="filter",
-            data={"id": data["customer"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["customer"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not customers:
-            return ResponseProvider(message="Customer not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Customer not found or inactive for this corporate", code=404
+            ).bad_request()
 
         salespersons = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"id": data.get("salesperson"), "corporate_id": corporate_id, "is_active": True} if data.get(
-                "salesperson") else {}
+            data=(
+                {
+                    "id": data.get("salesperson"),
+                    "corporate_id": corporate_id,
+                    "is_active": True,
+                }
+                if data.get("salesperson")
+                else {}
+            ),
         )
         if data.get("salesperson") and not salespersons:
-            return ResponseProvider(message="Salesperson not found or inactive for this corporate",
-                                    code=404).bad_request()
+            return ResponseProvider(
+                message="Salesperson not found or inactive for this corporate", code=404
+            ).bad_request()
 
         quotation = None
         quotation_lines = []
@@ -105,15 +127,17 @@ def save_invoice_draft(request):
             quotations = registry.database(
                 model_name="Quotation",
                 operation="filter",
-                data={"id": data["quotation"], "corporate_id": corporate_id}
+                data={"id": data["quotation"], "corporate_id": corporate_id},
             )
             if not quotations:
-                return ResponseProvider(message="Quotation not found for this corporate", code=404).bad_request()
+                return ResponseProvider(
+                    message="Quotation not found for this corporate", code=404
+                ).bad_request()
             quotation = quotations[0]
             quotation_lines = registry.database(
                 model_name="QuotationLine",
                 operation="filter",
-                data={"quotation_id": quotation["id"]}
+                data={"quotation_id": quotation["id"]},
             )
 
         if quotation:
@@ -126,7 +150,9 @@ def save_invoice_draft(request):
             data["terms"] = quotation["terms"]
             data["fob"] = quotation["fob"]
             data["comments"] = quotation["comments"]
-            data["purchase_order"] = data.get("purchase_order", quotation.get("purchase_order", ""))
+            data["purchase_order"] = data.get(
+                "purchase_order", quotation.get("purchase_order", "")
+            )
 
         invoice_data = {
             "customer_id": data["customer"],
@@ -145,9 +171,7 @@ def save_invoice_draft(request):
             "status": "DRAFT",
         }
         invoice = registry.database(
-            model_name="Invoices",
-            operation="create",
-            data=invoice_data
+            model_name="Invoices", operation="create", data=invoice_data
         )
 
         lines = data.get("lines", [])
@@ -163,37 +187,44 @@ def save_invoice_draft(request):
                     "tax_amount": ql["tax_amount"],
                     "sub_total": ql["sub_total"],
                     "total": ql["total"],
-                    "quotation_line": ql["id"]
-                } for ql in quotation_lines
+                    "quotation_line": ql["id"],
+                }
+                for ql in quotation_lines
             ]
 
-        sub_total = Decimal('0')
-        tax_total = Decimal('0')
-        total = Decimal('0')
-        total_discount = Decimal('0')
+        sub_total = Decimal("0")
+        tax_total = Decimal("0")
+        total = Decimal("0")
+        total_discount = Decimal("0")
 
         for line_data in lines:
-            required_line_fields = ["description", "quantity", "unit_price", "amount", "discount", "tax_amount",
-                                    "sub_total", "total"]
+            required_line_fields = [
+                "description",
+                "quantity",
+                "unit_price",
+                "amount",
+                "discount",
+                "tax_amount",
+                "sub_total",
+                "total",
+            ]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Invoice line field {field.replace('_', ' ').title()} is required",
-                        code=400).bad_request()
+                        code=400,
+                    ).bad_request()
 
             taxable = line_data.get("taxable_id") or line_data.get("taxable")
             taxable_id = normalize_taxable_id(taxable, registry)
 
             # Validate taxable_id
             tax_rates = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id}
+                model_name="TaxRate", operation="filter", data={"id": taxable_id}
             )
             if not tax_rates:
                 return ResponseProvider(
-                    message=f"Tax rate {taxable_id} not found",
-                    code=404
+                    message=f"Tax rate {taxable_id} not found", code=404
                 ).bad_request()
 
             line_data_for_creation = {
@@ -207,12 +238,12 @@ def save_invoice_draft(request):
                 "tax_amount": float(Decimal(str(line_data["tax_amount"]))),
                 "sub_total": float(Decimal(str(line_data["sub_total"]))),
                 "total": float(Decimal(str(line_data["total"]))),
-                "quotation_line_id": line_data.get("quotation_line")
+                "quotation_line_id": line_data.get("quotation_line"),
             }
             created_line = registry.database(
                 model_name="InvoiceLine",
                 operation="create",
-                data=line_data_for_creation
+                data=line_data_for_creation,
             )
 
             sub_total += Decimal(str(created_line["sub_total"]))
@@ -224,13 +255,13 @@ def save_invoice_draft(request):
             "sub_total": str(sub_total),
             "tax_total": str(tax_total),
             "total": str(total),
-            "total_discount": str(total_discount)
+            "total_discount": str(total_discount),
         }
         registry.database(
             model_name="Invoices",
             operation="update",
             instance_id=invoice["id"],
-            data=invoice_update_data
+            data=invoice_update_data,
         )
         invoice.update(invoice_update_data)
 
@@ -239,7 +270,7 @@ def save_invoice_draft(request):
                 model_name="Quotation",
                 operation="update",
                 instance_id=quotation["id"],
-                data={"status": "INVOICED"}
+                data={"status": "INVOICED"},
             )
 
         TransactionLogBase.log(
@@ -248,20 +279,18 @@ def save_invoice_draft(request):
             message=f"Invoice draft {invoice['number']} saved for corporate {corporate_id}",
             state_name="Completed",
             extra={"invoice_id": invoice["id"], "line_count": len(lines)},
-            request=request
+            request=request,
         )
 
         lines = registry.database(
             model_name="InvoiceLine",
             operation="filter",
-            data={"invoice_id": invoice["id"]}
+            data={"invoice_id": invoice["id"]},
         )
         invoice["lines"] = lines
 
         return ResponseProvider(
-            message="Invoice draft saved successfully",
-            data=invoice,
-            code=201
+            message="Invoice draft saved successfully", data=invoice, code=201
         ).success()
 
     except Exception as e:
@@ -270,9 +299,11 @@ def save_invoice_draft(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while saving invoice draft", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while saving invoice draft", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -283,9 +314,11 @@ def create_and_post_invoice(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -296,47 +329,66 @@ def create_and_post_invoice(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         required_fields = ["customer", "date", "number", "due_date"]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
-                                        code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         customers = registry.database(
             model_name="Customer",
             operation="filter",
-            data={"id": data["customer"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["customer"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not customers:
-            return ResponseProvider(message="Customer not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Customer not found or inactive for this corporate", code=404
+            ).bad_request()
         customer = customers[0]
 
         salespersons = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"id": data.get("salesperson"), "corporate_id": corporate_id, "is_active": True} if data.get(
-                "salesperson") else {}
+            data=(
+                {
+                    "id": data.get("salesperson"),
+                    "corporate_id": corporate_id,
+                    "is_active": True,
+                }
+                if data.get("salesperson")
+                else {}
+            ),
         )
         if data.get("salesperson") and not salespersons:
-            return ResponseProvider(message="Salesperson not found or inactive for this corporate",
-                                    code=404).bad_request()
+            return ResponseProvider(
+                message="Salesperson not found or inactive for this corporate", code=404
+            ).bad_request()
 
         corporates = registry.database(
-            model_name="Corporate",
-            operation="filter",
-            data={"id": corporate_id}
+            model_name="Corporate", operation="filter", data={"id": corporate_id}
         )
         if not corporates:
-            return ResponseProvider(message="Corporate not found", code=404).bad_request()
+            return ResponseProvider(
+                message="Corporate not found", code=404
+            ).bad_request()
         corporate = corporates[0]
 
         quotation = None
@@ -345,15 +397,17 @@ def create_and_post_invoice(request):
             quotations = registry.database(
                 model_name="Quotation",
                 operation="filter",
-                data={"id": data["quotation"], "corporate_id": corporate_id}
+                data={"id": data["quotation"], "corporate_id": corporate_id},
             )
             if not quotations:
-                return ResponseProvider(message="Quotation not found for this corporate", code=404).bad_request()
+                return ResponseProvider(
+                    message="Quotation not found for this corporate", code=404
+                ).bad_request()
             quotation = quotations[0]
             quotation_lines = registry.database(
                 model_name="QuotationLine",
                 operation="filter",
-                data={"quotation_id": quotation["id"]}
+                data={"quotation_id": quotation["id"]},
             )
 
         if quotation:
@@ -366,7 +420,9 @@ def create_and_post_invoice(request):
             data["terms"] = quotation["terms"]
             data["fob"] = quotation["fob"]
             data["comments"] = quotation["comments"]
-            data["purchase_order"] = data.get("purchase_order", quotation.get("purchase_order", ""))
+            data["purchase_order"] = data.get(
+                "purchase_order", quotation.get("purchase_order", "")
+            )
 
         invoice_data = {
             "customer_id": data["customer"],
@@ -385,9 +441,7 @@ def create_and_post_invoice(request):
             "purchase_order": data.get("purchase_order", ""),
         }
         invoice = registry.database(
-            model_name="Invoices",
-            operation="create",
-            data=invoice_data
+            model_name="Invoices", operation="create", data=invoice_data
         )
 
         lines = data.get("lines", [])
@@ -403,37 +457,44 @@ def create_and_post_invoice(request):
                     "tax_amount": ql["tax_amount"],
                     "sub_total": ql["sub_total"],
                     "total": ql["total"],
-                    "quotation_line": ql["id"]
-                } for ql in quotation_lines
+                    "quotation_line": ql["id"],
+                }
+                for ql in quotation_lines
             ]
 
-        sub_total = Decimal('0')
-        tax_total = Decimal('0')
-        total = Decimal('0')
-        total_discount = Decimal('0')
+        sub_total = Decimal("0")
+        tax_total = Decimal("0")
+        total = Decimal("0")
+        total_discount = Decimal("0")
 
         for line_data in lines:
-            required_line_fields = ["description", "quantity", "unit_price", "amount", "discount", "tax_amount",
-                                    "sub_total", "total"]
+            required_line_fields = [
+                "description",
+                "quantity",
+                "unit_price",
+                "amount",
+                "discount",
+                "tax_amount",
+                "sub_total",
+                "total",
+            ]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Invoice line field {field.replace('_', ' ').title()} is required",
-                        code=400).bad_request()
+                        code=400,
+                    ).bad_request()
 
             taxable = line_data.get("taxable_id") or line_data.get("taxable")
             taxable_id = normalize_taxable_id(taxable, registry)
 
             # Validate taxable_id
             tax_rates = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id}
+                model_name="TaxRate", operation="filter", data={"id": taxable_id}
             )
             if not tax_rates:
                 return ResponseProvider(
-                    message=f"Tax rate {taxable_id} not found",
-                    code=404
+                    message=f"Tax rate {taxable_id} not found", code=404
                 ).bad_request()
 
             line_data_for_creation = {
@@ -447,12 +508,12 @@ def create_and_post_invoice(request):
                 "tax_amount": float(Decimal(str(line_data["tax_amount"]))),
                 "sub_total": float(Decimal(str(line_data["sub_total"]))),
                 "total": float(Decimal(str(line_data["total"]))),
-                "quotation_line_id": line_data.get("quotation_line")
+                "quotation_line_id": line_data.get("quotation_line"),
             }
             created_line = registry.database(
                 model_name="InvoiceLine",
                 operation="create",
-                data=line_data_for_creation
+                data=line_data_for_creation,
             )
 
             sub_total += Decimal(str(created_line["sub_total"]))
@@ -464,13 +525,13 @@ def create_and_post_invoice(request):
             "sub_total": str(sub_total),
             "tax_total": str(tax_total),
             "total": str(total),
-            "total_discount": str(total_discount)
+            "total_discount": str(total_discount),
         }
         registry.database(
             model_name="Invoices",
             operation="update",
             instance_id=invoice["id"],
-            data=invoice_update_data
+            data=invoice_update_data,
         )
         invoice.update(invoice_update_data)
 
@@ -479,16 +540,18 @@ def create_and_post_invoice(request):
                 model_name="Quotation",
                 operation="update",
                 instance_id=quotation["id"],
-                data={"status": "INVOICED"}
+                data={"status": "INVOICED"},
             )
 
         # Create journal entry using AccountingService
-        journal_entry = accounting_service.create_invoice_journal_entry(invoice["id"], user)
+        journal_entry = accounting_service.create_invoice_journal_entry(
+            invoice["id"], user
+        )
         registry.database(
             model_name="Invoices",
             operation="update",
             instance_id=invoice["id"],
-            data={"journal_entry_id": journal_entry["id"]}
+            data={"journal_entry_id": journal_entry["id"]},
         )
         invoice["journal_entry_id"] = journal_entry["id"]
 
@@ -498,20 +561,18 @@ def create_and_post_invoice(request):
             message=f"Invoice {invoice['number']} created and posted for corporate {corporate_id}",
             state_name="Completed",
             extra={"invoice_id": invoice["id"], "line_count": len(lines)},
-            request=request
+            request=request,
         )
 
         lines = registry.database(
             model_name="InvoiceLine",
             operation="filter",
-            data={"invoice_id": invoice["id"]}
+            data={"invoice_id": invoice["id"]},
         )
         invoice["lines"] = lines
 
         return ResponseProvider(
-            message="Invoice created and posted successfully",
-            data=invoice,
-            code=201
+            message="Invoice created and posted successfully", data=invoice, code=201
         ).success()
 
     except Exception as e:
@@ -520,9 +581,12 @@ def create_and_post_invoice(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while creating and posting invoice", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while creating and posting invoice", code=500
+        ).exception()
+
 
 @csrf_exempt
 def list_invoices(request):
@@ -538,9 +602,11 @@ def list_invoices(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -550,29 +616,32 @@ def list_invoices(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id}
+            data={"customuser_ptr_id": user_id},
         )
 
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
 
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         invoices = registry.database(
             model_name="Invoices",
             operation="filter",
-            data={"corporate_id": corporate_id}
+            data={"corporate_id": corporate_id},
         )
-
 
         for inv in invoices:
             lines = registry.database(
                 model_name="invoiceline",
                 operation="filter",
-                data={"invoice_id": inv["id"]}
+                data={"invoice_id": inv["id"]},
             )
             inv["lines"] = lines
 
@@ -606,10 +675,10 @@ def list_invoices(request):
                         "taxable": str(line.get("taxable_id", "")),
                         "tax_amount": float(line.get("tax_amount", 0)),
                         "sub_total": float(line.get("sub_total", 0)),
-                        "total": float(line.get("total", 0))
+                        "total": float(line.get("total", 0)),
                     }
                     for line in inv.get("lines", [])
-                ]
+                ],
             }
             for inv in invoices
         ]
@@ -618,7 +687,14 @@ def list_invoices(request):
         status_counts = dict(Counter(statuses))
         total = len(invoices)
 
-        all_statuses = {"DRAFT": 0, "ISSUED": 0, "PAID": 0, "PARTIALLY_PAID": 0, "OVERDUE": 0, "CANCELLED": 0}
+        all_statuses = {
+            "DRAFT": 0,
+            "ISSUED": 0,
+            "PAID": 0,
+            "PARTIALLY_PAID": 0,
+            "OVERDUE": 0,
+            "CANCELLED": 0,
+        }
         all_statuses.update(status_counts)
 
         TransactionLogBase.log(
@@ -627,17 +703,17 @@ def list_invoices(request):
             message=f"Retrieved {total} invoices for corporate {corporate_id}",
             state_name="Success",
             extra={"status_counts": all_statuses},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             data={
                 "invoices": serialized_invoices,
                 "total": total,
-                "status_counts": all_statuses
+                "status_counts": all_statuses,
             },
             message="Invoices retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -646,9 +722,12 @@ def list_invoices(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving invoices", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving invoices", code=500
+        ).exception()
+
 
 @csrf_exempt
 def get_invoice(request):
@@ -669,9 +748,13 @@ def get_invoice(request):
         data, metadata = get_clean_data(request)
         user = metadata.get("user")
         if not user:
-            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+            return ResponseProvider(
+                message="User not authenticated", code=401
+            ).unauthorized()
 
-        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        user_id = (
+            user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+        )
         if not user_id:
             return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -680,35 +763,43 @@ def get_invoice(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id}
+            data={"customuser_ptr_id": user_id},
         )
 
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
 
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         invoice_id = data.get("id")
         if not invoice_id:
-            return ResponseProvider(message="Invoice ID is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Invoice ID is required", code=400
+            ).bad_request()
 
         invoices = registry.database(
             model_name="Invoices",
             operation="filter",
-            data={"id": invoice_id, "corporate_id": corporate_id}
+            data={"id": invoice_id, "corporate_id": corporate_id},
         )
         if not invoices:
-            return ResponseProvider(message="Invoice not found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Invoice not found for this corporate", code=404
+            ).bad_request()
 
         invoice = invoices[0]
 
         lines = registry.database(
             model_name="InvoiceLine",
             operation="filter",
-            data={"invoice_id": invoice_id}
+            data={"invoice_id": invoice_id},
         )
         invoice["lines"] = lines
 
@@ -741,10 +832,10 @@ def get_invoice(request):
                     "taxable": str(line.get("taxable_id", "")),
                     "tax_amount": float(line.get("tax_amount", 0)),
                     "sub_total": float(line.get("sub_total", 0)),
-                    "total": float(line.get("total", 0))
+                    "total": float(line.get("total", 0)),
                 }
                 for line in invoice.get("lines", [])
-            ]
+            ],
         }
 
         TransactionLogBase.log(
@@ -753,30 +844,32 @@ def get_invoice(request):
             message=f"Invoice {invoice_id} retrieved for corporate {corporate_id}",
             state_name="Success",
             extra={"invoice_id": invoice_id, "line_count": len(lines)},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
-            message="Invoice retrieved successfully",
-            data=serialized_invoice,
-            code=200
+            message="Invoice retrieved successfully", data=serialized_invoice, code=200
         ).success()
 
     except Exception as e:
         TransactionLogBase.log(
             transaction_type="INVOICE_GET_FAILED",
-            user=user if 'user' in locals() else None,
+            user=user if "user" in locals() else None,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving invoice", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving invoice", code=500
+        ).exception()
+
 
 @csrf_exempt
 def update_invoice(request):
     """
     Update an existing invoice for the user's corporate, including its lines, and set status to DRAFT or POSTED.
     """
+
     def normalize_taxable_id(raw):
         """
         Accepts any of:
@@ -790,7 +883,7 @@ def update_invoice(request):
         if isinstance(raw, dict) and raw.get("id"):
             return raw.get("id")
         if isinstance(raw, str):
-            s = raw.strip().strip('\'"“”‘’')
+            s = raw.strip().strip("'\"“”‘’")
             if s.startswith("{") and s.endswith("}"):
                 try:
                     d = json.loads(s.replace("'", '"'))
@@ -807,9 +900,11 @@ def update_invoice(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -821,20 +916,26 @@ def update_invoice(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Validate required fields
         required_fields = ["id", "customer", "date", "number", "due_date"]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         # Validate invoice number format
         invoice_number = data["number"]
@@ -842,14 +943,14 @@ def update_invoice(request):
         if not re.match(pattern, invoice_number):
             return ResponseProvider(
                 message="Invoice number must be in format INV-<6 digits> (e.g., INV-123456)",
-                code=400
+                code=400,
             ).bad_request()
 
         # Validate invoice
         invoices = registry.database(
             model_name="Invoices",
             operation="filter",
-            data={"id": data["id"], "corporate_id": corporate_id}
+            data={"id": data["id"], "corporate_id": corporate_id},
         )
         if not invoices:
             return ResponseProvider(message="Invoice not found", code=404).bad_request()
@@ -859,20 +960,33 @@ def update_invoice(request):
         customers = registry.database(
             model_name="Customer",
             operation="filter",
-            data={"id": data["customer"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["customer"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not customers:
-            return ResponseProvider(message="Customer not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Customer not found or inactive for this corporate", code=404
+            ).bad_request()
 
         # Validate salesperson (if provided)
         if data.get("salesperson"):
             salespersons = registry.database(
                 model_name="CorporateUser",
                 operation="filter",
-                data={"id": data["salesperson"], "corporate_id": corporate_id, "is_active": True}
+                data={
+                    "id": data["salesperson"],
+                    "corporate_id": corporate_id,
+                    "is_active": True,
+                },
             )
             if not salespersons:
-                return ResponseProvider(message="Salesperson not found or inactive for this corporate", code=404).bad_request()
+                return ResponseProvider(
+                    message="Salesperson not found or inactive for this corporate",
+                    code=404,
+                ).bad_request()
 
         # Normalize status
         normalized_status = str(data.get("status", "DRAFT")).upper()
@@ -882,33 +996,46 @@ def update_invoice(request):
         # Process lines and calculate totals
         submitted_lines = data.get("lines", [])
         if not submitted_lines:
-            return ResponseProvider(message="At least one invoice line is required", code=400).bad_request()
+            return ResponseProvider(
+                message="At least one invoice line is required", code=400
+            ).bad_request()
 
-        sub_total = Decimal('0.00')
-        tax_total = Decimal('0.00')
-        total_discount = Decimal('0.00')
-        total = Decimal('0.00')
+        sub_total = Decimal("0.00")
+        tax_total = Decimal("0.00")
+        total_discount = Decimal("0.00")
+        total = Decimal("0.00")
 
         for line_data in submitted_lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
+            required_line_fields = [
+                "description",
+                "quantity",
+                "unit_price",
+                "discount",
+                "taxable_id",
+            ]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Invoice line field {field.replace('_', ' ').title()} is required",
-                        code=400).bad_request()
+                        code=400,
+                    ).bad_request()
 
             taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
             tax_rate_value = Decimal("0")
             if taxable_id:
                 tax_rates = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id}
+                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
                 )
                 if not tax_rates:
-                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                    return ResponseProvider(
+                        message=f"Tax rate {taxable_id} not found", code=404
+                    ).bad_request()
                 tax_rate_code = tax_rates[0]["name"]
-                tax_rate_value = Decimal("0.16") if tax_rate_code == "general_rated" else Decimal("0")
+                tax_rate_value = (
+                    Decimal("0.16")
+                    if tax_rate_code == "general_rated"
+                    else Decimal("0")
+                )
 
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
@@ -949,24 +1076,28 @@ def update_invoice(request):
                 model_name="Invoices",
                 operation="update",
                 instance_id=invoice_id,
-                data=invoice_data
+                data=invoice_data,
             )
 
             # Delete omitted lines
             existing_lines = registry.database(
                 model_name="InvoiceLine",
                 operation="filter",
-                data={"invoice_id": invoice["id"]}
+                data={"invoice_id": invoice["id"]},
             )
-            existing_line_ids = {line["id"] for line in existing_lines if line.get("id")}
-            submitted_line_ids = {line.get("id") for line in submitted_lines if line.get("id")}
+            existing_line_ids = {
+                line["id"] for line in existing_lines if line.get("id")
+            }
+            submitted_line_ids = {
+                line.get("id") for line in submitted_lines if line.get("id")
+            }
 
             for line in existing_lines:
                 if line["id"] not in submitted_line_ids:
                     registry.database(
                         model_name="InvoiceLine",
                         operation="delete",
-                        instance_id=line["id"]
+                        instance_id=line["id"],
                     )
 
             # Create or update lines
@@ -977,12 +1108,18 @@ def update_invoice(request):
                     tax_rates = registry.database(
                         model_name="TaxRate",
                         operation="filter",
-                        data={"id": taxable_id}
+                        data={"id": taxable_id},
                     )
                     if not tax_rates:
-                        return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                        return ResponseProvider(
+                            message=f"Tax rate {taxable_id} not found", code=404
+                        ).bad_request()
                     tax_rate_code = tax_rates[0]["name"]
-                    tax_rate_value = Decimal("0.16") if tax_rate_code == "general_rated" else Decimal("0")
+                    tax_rate_value = (
+                        Decimal("0.16")
+                        if tax_rate_code == "general_rated"
+                        else Decimal("0")
+                    )
 
                 qty = to_decimal(line_data["quantity"])
                 unit_price = to_decimal(line_data["unit_price"])
@@ -1011,13 +1148,11 @@ def update_invoice(request):
                         model_name="InvoiceLine",
                         operation="update",
                         instance_id=line_data["id"],
-                        data=line_payload
+                        data=line_payload,
                     )
                 else:
                     registry.database(
-                        model_name="InvoiceLine",
-                        operation="create",
-                        data=line_payload
+                        model_name="InvoiceLine", operation="create", data=line_payload
                     )
 
             # Update journal entry if posted
@@ -1027,27 +1162,29 @@ def update_invoice(request):
                     old_je_lines = registry.database(
                         model_name="JournalEntryLine",
                         operation="filter",
-                        data={"journal_entry_id": invoice["journal_entry_id"]}
+                        data={"journal_entry_id": invoice["journal_entry_id"]},
                     )
                     for line in old_je_lines:
                         registry.database(
                             model_name="JournalEntryLine",
                             operation="delete",
-                            instance_id=line["id"]
+                            instance_id=line["id"],
                         )
                     registry.database(
                         model_name="JournalEntry",
                         operation="delete",
-                        instance_id=invoice["journal_entry_id"]
+                        instance_id=invoice["journal_entry_id"],
                     )
 
                 # Create new journal entry
-                journal_entry = accounting_service.create_invoice_journal_entry(invoice["id"], user)
+                journal_entry = accounting_service.create_invoice_journal_entry(
+                    invoice["id"], user
+                )
                 registry.database(
                     model_name="Invoices",
                     operation="update",
                     instance_id=invoice["id"],
-                    data={"journal_entry_id": journal_entry["id"]}
+                    data={"journal_entry_id": journal_entry["id"]},
                 )
                 invoice["journal_entry_id"] = journal_entry["id"]
 
@@ -1058,14 +1195,14 @@ def update_invoice(request):
             message=f"Invoice {invoice['number']} updated and posted for corporate {corporate_id} with status {invoice['status']}",
             state_name="Completed",
             extra={"invoice_id": invoice["id"], "line_count": len(submitted_lines)},
-            request=request
+            request=request,
         )
 
         # Fetch fresh lines for response
         db_lines = registry.database(
             model_name="InvoiceLine",
             operation="filter",
-            data={"invoice_id": invoice["id"]}
+            data={"invoice_id": invoice["id"]},
         )
         invoice["lines"] = [
             {
@@ -1078,7 +1215,7 @@ def update_invoice(request):
                 "taxable": str(line.get("taxable_id", "")),
                 "tax_amount": float(line.get("tax_amount", 0)),
                 "sub_total": float(line.get("sub_total", 0)),
-                "total": float(line.get("total", 0))
+                "total": float(line.get("total", 0)),
             }
             for line in db_lines
         ]
@@ -1089,7 +1226,9 @@ def update_invoice(request):
         invoice["total_discount"] = float(total_discount)
         invoice["total"] = float(total)
 
-        return ResponseProvider(message="Invoice updated and posted successfully", data=invoice, code=200).success()
+        return ResponseProvider(
+            message="Invoice updated and posted successfully", data=invoice, code=200
+        ).success()
 
     except Exception as e:
         TransactionLogBase.log(
@@ -1097,9 +1236,12 @@ def update_invoice(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while updating invoice", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while updating invoice", code=500
+        ).exception()
+
 
 @csrf_exempt
 def delete_invoice(request):
@@ -1120,9 +1262,13 @@ def delete_invoice(request):
         data, metadata = get_clean_data(request)
         user = metadata.get("user")
         if not user:
-            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+            return ResponseProvider(
+                message="User not authenticated", code=401
+            ).unauthorized()
 
-        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        user_id = (
+            user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+        )
         if not user_id:
             return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -1131,46 +1277,54 @@ def delete_invoice(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id}
+            data={"customuser_ptr_id": user_id},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         invoice_id = data.get("id")
         if not invoice_id:
-            return ResponseProvider(message="Invoice ID is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Invoice ID is required", code=400
+            ).bad_request()
 
         invoices = registry.database(
             model_name="Invoices",
             operation="filter",
-            data={"id": invoice_id, "corporate_id": corporate_id}
+            data={"id": invoice_id, "corporate_id": corporate_id},
         )
         if not invoices:
-            return ResponseProvider(message="Invoice not found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Invoice not found for this corporate", code=404
+            ).bad_request()
 
         with transaction.atomic():
             registry.database(
                 model_name="Invoices",
                 operation="delete",
                 instance_id=invoice_id,
-                data={"id": invoice_id}
+                data={"id": invoice_id},
             )
 
             lines = registry.database(
                 model_name="InvoiceLine",
                 operation="filter",
-                data={"invoice_id": invoice_id}
+                data={"invoice_id": invoice_id},
             )
             for line in lines:
                 registry.database(
                     model_name="InvoiceLine",
                     operation="delete",
                     instance_id=line["id"],
-                    data={"id": line["id"]}
+                    data={"id": line["id"]},
                 )
 
             TransactionLogBase.log(
@@ -1179,13 +1333,13 @@ def delete_invoice(request):
                 message=f"Invoice {invoice_id} soft-deleted",
                 state_name="Completed",
                 extra={"invoice_id": invoice_id, "line_count": len(lines)},
-                request=request
+                request=request,
             )
 
         return ResponseProvider(
             message="Invoice deleted successfully",
             data={"invoice_id": invoice_id},
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -1194,6 +1348,8 @@ def delete_invoice(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while deleting invoice", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while deleting invoice", code=500
+        ).exception()

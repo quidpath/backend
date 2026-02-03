@@ -46,21 +46,22 @@ def load_tables(path: Path) -> Dict[str, pd.DataFrame]:
         normalized = frame.fillna("").astype(str)
         # Replace "nan" strings (from pandas) with empty strings
         normalized = normalized.replace("nan", "")
-        
+
         # ✅ FIX: Remove completely empty rows at the start
         # Find first non-empty row
         first_data_row = 0
         for idx in range(len(normalized)):
             row = normalized.iloc[idx]
             # Check if row has any non-empty cells
-            if any(str(cell).strip() and str(cell).strip().lower() != 'nan' for cell in row):
+            if any(
+                str(cell).strip() and str(cell).strip().lower() != "nan" for cell in row
+            ):
                 first_data_row = idx
                 break
-        
+
         # Skip empty rows at the start
         if first_data_row > 0:
             normalized = normalized.iloc[first_data_row:].reset_index(drop=True)
-        
+
         prepared[str(name) or "Sheet1"] = normalized
     return prepared
-

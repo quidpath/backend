@@ -7,11 +7,13 @@ from quidpath_backend.core.base_models.base import BaseModel
 
 class Customer(BaseModel):
     CATEGORY_CHOICES = [
-        ('individual', 'Individual'),
-        ('company', 'Company'),
+        ("individual", "Individual"),
+        ("company", "Company"),
     ]
     category = models.CharField(max_length=10, choices=CATEGORY_CHOICES)
-    corporate = models.ForeignKey(Corporate, on_delete= models.SET_NULL, blank= True, null= True)
+    corporate = models.ForeignKey(
+        Corporate, on_delete=models.SET_NULL, blank=True, null=True
+    )
     company_name = models.CharField(max_length=255, null=True, blank=True)
     first_name = models.CharField(max_length=255)
     last_name = models.CharField(max_length=255)
@@ -27,12 +29,14 @@ class Customer(BaseModel):
     notes = models.TextField(blank=True, null=True)
 
     def __str__(self):
-        if self.category == 'company' and self.company_name:
+        if self.category == "company" and self.company_name:
             return self.company_name
-        return f'{self.first_name} {self.last_name}'
+        return f"{self.first_name} {self.last_name}"
 
     def clean(self):
-        if self.category == 'company' and not self.company_name:
+        if self.category == "company" and not self.company_name:
             raise ValidationError("Company name is required for company customers.")
-        if self.category == 'individual' and self.company_name:
-            raise ValidationError("Company name should be blank for individual customers.")
+        if self.category == "individual" and self.company_name:
+            raise ValidationError(
+                "Company name should be blank for individual customers."
+            )

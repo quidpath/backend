@@ -1,5 +1,7 @@
 # core/mixins/user_tracking_mixin.py
 from django.conf import settings
+
+
 class UserTrackingMixin:
     def save(self, *args, **kwargs):
         if not self.pk:  # If the object is being created

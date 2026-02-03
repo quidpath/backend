@@ -5,18 +5,21 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from os.path import basename
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from django.conf import settings
-from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 
 from OrgAuth.templates.CorporateTempMgt import TemplateManagementEngine
-from quidpath_backend.core.Services.notification_service import NotificationTypeService, NotificationService
-from quidpath_backend.core.Services.organisation_service import CorporateService
+from quidpath_backend.core.Services.notification_service import (
+    NotificationService, NotificationTypeService)
+from quidpath_backend.core.Services.organisation_service import \
+    CorporateService
 from quidpath_backend.core.Services.state_service import StateService
 
 log = logging.getLogger(__name__)
+
 
 class DocumentNotificationHandler(TemplateManagementEngine):
     """
@@ -24,7 +27,9 @@ class DocumentNotificationHandler(TemplateManagementEngine):
     Adapted from NotificationServiceHandler to fetch corporate email as from_address and send to customer/vendor.
     """
 
-    def send_document_notification(self, notifications: List[Dict[str, Any]], trans=None, attachment=None, cc=None):
+    def send_document_notification(
+        self, notifications: List[Dict[str, Any]], trans=None, attachment=None, cc=None
+    ):
         """
         Process and send a list of document notifications (e.g., quotation, invoice to customer; PO, bill to vendor).
         Each notification dict must include:
@@ -51,11 +56,17 @@ class DocumentNotificationHandler(TemplateManagementEngine):
                 subject = data.get("subject", f"Document Notification - {corporate_id}")
 
                 # Get NotificationType (EMAIL)
-                notification_type = NotificationTypeService().get_or_create_type("EMAIL")
+                notification_type = NotificationTypeService().get_or_create_type(
+                    "EMAIL"
+                )
 
                 # Get Organisation (Corporate)
                 organisation = CorporateService().get_or_default(corporate_id)
-                from_email = organisation.email if hasattr(organisation, 'email') and organisation.email else settings.DEFAULT_FROM_EMAIL  # Fetch corporate email
+                from_email = (
+                    organisation.email
+                    if hasattr(organisation, "email") and organisation.email
+                    else settings.DEFAULT_FROM_EMAIL
+                )  # Fetch corporate email
 
                 # Create notification record (state initially Completed)
                 notification_obj = NotificationService().create_notification(
@@ -64,12 +75,17 @@ class DocumentNotificationHandler(TemplateManagementEngine):
                     destination=destination,
                     message=message,
                     notification_type=notification_type,
-                    state=StateService().get_completed()
+                    state=StateService().get_completed(),
                 )
 
                 # Send actual email
                 notification_response = self._send_email_without_attachment(
-                    destination, message, organisation.name, cc, from_address=from_email, subject=subject
+                    destination,
+                    message,
+                    organisation.name,
+                    cc,
+                    from_address=from_email,
+                    subject=subject,
                 )
 
                 # Update Notification state if failed
@@ -78,7 +94,9 @@ class DocumentNotificationHandler(TemplateManagementEngine):
 
                 # Optionally update transaction logs
                 if trans:
-                    NotificationService().update_transaction_notification_log(trans, notification_response)
+                    NotificationService().update_transaction_notification_log(
+                        trans, notification_response
+                    )
 
             return "success"
 
@@ -86,9 +104,19 @@ class DocumentNotificationHandler(TemplateManagementEngine):
             log.exception("Error sending document notification: %s", e)
             return {"status": "failed", "message": f"Error: {e}"}
 
-    def _send_email(self, recipient_email: str, subject: str, message: str,
-                    reply_to="noreply@example.com", cc=None, bcc=None, attachment=None,
-                    from_address=None, sender=None, password=None):
+    def _send_email(
+        self,
+        recipient_email: str,
+        subject: str,
+        message: str,
+        reply_to="noreply@example.com",
+        cc=None,
+        bcc=None,
+        attachment=None,
+        from_address=None,
+        sender=None,
+        password=None,
+    ):
         """
         Low-level email sender (same as original)
         """
@@ -101,7 +129,10 @@ class DocumentNotificationHandler(TemplateManagementEngine):
             try:
                 validate_email(recipient_email)
             except ValidationError:
-                return {"status": "failed", "message": f"Invalid email: {recipient_email}"}
+                return {
+                    "status": "failed",
+                    "message": f"Invalid email: {recipient_email}",
+                }
 
             msg = MIMEMultipart()
             msg["From"] = from_address
@@ -128,7 +159,9 @@ class DocumentNotificationHandler(TemplateManagementEngine):
                 for f in attachment:
                     with open(f, "rb") as fil:
                         part = MIMEApplication(fil.read(), Name=basename(f))
-                    part["Content-Disposition"] = f'attachment; filename="{basename(f)}"'
+                    part["Content-Disposition"] = (
+                        f'attachment; filename="{basename(f)}"'
+                    )
                     msg.attach(part)
 
             # Connect SMTP
@@ -138,14 +171,28 @@ class DocumentNotificationHandler(TemplateManagementEngine):
             server.sendmail(from_address, toaddrs, msg.as_string())
             server.quit()
 
-            return {"status": "success", "code": "200.001.001", "message": "Email sent successfully"}
+            return {
+                "status": "success",
+                "code": "200.001.001",
+                "message": "Email sent successfully",
+            }
         except Exception as e:
             log.error("Error sending email: %s", e)
             return {"status": "failed", "code": "400.001.007", "message": str(e)}
 
-    def _send_email_without_attachment(self, destination, message, corporate_name, cc=None, from_address=None, subject=None):
+    def _send_email_without_attachment(
+        self,
+        destination,
+        message,
+        corporate_name,
+        cc=None,
+        from_address=None,
+        subject=None,
+    ):
         """
         Email sender without attachments, with optional custom subject and from_address.
         """
         subject = subject or f"Notification - {corporate_name}"
-        return self._send_email(destination, subject, message, cc=cc, from_address=from_address)
+        return self._send_email(
+            destination, subject, message, cc=cc, from_address=from_address
+        )

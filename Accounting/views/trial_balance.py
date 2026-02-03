@@ -1,15 +1,17 @@
 # trial_balance.py
 import csv
-from decimal import Decimal
-from datetime import datetime, date
-from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse
-from django.db import transaction
 from collections import defaultdict
+from datetime import date, datetime
+from decimal import Decimal
+
+from django.db import transaction
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 
 
 def _safe_parse_date(value):
@@ -44,9 +46,11 @@ def get_trial_balance(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -57,14 +61,18 @@ def get_trial_balance(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse as_of_date
         as_of_date_raw = data.get("as_of_date")
@@ -85,9 +93,7 @@ def get_trial_balance(request):
             je_filter["is_posted"] = True
 
         journal_entries = registry.database(
-            model_name="JournalEntry",
-            operation="filter",
-            data=je_filter
+            model_name="JournalEntry", operation="filter", data=je_filter
         )
 
         # Filter journal entries by date
@@ -101,14 +107,14 @@ def get_trial_balance(request):
 
         # Get journal entry lines
         all_lines = registry.database(
-            model_name="JournalEntryLine",
-            operation="filter",
-            data={}
+            model_name="JournalEntryLine", operation="filter", data={}
         )
         lines = [line for line in all_lines if line["journal_entry_id"] in je_ids]
 
         # Calculate balances per account
-        account_balances = defaultdict(lambda: {"debit": Decimal("0.00"), "credit": Decimal("0.00")})
+        account_balances = defaultdict(
+            lambda: {"debit": Decimal("0.00"), "credit": Decimal("0.00")}
+        )
 
         for line in lines:
             account_id = line["account_id"]
@@ -122,7 +128,11 @@ def get_trial_balance(request):
         accounts = registry.database(
             model_name="Account",
             operation="filter",
-            data={"id__in": account_ids, "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id__in": account_ids,
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         account_map = {acc["id"]: acc for acc in accounts}
 
@@ -145,7 +155,7 @@ def get_trial_balance(request):
             account_type = registry.database(
                 model_name="AccountType",
                 operation="filter",
-                data={"id": account.get("account_type_id")}
+                data={"id": account.get("account_type_id")},
             )
             normal_balance = "DEBIT"
             if account_type:
@@ -156,14 +166,20 @@ def get_trial_balance(request):
                 # Swap for display if needed
                 pass
 
-            tb_entries.append({
-                "id": str(account_id),
-                "account_code": account.get("code", ""),
-                "account_name": account.get("name", ""),
-                "debit": str(debit),
-                "credit": str(credit),
-                "balance": str(debit - credit) if normal_balance == "DEBIT" else str(credit - debit)
-            })
+            tb_entries.append(
+                {
+                    "id": str(account_id),
+                    "account_code": account.get("code", ""),
+                    "account_name": account.get("name", ""),
+                    "debit": str(debit),
+                    "credit": str(credit),
+                    "balance": (
+                        str(debit - credit)
+                        if normal_balance == "DEBIT"
+                        else str(credit - debit)
+                    ),
+                }
+            )
 
         # Sort by account code
         tb_entries.sort(key=lambda x: x["account_code"])
@@ -178,8 +194,8 @@ def get_trial_balance(request):
                 "total_debit": str(total_debit),
                 "total_credit": str(total_credit),
                 "difference": str(total_debit - total_credit),
-                "is_balanced": is_balanced
-            }
+                "is_balanced": is_balanced,
+            },
         }
 
         TransactionLogBase.log(
@@ -226,9 +242,11 @@ def download_trial_balance(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -239,14 +257,18 @@ def download_trial_balance(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse parameters
         as_of_date_raw = data.get("as_of_date")
@@ -268,9 +290,7 @@ def download_trial_balance(request):
             je_filter["is_posted"] = True
 
         journal_entries = registry.database(
-            model_name="JournalEntry",
-            operation="filter",
-            data=je_filter
+            model_name="JournalEntry", operation="filter", data=je_filter
         )
 
         relevant_je = []
@@ -282,13 +302,13 @@ def download_trial_balance(request):
         je_ids = {je["id"] for je in relevant_je}
 
         all_lines = registry.database(
-            model_name="JournalEntryLine",
-            operation="filter",
-            data={}
+            model_name="JournalEntryLine", operation="filter", data={}
         )
         lines = [line for line in all_lines if line["journal_entry_id"] in je_ids]
 
-        account_balances = defaultdict(lambda: {"debit": Decimal("0.00"), "credit": Decimal("0.00")})
+        account_balances = defaultdict(
+            lambda: {"debit": Decimal("0.00"), "credit": Decimal("0.00")}
+        )
         for line in lines:
             account_id = line["account_id"]
             debit = Decimal(str(line.get("debit", 0)))
@@ -300,7 +320,11 @@ def download_trial_balance(request):
         accounts = registry.database(
             model_name="Account",
             operation="filter",
-            data={"id__in": account_ids, "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id__in": account_ids,
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         account_map = {acc["id"]: acc for acc in accounts}
 
@@ -319,22 +343,26 @@ def download_trial_balance(request):
             total_debit += debit
             total_credit += credit
 
-            csv_rows.append({
-                "Account Code": account.get("code", ""),
-                "Account Name": account.get("name", ""),
-                "Debit": str(debit),
-                "Credit": str(credit)
-            })
+            csv_rows.append(
+                {
+                    "Account Code": account.get("code", ""),
+                    "Account Name": account.get("name", ""),
+                    "Debit": str(debit),
+                    "Credit": str(credit),
+                }
+            )
 
         csv_rows.sort(key=lambda x: x["Account Code"])
 
         # Add totals row
-        csv_rows.append({
-            "Account Code": "",
-            "Account Name": "TOTAL",
-            "Debit": str(total_debit),
-            "Credit": str(total_credit)
-        })
+        csv_rows.append(
+            {
+                "Account Code": "",
+                "Account Name": "TOTAL",
+                "Debit": str(total_debit),
+                "Credit": str(total_credit),
+            }
+        )
 
         # Generate CSV
         if export_format == "csv":
@@ -342,7 +370,9 @@ def download_trial_balance(request):
             filename = f"trial_balance_{corporate_id}_{as_of_date}.csv"
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
-            writer = csv.DictWriter(response, fieldnames=["Account Code", "Account Name", "Debit", "Credit"])
+            writer = csv.DictWriter(
+                response, fieldnames=["Account Code", "Account Name", "Debit", "Credit"]
+            )
             writer.writeheader()
             writer.writerows(csv_rows)
 
@@ -357,7 +387,8 @@ def download_trial_balance(request):
             return response
         else:
             return ResponseProvider(
-                message=f"Export format '{export_format}' not supported. Use 'csv'.", code=400
+                message=f"Export format '{export_format}' not supported. Use 'csv'.",
+                code=400,
             ).bad_request()
 
     except Exception as e:
@@ -371,4 +402,3 @@ def download_trial_balance(request):
         return ResponseProvider(
             message="An error occurred while exporting trial balance", code=500
         ).exception()
-

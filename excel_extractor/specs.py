@@ -39,16 +39,20 @@ def _validate_income_statement(payload: Dict[str, int]) -> None:
     interest_expense = payload["interest_expense"]
     taxes = payload["taxes"]
     net_income = payload["net_income"]
-    
+
     if not _within_tolerance(total_revenue - cogs, gross_profit, tolerance):
         raise ValidationError(
             f"Gross profit mismatch. Expected {total_revenue - cogs:,}, got {gross_profit:,}."
         )
-    if not _within_tolerance(gross_profit - operating_expenses, operating_income, tolerance):
+    if not _within_tolerance(
+        gross_profit - operating_expenses, operating_income, tolerance
+    ):
         raise ValidationError(
             f"Operating income mismatch. Expected {gross_profit - operating_expenses:,}, got {operating_income:,}."
         )
-    if not _within_tolerance(operating_income - interest_expense - taxes, net_income, tolerance):
+    if not _within_tolerance(
+        operating_income - interest_expense - taxes, net_income, tolerance
+    ):
         raise ValidationError(
             f"Net income mismatch. Expected {operating_income - interest_expense - taxes:,}, got {net_income:,}."
         )
@@ -60,8 +64,10 @@ def _validate_balance_sheet(payload: Dict[str, int]) -> None:
     total_assets = payload["total_assets"]
     total_liabilities = payload["total_liabilities"]
     shareholders_equity = payload["shareholders_equity"]
-    
-    if not _within_tolerance(total_liabilities + shareholders_equity, total_assets, tolerance):
+
+    if not _within_tolerance(
+        total_liabilities + shareholders_equity, total_assets, tolerance
+    ):
         raise ValidationError(
             f"Balance sheet does not balance (Assets ≠ Liabilities + Equity). "
             f"Expected {total_liabilities + shareholders_equity:,} for total assets, got {total_assets:,}."
@@ -96,42 +102,96 @@ INCOME_STATEMENT_SPEC = StatementSpec(
     ),
     label_mapping={
         "total_revenue": [
-            "total revenue", "revenue", "sales", "turnover", "net sales", "income",
-            "total sales", "sales revenue", "revenue from operations", "net revenue",
-            "total for operating income", "operating income total",  # Some P&L statements use this
-            "revenue sales", "total income", "operating revenue", "sales income"  # ✅ FIX: More variations
+            "total revenue",
+            "revenue",
+            "sales",
+            "turnover",
+            "net sales",
+            "income",
+            "total sales",
+            "sales revenue",
+            "revenue from operations",
+            "net revenue",
+            "total for operating income",
+            "operating income total",  # Some P&L statements use this
+            "revenue sales",
+            "total income",
+            "operating revenue",
+            "sales income",  # ✅ FIX: More variations
         ],
         "cogs": [
-            "cogs", "cost of goods sold", "cost of revenue", "cost of sales",
-            "cost goods sold", "costs of goods sold", "direct costs",
-            "total for cost of goods sold", "cost of goods sold total",
-            "total cogs", "cost goods", "direct labor costs", "purchases",  # ✅ FIX: More variations
-            "materials", "parts materials", "labor costs"  # Common variations
+            "cogs",
+            "cost of goods sold",
+            "cost of revenue",
+            "cost of sales",
+            "cost goods sold",
+            "costs of goods sold",
+            "direct costs",
+            "total for cost of goods sold",
+            "cost of goods sold total",
+            "total cogs",
+            "cost goods",
+            "direct labor costs",
+            "purchases",  # ✅ FIX: More variations
+            "materials",
+            "parts materials",
+            "labor costs",  # Common variations
         ],
         "gross_profit": [
-            "gross profit", "gross income", "gross margin", "gross earnings"
+            "gross profit",
+            "gross income",
+            "gross margin",
+            "gross earnings",
         ],
         "operating_expenses": [
-            "operating expenses", "total expenses", "expenses", "opex", "operating costs",
-            "operating expenditure", "total operating expenses", "operating expense",
-            "total for operating expense", "operating expense total",
-            "total opex", "operating overhead", "total operating costs"  # ✅ FIX: More variations for totals
+            "operating expenses",
+            "total expenses",
+            "expenses",
+            "opex",
+            "operating costs",
+            "operating expenditure",
+            "total operating expenses",
+            "operating expense",
+            "total for operating expense",
+            "operating expense total",
+            "total opex",
+            "operating overhead",
+            "total operating costs",  # ✅ FIX: More variations for totals
         ],
         "operating_income": [
-            "operating income", "operating profit", "ebit", "earnings before interest and tax",
-            "operating earnings", "operating result", "operating profit/loss"
+            "operating income",
+            "operating profit",
+            "ebit",
+            "earnings before interest and tax",
+            "operating earnings",
+            "operating result",
+            "operating profit/loss",
         ],
         "interest_expense": [
-            "interest expense", "interest paid", "interest", "interest charges",
-            "finance costs", "financial expenses"
+            "interest expense",
+            "interest paid",
+            "interest",
+            "interest charges",
+            "finance costs",
+            "financial expenses",
         ],
         "taxes": [
-            "taxes", "income tax", "tax expense", "income taxes", "tax provision",
-            "taxation", "tax"
+            "taxes",
+            "income tax",
+            "tax expense",
+            "income taxes",
+            "tax provision",
+            "taxation",
+            "tax",
         ],
         "net_income": [
-            "net income", "net profit", "profit after tax", "net earnings",
-            "profit for the year", "net profit after tax", "bottom line"
+            "net income",
+            "net profit",
+            "profit after tax",
+            "net earnings",
+            "profit for the year",
+            "net profit after tax",
+            "bottom line",
         ],
         "risk_level": ["risk level", "risk", "overall risk"],
     },
@@ -157,4 +217,3 @@ BALANCE_SHEET_SPEC = StatementSpec(
 
 
 DEFAULT_STATEMENT_SPECS = (INCOME_STATEMENT_SPEC, BALANCE_SHEET_SPEC)
-

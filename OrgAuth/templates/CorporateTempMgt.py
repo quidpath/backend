@@ -1,5 +1,4 @@
 from dataclasses import replace
-
 from pyexpat.errors import messages
 
 
@@ -15,15 +14,14 @@ class TemplateManagementEngine:
         """
         try:
             for k, v in kwargs.items():
-                template_string = template_string.replace('[%s]' % str(k), str(v))
+                template_string = template_string.replace("[%s]" % str(k), str(v))
             return template_string
         except Exception as e:
-            print('replace_tags Exception: %s', e)
+            print("replace_tags Exception: %s", e)
         return template_string
 
     def createCorporateEmail(self, **kwargs):
-        message=\
-        """
+        message = """
         <html>
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />

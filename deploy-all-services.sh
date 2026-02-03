@@ -1,141 +1,189 @@
 #!/bin/bash
-set -euo pipefail
 
-echo "🚀 Deploying All QuidPath Services to OVH"
-echo "=========================================="
+# QuidPath All Services Deployment Script
+# This script deploys Main Backend, Billing Service, and Tazama AI
+
+set -e
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m'
 
-DEPLOY_DIR="$HOME/quidpath-deployment"
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}QuidPath Services Deployment${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
 
-# Create shared network
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then 
+    echo -e "${RED}Please run as root${NC}"
+    exit 1
+fi
+
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+    echo -e "${RED}Docker is not installed${NC}"
+    exit 1
+fi
+
+# Check if Docker Compose is installed
+if ! command -v docker compose &> /dev/null; then
+    echo -e "${RED}Docker Compose is not installed${NC}"
+    exit 1
+fi
+
+# Create shared network if it doesn't exist
 echo -e "${YELLOW}Creating shared Docker network...${NC}"
 docker network create quidpath_network 2>/dev/null || echo "Network already exists"
 
-# ============================================
-# 1. Deploy Backend (api.quidpath.com)
-# ============================================
-echo -e "${BLUE}📦 Deploying Backend (api.quidpath.com)...${NC}"
-cd "$DEPLOY_DIR/backend" || exit 1
+# Deploy Main Backend
+echo ""
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Deploying Main Backend${NC}"
+echo -e "${GREEN}========================================${NC}"
+cd /root/quidpath-deployment/backend
 
 if [ ! -f .env ]; then
-    echo -e "${RED}❌ .env file not found in backend directory${NC}"
-    echo "Please create .env file with required environment variables"
+    echo -e "${RED}.env file not found in backend directory${NC}"
     exit 1
 fi
 
-docker-compose build
-docker-compose up -d
+echo -e "${YELLOW}Pulling latest code...${NC}"
+git pull origin main
 
-echo -e "${YELLOW}Waiting for backend to be ready...${NC}"
-sleep 15
+echo -e "${YELLOW}Building Docker image...${NC}"
+docker compose down
+docker compose build --no-cache
 
-docker-compose exec -T backend python manage.py migrate --noinput || true
-docker-compose exec -T backend python manage.py collectstatic --noinput || true
+echo -e "${YELLOW}Starting services...${NC}"
+docker compose up -d
 
-echo -e "${GREEN}✅ Backend deployed${NC}"
-
-# ============================================
-# 2. Deploy Frontend (quidpath.com)
-# ============================================
-echo -e "${BLUE}📦 Deploying Frontend (quidpath.com)...${NC}"
-cd "$DEPLOY_DIR/frontend" || exit 1
-
-if [ ! -f .env ]; then
-    echo -e "${YELLOW}⚠️  .env file not found, creating from template...${NC}"
-    cat > .env << 'EOF'
-NEXT_PUBLIC_API_BASE_URL=https://api.quidpath.com/
-NEXT_PUBLIC_TAZAMA_AI_API_URL=https://ai.quidpath.com/api/tazama/
-NEXT_PUBLIC_BILLING_SERVICE_URL=https://billing.quidpath.com/api/billing
-NODE_ENV=production
-EOF
-fi
-
-docker-compose build
-docker-compose up -d
-
-echo -e "${GREEN}✅ Frontend deployed${NC}"
-
-# ============================================
-# 3. Deploy Billing Service (billing.quidpath.com)
-# ============================================
-echo -e "${BLUE}📦 Deploying Billing Service (billing.quidpath.com)...${NC}"
-cd "$DEPLOY_DIR/billing" || exit 1
-
-if [ ! -f .env ]; then
-    echo -e "${RED}❌ .env file not found in billing directory${NC}"
-    exit 1
-fi
-
-docker-compose build
-docker-compose up -d
-
-echo -e "${YELLOW}Waiting for billing service to be ready...${NC}"
+echo -e "${YELLOW}Waiting for database to be ready...${NC}"
 sleep 10
 
-docker-compose exec -T backend python manage.py migrate --noinput || true
-docker-compose exec -T backend python manage.py collectstatic --noinput || true
+echo -e "${YELLOW}Running migrations...${NC}"
+docker exec django-backend python manage.py migrate
 
-echo -e "${GREEN}✅ Billing service deployed${NC}"
+echo -e "${YELLOW}Collecting static files...${NC}"
+docker exec django-backend python manage.py collectstatic --noinput
 
-# ============================================
-# 4. Deploy Tazama AI Service (ai.quidpath.com)
-# ============================================
-echo -e "${BLUE}📦 Deploying Tazama AI Service (ai.quidpath.com)...${NC}"
-cd "$DEPLOY_DIR/tazama" || exit 1
+echo -e "${GREEN}Main Backend deployed successfully${NC}"
+
+# Deploy Billing Service
+echo ""
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Deploying Billing Service${NC}"
+echo -e "${GREEN}========================================${NC}"
+cd /root/quidpath-deployment/billing
 
 if [ ! -f .env ]; then
-    echo -e "${RED}❌ .env file not found in tazama directory${NC}"
+    echo -e "${RED}.env file not found in billing directory${NC}"
     exit 1
 fi
 
-docker-compose build
-docker-compose up -d
+echo -e "${YELLOW}Pulling latest code...${NC}"
+git pull origin main
 
-echo -e "${YELLOW}Waiting for Tazama service to be ready...${NC}"
+echo -e "${YELLOW}Building Docker image...${NC}"
+docker compose down
+docker compose build --no-cache
+
+echo -e "${YELLOW}Starting services...${NC}"
+docker compose up -d
+
+echo -e "${YELLOW}Waiting for database to be ready...${NC}"
 sleep 10
 
-docker-compose exec -T web python manage.py migrate --noinput || true
-docker-compose exec -T web python manage.py collectstatic --noinput || true
+echo -e "${YELLOW}Running migrations...${NC}"
+docker exec billing-backend python manage.py migrate
 
-echo -e "${GREEN}✅ Tazama AI service deployed${NC}"
+echo -e "${YELLOW}Collecting static files...${NC}"
+docker exec billing-backend python manage.py collectstatic --noinput
 
-# ============================================
-# 5. Setup Nginx (if not already done)
-# ============================================
-echo -e "${BLUE}📦 Setting up Nginx reverse proxy...${NC}"
-if [ ! -f /etc/nginx/sites-enabled/quidpath ]; then
-    echo -e "${YELLOW}Running Nginx setup...${NC}"
-    bash "$DEPLOY_DIR/backend/setup-nginx-ovh.sh"
+echo -e "${GREEN}Billing Service deployed successfully${NC}"
+
+# Deploy Tazama AI Service
+echo ""
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Deploying Tazama AI Service${NC}"
+echo -e "${GREEN}========================================${NC}"
+cd /root/quidpath-deployment/tazama
+
+if [ ! -f .env ]; then
+    echo -e "${RED}.env file not found in tazama directory${NC}"
+    exit 1
+fi
+
+echo -e "${YELLOW}Pulling latest code...${NC}"
+git pull origin main
+
+echo -e "${YELLOW}Building Docker image...${NC}"
+docker compose down
+docker compose build --no-cache
+
+echo -e "${YELLOW}Starting services...${NC}"
+docker compose up -d
+
+echo -e "${YELLOW}Waiting for database to be ready...${NC}"
+sleep 10
+
+echo -e "${YELLOW}Running migrations...${NC}"
+docker exec tazama-ai-backend python manage.py migrate
+
+echo -e "${YELLOW}Collecting static files...${NC}"
+docker exec tazama-ai-backend python manage.py collectstatic --noinput
+
+echo -e "${GREEN}Tazama AI Service deployed successfully${NC}"
+
+# Health Check
+echo ""
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Health Check${NC}"
+echo -e "${GREEN}========================================${NC}"
+
+echo -e "${YELLOW}Checking Docker containers...${NC}"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+echo ""
+echo -e "${YELLOW}Checking service health...${NC}"
+
+echo -n "Main Backend: "
+if curl -s -f http://localhost:8000/api/auth/health/ > /dev/null 2>&1; then
+    echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${GREEN}Nginx already configured${NC}"
-    systemctl reload nginx
+    echo -e "${RED}FAILED${NC}"
 fi
 
-# ============================================
-# Summary
-# ============================================
+echo -n "Billing Service: "
+if curl -s -f http://localhost:8002/api/billing/health/ > /dev/null 2>&1; then
+    echo -e "${GREEN}OK${NC}"
+else
+    echo -e "${RED}FAILED${NC}"
+fi
+
+echo -n "Tazama AI: "
+if curl -s -f http://localhost:8001/api/tazama/health/ > /dev/null 2>&1; then
+    echo -e "${GREEN}OK${NC}"
+else
+    echo -e "${RED}FAILED${NC}"
+fi
+
 echo ""
-echo -e "${GREEN}=========================================="
-echo "✅ All Services Deployed Successfully!"
-echo "==========================================${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Deployment Complete${NC}"
+echo -e "${GREEN}========================================${NC}"
 echo ""
-echo "Services are running on:"
-echo "  • Frontend:     https://quidpath.com"
-echo "  • Backend API:  https://api.quidpath.com"
-echo "  • Billing:       https://billing.quidpath.com"
-echo "  • Tazama AI:    https://ai.quidpath.com"
+echo -e "${YELLOW}Next Steps:${NC}"
+echo "1. Verify all services are running: docker ps"
+echo "2. Check logs: docker logs <container-name>"
+echo "3. Test endpoints:"
+echo "   - Main Backend: https://api.quidpath.com/api/auth/health/"
+echo "   - Billing: https://billing.quidpath.com/api/billing/health/"
+echo "   - Tazama AI: https://ai.quidpath.com/api/tazama/health/"
+echo "4. Create superusers if needed:"
+echo "   - docker exec -it django-backend python manage.py createsuperuser"
+echo "   - docker exec -it billing-backend python manage.py createsuperuser"
+echo "   - docker exec -it tazama-ai-backend python manage.py createsuperuser"
 echo ""
-echo "Check status with:"
-echo "  docker ps"
-echo ""
-echo "View logs with:"
-echo "  docker-compose -f ~/quidpath-deployment/backend/docker-compose.yml logs -f"
-echo "  docker-compose -f ~/quidpath-deployment/frontend/docker-compose.yml logs -f"
-echo "  docker-compose -f ~/quidpath-deployment/billing/docker-compose.yml logs -f"
-echo "  docker-compose -f ~/quidpath-deployment/tazama/docker-compose.yml logs -f"

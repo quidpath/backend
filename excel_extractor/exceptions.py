@@ -21,4 +21,3 @@ class MissingFieldError(ExtractorError):
 
 class ValidationError(ExtractorError):
     """Raised when internal validation rules fail."""
-

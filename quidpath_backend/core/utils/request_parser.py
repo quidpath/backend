@@ -17,16 +17,16 @@ def get_request_data(request):
         if request is None:
             return {}
 
-        content_type = request.META.get('CONTENT_TYPE', '')
+        content_type = request.META.get("CONTENT_TYPE", "")
         method = request.method.upper()
 
-        if 'application/json' in content_type:
-            return json.loads(request.body or '{}')
-        elif 'multipart/form-data' in content_type:
+        if "application/json" in content_type:
+            return json.loads(request.body or "{}")
+        elif "multipart/form-data" in content_type:
             return request.POST.dict()
-        elif method == 'GET':
+        elif method == "GET":
             return request.GET.dict()
-        elif method == 'POST':
+        elif method == "POST":
             return request.POST.dict()
         elif request.body:
             return json.loads(request.body)
@@ -37,6 +37,7 @@ def get_request_data(request):
     except Exception as e:
         raise ValueError(f"Error parsing request data: {e}")
 
+
 def get_data(request):
     data = get_request_data(request)
 
@@ -46,6 +47,7 @@ def get_data(request):
         "origin": request.META.get("HTTP_ORIGIN"),
     }
     return data, metadata
+
 
 def get_clean_data(request):
     data = get_request_data(request)
@@ -87,7 +89,9 @@ def resolve_user_from_token(request):
         user = CustomUser.objects.filter(id=user_id).first()
 
         # ✅ Fix: Correct way to get CorporateUser if it inherits from CustomUser
-        corporate_user = CorporateUser.objects.filter(pk=user.pk).first() if user else None
+        corporate_user = (
+            CorporateUser.objects.filter(pk=user.pk).first() if user else None
+        )
 
         return user, corporate_user
 

@@ -55,4 +55,3 @@ def validate_financials(payload: Dict[str, int], tolerance: float = 0.01) -> Non
             raise ValidationError(
                 f"{message} Expected {expected:,} for {field}, got {actual:,}."
             )
-

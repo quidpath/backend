@@ -1,9 +1,11 @@
 from django.views.decorators.csrf import csrf_exempt
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
+
 from quidpath_backend.core.utils.email import NotificationServiceHandler
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+
 
 @csrf_exempt
 def add_bank_charge(request):
@@ -30,7 +32,9 @@ def add_bank_charge(request):
     required_items = ["bank_account", "charge_type", "amount"]
     for item in required_items:
         if item not in data:
-            return ResponseProvider(message=f"{item.replace('_', ' ').title()} is required", code=400).bad_request()
+            return ResponseProvider(
+                message=f"{item.replace('_', ' ').title()} is required", code=400
+            ).bad_request()
 
     try:
         bank_account_id = data["bank_account"]
@@ -39,11 +43,13 @@ def add_bank_charge(request):
         bank_accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"id": bank_account_id, "is_active": True}
+            data={"id": bank_account_id, "is_active": True},
         )
 
         if not bank_accounts:
-            return ResponseProvider(message="Bank account not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Bank account not found or inactive", code=404
+            ).bad_request()
 
         bank_account = bank_accounts[0]
 
@@ -57,8 +63,8 @@ def add_bank_charge(request):
                 "amount": data["amount"],
                 "description": data.get("description"),
                 "charge_date": data.get("charge_date"),
-                "linked_transaction_id": data.get("linked_transaction")
-            }
+                "linked_transaction_id": data.get("linked_transaction"),
+            },
         )
 
         # Retrieve corporate and send notification
@@ -66,18 +72,17 @@ def add_bank_charge(request):
         corporate_email = None
         if corporate_id:
             corporate = registry.database(
-                model_name="Corporate",
-                operation="get",
-                data={"id": corporate_id}
+                model_name="Corporate", operation="get", data={"id": corporate_id}
             )
             corporate_email = corporate.get("email") if corporate else None
 
         if corporate_email:
-            notification_payload = [{
-                "message_type": "EMAIL",
-                "organisation_id": corporate_id,
-                "destination": corporate_email,
-                "message": f"""
+            notification_payload = [
+                {
+                    "message_type": "EMAIL",
+                    "organisation_id": corporate_id,
+                    "destination": corporate_email,
+                    "message": f"""
                     Dear {corporate.get("name", "Corporate")},
                     <br/><br/>
                     A new bank charge has been recorded on your account:
@@ -89,9 +94,12 @@ def add_bank_charge(request):
                     </ul>
                     <br/>Regards,<br/>ERP Team
                 """,
-            }]
+                }
+            ]
             try:
-                notif_response = NotificationServiceHandler().send_notification(notification_payload)
+                notif_response = NotificationServiceHandler().send_notification(
+                    notification_payload
+                )
             except Exception as email_error:
                 notif_response = {"status": "failed", "message": str(email_error)}
         else:
@@ -105,13 +113,11 @@ def add_bank_charge(request):
             state_name="Completed",
             extra={"charge_id": new_charge["id"]},
             notification_resp=notif_response,
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
-            message="Bank charge recorded successfully",
-            data=new_charge,
-            code=201
+            message="Bank charge recorded successfully", data=new_charge, code=201
         ).success()
 
     except Exception as e:
@@ -120,9 +126,12 @@ def add_bank_charge(request):
             user=metadata.get("user"),
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while creating bank charge", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while creating bank charge", code=500
+        ).exception()
+
 
 @csrf_exempt
 def list_bank_charges(request):
@@ -143,34 +152,40 @@ def list_bank_charges(request):
 
     corporate_id = data.get("corporate")
     if not corporate_id:
-        return ResponseProvider(message="Corporate ID is required", code=400).bad_request()
+        return ResponseProvider(
+            message="Corporate ID is required", code=400
+        ).bad_request()
 
     try:
         # Ensure the corporate exists
         corporate = registry.database(
             model_name="Corporate",
             operation="filter",
-            data={"id": corporate_id, "is_active": True}
+            data={"id": corporate_id, "is_active": True},
         )
         if not corporate:
-            return ResponseProvider(message="Corporate not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Corporate not found or inactive", code=404
+            ).bad_request()
 
         # Get all active bank accounts
         bank_accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"corporate_id": corporate_id, "is_active": True}
+            data={"corporate_id": corporate_id, "is_active": True},
         )
 
         account_ids = [acct["id"] for acct in bank_accounts]
         if not account_ids:
-            return ResponseProvider(message="No active bank accounts found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="No active bank accounts found for this corporate", code=404
+            ).bad_request()
 
         # Fetch charges
         charges = registry.database(
             model_name="BankCharge",
             operation="filter",
-            data={"bank_account_id__in": account_ids}
+            data={"bank_account_id__in": account_ids},
         )
 
         # Log successful retrieval
@@ -179,13 +194,13 @@ def list_bank_charges(request):
             user=metadata.get("user"),
             message=f"Retrieved {len(charges)} bank charges for corporate {corporate_id}",
             state_name="Success",
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message="Bank charges retrieved successfully",
             data={"charges": charges, "count": len(charges)},
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -194,9 +209,12 @@ def list_bank_charges(request):
             user=metadata.get("user"),
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving bank charges", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving bank charges", code=500
+        ).exception()
+
 
 @csrf_exempt
 def update_bank_charge(request):
@@ -221,39 +239,59 @@ def update_bank_charge(request):
     registry = ServiceRegistry()
 
     if "id" not in data:
-        return ResponseProvider(message="Bank charge ID is required", code=400).bad_request()
+        return ResponseProvider(
+            message="Bank charge ID is required", code=400
+        ).bad_request()
 
     try:
         charge_id = data["id"]
 
         # Validate existence of bank charge
         charge = registry.database(
-            model_name="BankCharge",
-            operation="filter",
-            data={"id": charge_id}
+            model_name="BankCharge", operation="filter", data={"id": charge_id}
         )
         if not charge:
-            return ResponseProvider(message="Bank charge not found", code=404).bad_request()
+            return ResponseProvider(
+                message="Bank charge not found", code=404
+            ).bad_request()
 
         # Prepare update fields
-        allowed_fields = ["charge_type", "amount", "description", "charge_date", "linked_transaction"]
-        update_fields = {key: value for key, value in data.items() if key in allowed_fields and value is not None}
+        allowed_fields = [
+            "charge_type",
+            "amount",
+            "description",
+            "charge_date",
+            "linked_transaction",
+        ]
+        update_fields = {
+            key: value
+            for key, value in data.items()
+            if key in allowed_fields and value is not None
+        }
         if not update_fields:
-            return ResponseProvider(message="No valid fields provided for update", code=400).bad_request()
+            return ResponseProvider(
+                message="No valid fields provided for update", code=400
+            ).bad_request()
 
         # Handle linked_transaction ForeignKey
         if "linked_transaction" in update_fields:
-            linked_transaction_id = update_fields.pop("linked_transaction")  # Remove from update_fields
+            linked_transaction_id = update_fields.pop(
+                "linked_transaction"
+            )  # Remove from update_fields
             if linked_transaction_id:
                 # Validate linked transaction exists
                 linked_transaction = registry.database(
                     model_name="BankTransaction",
                     operation="filter",
-                    data={"id": linked_transaction_id}
+                    data={"id": linked_transaction_id},
                 )
                 if not linked_transaction:
-                    return ResponseProvider(message="Linked transaction not found", code=404).bad_request()
-                update_fields["linked_transaction_id"] = linked_transaction_id  # Use _id for ForeignKey
+                    return ResponseProvider(
+                        message="Linked transaction not found", code=404
+                    ).bad_request()
+                update_fields["linked_transaction_id"] = (
+                    linked_transaction_id  # Use _id for ForeignKey
+                )
             else:
                 update_fields["linked_transaction_id"] = None
 
@@ -264,7 +302,7 @@ def update_bank_charge(request):
             model_name="BankCharge",
             operation="update",
             instance_id=charge_id,
-            data=update_fields
+            data=update_fields,
         )
 
         # Log update
@@ -273,14 +311,15 @@ def update_bank_charge(request):
             user=metadata.get("user"),
             message=f"Bank charge {charge_id} updated",
             state_name="Completed",
-            extra={"charge_id": charge_id, "updated_fields": list(update_fields.keys())},
-            request=request
+            extra={
+                "charge_id": charge_id,
+                "updated_fields": list(update_fields.keys()),
+            },
+            request=request,
         )
 
         return ResponseProvider(
-            message="Bank charge updated successfully",
-            data=updated_charge,
-            code=200
+            message="Bank charge updated successfully", data=updated_charge, code=200
         ).success()
 
     except Exception as e:
@@ -289,9 +328,12 @@ def update_bank_charge(request):
             user=metadata.get("user"),
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while updating bank charge", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while updating bank charge", code=500
+        ).exception()
+
 
 @csrf_exempt
 def delete_bank_charge(request):
@@ -311,26 +353,28 @@ def delete_bank_charge(request):
     registry = ServiceRegistry()
 
     if "id" not in data:
-        return ResponseProvider(message="Bank charge ID is required", code=400).bad_request()
+        return ResponseProvider(
+            message="Bank charge ID is required", code=400
+        ).bad_request()
 
     try:
         charge_id = data["id"]
 
         # Check existence
         existing = registry.database(
-            model_name="BankCharge",
-            operation="filter",
-            data={"id": charge_id}
+            model_name="BankCharge", operation="filter", data={"id": charge_id}
         )
         if not existing:
-            return ResponseProvider(message="Bank charge not found", code=404).bad_request()
+            return ResponseProvider(
+                message="Bank charge not found", code=404
+            ).bad_request()
 
         # Mark as inactive
         deleted = registry.database(
             model_name="BankCharge",
             operation="delete",
             instance_id=charge_id,
-            data={"id": charge_id, "is_active": False}
+            data={"id": charge_id, "is_active": False},
         )
 
         # Log deletion
@@ -340,13 +384,13 @@ def delete_bank_charge(request):
             message=f"Bank charge {charge_id} soft-deleted",
             state_name="Completed",
             extra={"charge_id": charge_id},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message="Bank charge deleted successfully",
             data={"charge_id": charge_id, "status": "inactive"},
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -355,6 +399,8 @@ def delete_bank_charge(request):
             user=metadata.get("user"),
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while deleting bank charge", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while deleting bank charge", code=500
+        ).exception()

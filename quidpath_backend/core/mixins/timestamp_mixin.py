@@ -1,5 +1,7 @@
 # core/mixins/timestamp_mixin.py
 from django.utils import timezone
+
+
 class TimestampMixin:
     def save(self, *args, **kwargs):
         if not self.pk:  # If the object is being created

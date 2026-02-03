@@ -1,8 +1,9 @@
 from django.contrib import admin
-from Authentication.models.logbase import (
-    State, NotificationType, Notification,
-    TransactionType, Transaction, Organisation
-)
+
+from Authentication.models.logbase import (Notification, NotificationType,
+                                           Organisation, State, Transaction,
+                                           TransactionType)
+
 
 # ✅ State Admin
 @admin.register(State)
@@ -23,10 +24,7 @@ class NotificationTypeAdmin(admin.ModelAdmin):
 # ✅ Notification Admin
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
-    list_display = (
-        "title", "destination", "notification_type",
-        "state", "created_at"
-    )
+    list_display = ("title", "destination", "notification_type", "state", "created_at")
     search_fields = ("title", "destination", "message")
     list_filter = ("notification_type", "state", "created_at")
 
@@ -43,8 +41,13 @@ class TransactionTypeAdmin(admin.ModelAdmin):
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
     list_display = (
-        "reference", "transaction_type", "user", "amount",
-        "state", "source_ip", "created_at"
+        "reference",
+        "transaction_type",
+        "user",
+        "amount",
+        "state",
+        "source_ip",
+        "created_at",
     )
     search_fields = ("reference", "message", "user__username", "transaction_type__name")
     list_filter = ("transaction_type", "state", "created_at")

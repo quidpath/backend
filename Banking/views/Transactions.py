@@ -1,15 +1,14 @@
 import traceback
-
-from django.shortcuts import get_object_or_404
-
-from django.views.decorators.csrf import csrf_exempt
-from django.utils import timezone
 import uuid
 
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+
 from Banking.models import BankTransaction
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.email import NotificationServiceHandler
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
@@ -41,7 +40,9 @@ def create_transaction(request):
     # Validate required fields
     for field in required_fields:
         if not data.get(field):
-            return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+            return ResponseProvider(
+                message=f"{field.replace('_', ' ').title()} is required", code=400
+            ).bad_request()
 
     try:
         registry = ServiceRegistry()
@@ -52,20 +53,24 @@ def create_transaction(request):
         corporates = registry.database(
             model_name="Corporate",
             operation="filter",
-            data={"id": corporate_id, "is_active": True}
+            data={"id": corporate_id, "is_active": True},
         )
         if not corporates:
-            return ResponseProvider(message="Corporate not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Corporate not found or inactive", code=404
+            ).bad_request()
         corporate = corporates[0]
 
         # Validate bank account
         bank_accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"id": bank_account_id, "corporate": corporate_id, "is_active": True}
+            data={"id": bank_account_id, "corporate": corporate_id, "is_active": True},
         )
         if not bank_accounts:
-            return ResponseProvider(message="Bank account not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Bank account not found or inactive", code=404
+            ).bad_request()
 
         # Create transaction with corrected model name
         transaction = registry.database(
@@ -80,17 +85,18 @@ def create_transaction(request):
                 "transaction_date": data.get("transaction_date", timezone.now().date()),
                 "status": data.get("status", "pending"),
                 "created_by": metadata.get("user"),
-            }
+            },
         )
 
         # Email Notification using dictionary access
         destination_email = corporate.get("email")
         if destination_email:
-            notification_payload = [{
-                "message_type": "EMAIL",
-                "organisation_id": corporate["id"],
-                "destination": destination_email,
-                "message": f"""
+            notification_payload = [
+                {
+                    "message_type": "EMAIL",
+                    "organisation_id": corporate["id"],
+                    "destination": destination_email,
+                    "message": f"""
                     Dear {corporate.get("name", "Corporate")},
                     <br/><br/>
                     A new transaction has been added:
@@ -101,8 +107,11 @@ def create_transaction(request):
                     </ul>
                     <br/>Regards,<br/>ERP Team
                 """,
-            }]
-            notif_response = NotificationServiceHandler().send_notification(notification_payload)
+                }
+            ]
+            notif_response = NotificationServiceHandler().send_notification(
+                notification_payload
+            )
         else:
             notif_response = {"status": "skipped", "message": "No email on file"}
 
@@ -114,13 +123,13 @@ def create_transaction(request):
             state_name="Completed",
             extra={"transaction_id": str(transaction["id"])},
             notification_resp=notif_response,
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message="Transaction created successfully",
             data={"id": str(transaction["id"])},
-            code=201
+            code=201,
         ).success()
 
     except Exception as e:
@@ -129,9 +138,12 @@ def create_transaction(request):
             user=metadata.get("user"),
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while creating transaction", code=500).bad_request()
+        return ResponseProvider(
+            message="An error occurred while creating transaction", code=500
+        ).bad_request()
+
 
 @csrf_exempt
 def get_transaction(request, transaction_id):
@@ -157,7 +169,7 @@ def get_transaction(request, transaction_id):
             message=f"Transaction {transaction_id} retrieved",
             state_name="Success",
             extra={"transaction_id": str(transaction_id)},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
@@ -171,9 +183,13 @@ def get_transaction(request, transaction_id):
                 "narration": transaction.narration,
                 "transaction_date": transaction.transaction_date,
                 "status": transaction.status,
-                "created_by": str(transaction.created_by_id) if transaction.created_by_id else None
+                "created_by": (
+                    str(transaction.created_by_id)
+                    if transaction.created_by_id
+                    else None
+                ),
             },
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -182,9 +198,12 @@ def get_transaction(request, transaction_id):
             user=metadata.get("user"),
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="Error retrieving transaction", code=500).server_error()
+        return ResponseProvider(
+            message="Error retrieving transaction", code=500
+        ).server_error()
+
 
 @csrf_exempt
 def list_transactions(request):
@@ -202,10 +221,14 @@ def list_transactions(request):
         data, metadata = get_clean_data(request)
         user = metadata.get("user")
         if not user:
-            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+            return ResponseProvider(
+                message="User not authenticated", code=401
+            ).unauthorized()
 
         # Get user_id safely
-        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        user_id = (
+            user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+        )
         if not user_id:
             return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -215,29 +238,35 @@ def list_transactions(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0].get("corporate_id")
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Ensure corporate is active
         corporates = registry.database(
             model_name="Corporate",
             operation="filter",
-            data={"id": corporate_id, "is_active": True}
+            data={"id": corporate_id, "is_active": True},
         )
         if not corporates:
-            return ResponseProvider(message="Corporate not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Corporate not found or inactive", code=404
+            ).bad_request()
 
         # Get all active bank accounts for this corporate
         bank_accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"corporate_id": corporate_id, "is_active": True}
+            data={"corporate_id": corporate_id, "is_active": True},
         )
         bank_account_ids = [acc["id"] for acc in bank_accounts]
 
@@ -245,7 +274,7 @@ def list_transactions(request):
         transactions = registry.database(
             model_name="BankTransaction",
             operation="filter",
-            data={"bank_account_id__in": bank_account_ids}
+            data={"bank_account_id__in": bank_account_ids},
         )
 
         # Log successful retrieval
@@ -255,7 +284,7 @@ def list_transactions(request):
             message=f"Retrieved {len(transactions)} transactions for corporate {corporate_id}",
             state_name="Success",
             extra={"transaction_count": len(transactions)},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
@@ -263,30 +292,35 @@ def list_transactions(request):
             data={
                 "transactions": transactions,
                 "count": len(transactions),
-                "corporate_id": corporate_id
+                "corporate_id": corporate_id,
             },
-            code=200
+            code=200,
         ).success()
 
     except ValueError as ve:
         TransactionLogBase.log(
             transaction_type="BANK_TRANSACTION_LIST_VALIDATION_ERROR",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=f"Validation error: {str(ve)}",
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message=f"Validation error: {str(ve)}", code=400).bad_request()
+        return ResponseProvider(
+            message=f"Validation error: {str(ve)}", code=400
+        ).bad_request()
 
     except Exception as e:
         TransactionLogBase.log(
             transaction_type="BANK_TRANSACTION_LIST_FAILED",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=f"Unexpected error: {str(e)}",
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving transactions", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving transactions", code=500
+        ).exception()
+
 
 @csrf_exempt
 def update_transaction(request):
@@ -312,7 +346,9 @@ def update_transaction(request):
     transaction_id = data.get("id")
 
     if not transaction_id:
-        return ResponseProvider(message="Transaction ID is required", code=400).bad_request()
+        return ResponseProvider(
+            message="Transaction ID is required", code=400
+        ).bad_request()
 
     try:
         registry = ServiceRegistry()
@@ -321,16 +357,31 @@ def update_transaction(request):
         existing_transactions = registry.database(
             model_name="BankTransaction",
             operation="filter",
-            data={"id": transaction_id}
+            data={"id": transaction_id},
         )
         if not existing_transactions:
-            return ResponseProvider(message="Transaction not found", code=404).bad_request()
+            return ResponseProvider(
+                message="Transaction not found", code=404
+            ).bad_request()
 
         # Prepare update fields
-        allowed_fields = ["transaction_type", "amount", "reference", "narration", "transaction_date", "status"]
-        update_fields = {key: value for key, value in data.items() if key in allowed_fields and value is not None}
+        allowed_fields = [
+            "transaction_type",
+            "amount",
+            "reference",
+            "narration",
+            "transaction_date",
+            "status",
+        ]
+        update_fields = {
+            key: value
+            for key, value in data.items()
+            if key in allowed_fields and value is not None
+        }
         if not update_fields:
-            return ResponseProvider(message="No valid fields provided for update", code=400).bad_request()
+            return ResponseProvider(
+                message="No valid fields provided for update", code=400
+            ).bad_request()
 
         # Include ID in update data
         update_fields["id"] = transaction_id
@@ -340,7 +391,7 @@ def update_transaction(request):
             model_name="BankTransaction",
             operation="update",
             instance_id=transaction_id,
-            data=update_fields
+            data=update_fields,
         )
 
         # Log update
@@ -349,14 +400,17 @@ def update_transaction(request):
             user=metadata.get("user"),
             message=f"Transaction {transaction_id} updated",
             state_name="Completed",
-            extra={"transaction_id": transaction_id, "updated_fields": list(update_fields.keys())},
-            request=request
+            extra={
+                "transaction_id": transaction_id,
+                "updated_fields": list(update_fields.keys()),
+            },
+            request=request,
         )
 
         return ResponseProvider(
             message="Transaction updated successfully",
             data=updated_transaction,
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -365,9 +419,12 @@ def update_transaction(request):
             user=metadata.get("user"),
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="Failed to update transaction", code=500).exception()
+        return ResponseProvider(
+            message="Failed to update transaction", code=500
+        ).exception()
+
 
 @csrf_exempt
 def delete_transaction(request):
@@ -387,7 +444,9 @@ def delete_transaction(request):
     transaction_id = data.get("id")
 
     if not transaction_id:
-        return ResponseProvider(message="Transaction ID is required", code=400).bad_request()
+        return ResponseProvider(
+            message="Transaction ID is required", code=400
+        ).bad_request()
 
     try:
         registry = ServiceRegistry()
@@ -396,16 +455,18 @@ def delete_transaction(request):
         existing_transactions = registry.database(
             model_name="BankTransaction",
             operation="filter",
-            data={"id": transaction_id}
+            data={"id": transaction_id},
         )
         if not existing_transactions:
-            return ResponseProvider(message="Transaction not found", code=404).bad_request()
+            return ResponseProvider(
+                message="Transaction not found", code=404
+            ).bad_request()
 
         # Perform delete
         registry.database(
             model_name="BankTransaction",
             operation="delete",
-            data={"id": transaction_id}
+            data={"id": transaction_id},
         )
 
         # Log delete
@@ -415,13 +476,13 @@ def delete_transaction(request):
             message=f"Transaction {transaction_id} deleted",
             state_name="Completed",
             extra={"transaction_id": transaction_id},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message="Transaction deleted successfully",
             data={"transaction_id": transaction_id},
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -430,7 +491,8 @@ def delete_transaction(request):
             user=metadata.get("user"),
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="Failed to delete transaction", code=500).exception()
-
+        return ResponseProvider(
+            message="Failed to delete transaction", code=500
+        ).exception()

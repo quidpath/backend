@@ -1,14 +1,10 @@
-from django.contrib.auth.models import (
-    AbstractBaseUser,
-    PermissionsMixin,
-    BaseUserManager,
-    Group,
-    Permission
-)
+import random
+from datetime import timedelta
+
+from django.contrib.auth.models import (AbstractBaseUser, BaseUserManager,
+                                        Group, Permission, PermissionsMixin)
 from django.db import models
 from django.utils.timezone import now
-from datetime import timedelta
-import random
 
 from quidpath_backend.core.base_models.base import BaseModel
 
@@ -24,15 +20,15 @@ class CustomUserManager(BaseUserManager):
         return user
 
     def create_superuser(self, username, email, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
         return self.create_user(username, email, password, **extra_fields)
 
 
 class CustomUser(BaseModel, AbstractBaseUser, PermissionsMixin):
     username = models.CharField(max_length=255, unique=True)
     email = models.EmailField(unique=True)
-    profilePhoto = models.ImageField(upload_to='profile_photos/', blank=True, null=True)
+    profilePhoto = models.ImageField(upload_to="profile_photos/", blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     address = models.CharField(max_length=255, blank=True, null=True)
     city = models.CharField(max_length=255, blank=True, null=True)
@@ -50,11 +46,13 @@ class CustomUser(BaseModel, AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
 
-    groups = models.ManyToManyField(Group, related_name='customuser_set', blank=True)
-    user_permissions = models.ManyToManyField(Permission, related_name='customuser_set', blank=True)
+    groups = models.ManyToManyField(Group, related_name="customuser_set", blank=True)
+    user_permissions = models.ManyToManyField(
+        Permission, related_name="customuser_set", blank=True
+    )
 
-    USERNAME_FIELD = 'username'
-    REQUIRED_FIELDS = ['email']
+    USERNAME_FIELD = "username"
+    REQUIRED_FIELDS = ["email"]
 
     objects = CustomUserManager()
 

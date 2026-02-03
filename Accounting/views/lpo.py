@@ -1,15 +1,18 @@
-from decimal import Decimal, InvalidOperation
-import json
 import ast
+import json
 import re
-from django.views.decorators.csrf import csrf_exempt
-from django.db import transaction
 from collections import Counter
+from decimal import Decimal, InvalidOperation
+
+from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
+
 from quidpath_backend.core.utils.DocsEmail import DocumentNotificationHandler
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+
 
 def to_decimal(val, default="0"):
     """Safely convert any incoming value to Decimal."""
@@ -19,6 +22,7 @@ def to_decimal(val, default="0"):
         return Decimal(str(val))
     except (InvalidOperation, ValueError, TypeError):
         return Decimal(default)
+
 
 def normalize_taxable_id(raw):
     """
@@ -30,7 +34,7 @@ def normalize_taxable_id(raw):
     if isinstance(raw, dict) and raw.get("id"):
         return raw.get("id")
     if isinstance(raw, str):
-        s = raw.strip().strip('\'"“”‘’')
+        s = raw.strip().strip("'\"“”‘’")
         if s.startswith("{") and s.endswith("}"):
             try:
                 d = json.loads(s.replace("'", '"'))
@@ -46,6 +50,7 @@ def normalize_taxable_id(raw):
         return s
     return None
 
+
 def get_tax_rate_value(tax_rate):
     """Extract tax rate percentage from TaxRate label (e.g., 'VAT (16%)' -> 0.16)."""
     if not tax_rate or not tax_rate.get("name"):
@@ -54,11 +59,11 @@ def get_tax_rate_value(tax_rate):
             user=None,
             message="Tax rate name missing or empty",
             state_name="Warning",
-            request=None
+            request=None,
         )
         return Decimal("0")
     label = tax_rate["name"]
-    match = re.search(r'\((\d+)%\)', label)
+    match = re.search(r"\((\d+)%\)", label)
     if match:
         try:
             rate = Decimal(match.group(1)) / Decimal("100")
@@ -69,7 +74,7 @@ def get_tax_rate_value(tax_rate):
                 user=None,
                 message=f"Invalid tax rate label format: {label}",
                 state_name="Failed",
-                request=None
+                request=None,
             )
             return Decimal("0")
     TransactionLogBase.log(
@@ -77,9 +82,10 @@ def get_tax_rate_value(tax_rate):
         user=None,
         message=f"Could not parse tax rate from label: {label}",
         state_name="Warning",
-        request=None
+        request=None,
     )
     return Decimal("0")
+
 
 @csrf_exempt
 def update_purchase_order(request):
@@ -109,6 +115,7 @@ def update_purchase_order(request):
         - discount: Discount amount
         - taxable_id: Tax rate ID or exempt status
     """
+
     def normalize_taxable_id(raw):
         """
         Accepts any of:
@@ -122,7 +129,7 @@ def update_purchase_order(request):
         if isinstance(raw, dict) and raw.get("id"):
             return raw.get("id")
         if isinstance(raw, str):
-            s = raw.strip().strip('\'"“”‘’')
+            s = raw.strip().strip("'\"“”‘’")
             if s.startswith("{") and s.endswith("}"):
                 try:
                     d = json.loads(s.replace("'", '"'))
@@ -139,9 +146,11 @@ def update_purchase_order(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -152,48 +161,76 @@ def update_purchase_order(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Validate required fields
-        required_fields = ["id", "vendor", "date", "number", "expected_delivery", "created_by"]
+        required_fields = [
+            "id",
+            "vendor",
+            "date",
+            "number",
+            "expected_delivery",
+            "created_by",
+        ]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         # Validate purchase order
         purchase_orders = registry.database(
             model_name="PurchaseOrder",
             operation="filter",
-            data={"id": data["id"], "corporate_id": corporate_id}
+            data={"id": data["id"], "corporate_id": corporate_id},
         )
         if not purchase_orders:
-            return ResponseProvider(message="Purchase order not found", code=404).bad_request()
+            return ResponseProvider(
+                message="Purchase order not found", code=404
+            ).bad_request()
         purchase_order_id = purchase_orders[0]["id"]
 
         # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id": data["vendor"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["vendor"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not vendors:
-            return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor not found or inactive for this corporate", code=404
+            ).bad_request()
 
         # Validate created_by user
         created_by_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"id": data["created_by"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["created_by"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not created_by_users:
-            return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Created by user not found or inactive for this corporate",
+                code=404,
+            ).bad_request()
 
         # Validate optional quotation by number
         quotation = None
@@ -201,10 +238,13 @@ def update_purchase_order(request):
             quotations = registry.database(
                 model_name="Quotation",
                 operation="filter",
-                data={"number": data["quotation_number"], "corporate_id": corporate_id}
+                data={"number": data["quotation_number"], "corporate_id": corporate_id},
             )
             if not quotations:
-                return ResponseProvider(message=f"Quotation with number {data['quotation_number']} not found for this corporate", code=404).bad_request()
+                return ResponseProvider(
+                    message=f"Quotation with number {data['quotation_number']} not found for this corporate",
+                    code=404,
+                ).bad_request()
             quotation = quotations[0]
 
         # Normalize status
@@ -215,33 +255,42 @@ def update_purchase_order(request):
         # Process lines and calculate totals
         submitted_lines = data.get("lines", [])
         if not submitted_lines:
-            return ResponseProvider(message="At least one purchase order line is required", code=400).bad_request()
+            return ResponseProvider(
+                message="At least one purchase order line is required", code=400
+            ).bad_request()
 
-        sub_total = Decimal('0.00')
-        tax_total = Decimal('0.00')
-        total_discount = Decimal('0.00')
-        total = Decimal('0.00')
+        sub_total = Decimal("0.00")
+        tax_total = Decimal("0.00")
+        total_discount = Decimal("0.00")
+        total = Decimal("0.00")
 
         for line_data in submitted_lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
+            required_line_fields = [
+                "description",
+                "quantity",
+                "unit_price",
+                "discount",
+                "taxable_id",
+            ]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Purchase order line field {field.replace('_', ' ').title()} is required",
-                        code=400).bad_request()
+                        code=400,
+                    ).bad_request()
 
             taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
             if taxable_id:
                 tax_rates = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id}
+                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
                 )
                 if not tax_rates:
-                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                    return ResponseProvider(
+                        message=f"Tax rate {taxable_id} not found", code=404
+                    ).bad_request()
                 tax_rate_value = get_tax_rate_value(tax_rates[0])
             else:
-                tax_rate_value = Decimal('0')
+                tax_rate_value = Decimal("0")
 
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
@@ -282,37 +331,43 @@ def update_purchase_order(request):
                 model_name="PurchaseOrder",
                 operation="update",
                 instance_id=purchase_order_id,
-                data=purchase_order_data
+                data=purchase_order_data,
             )
 
             # Delete omitted lines
             existing_lines = registry.database(
                 model_name="PurchaseOrderLine",
                 operation="filter",
-                data={"purchase_order_id": purchase_order["id"]}
+                data={"purchase_order_id": purchase_order["id"]},
             )
-            existing_line_ids = {line["id"] for line in existing_lines if line.get("id")}
-            submitted_line_ids = {line.get("id") for line in submitted_lines if line.get("id")}
+            existing_line_ids = {
+                line["id"] for line in existing_lines if line.get("id")
+            }
+            submitted_line_ids = {
+                line.get("id") for line in submitted_lines if line.get("id")
+            }
 
             for line in existing_lines:
                 if line["id"] not in submitted_line_ids:
                     registry.database(
                         model_name="PurchaseOrderLine",
                         operation="delete",
-                        instance_id=line["id"]
+                        instance_id=line["id"],
                     )
 
             # Create or update lines
             for line_data in submitted_lines:
                 taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
-                tax_rate_value = Decimal('0')
+                tax_rate_value = Decimal("0")
                 if taxable_id:
                     tax_rates = registry.database(
                         model_name="TaxRate",
                         operation="filter",
-                        data={"id": taxable_id}
+                        data={"id": taxable_id},
                     )
-                    tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
+                    tax_rate_value = (
+                        get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal("0")
+                    )
 
                 qty = to_decimal(line_data["quantity"])
                 unit_price = to_decimal(line_data["unit_price"])
@@ -342,13 +397,13 @@ def update_purchase_order(request):
                         model_name="PurchaseOrderLine",
                         operation="update",
                         instance_id=line_data["id"],
-                        data=line_payload
+                        data=line_payload,
                     )
                 else:
                     registry.database(
                         model_name="PurchaseOrderLine",
                         operation="create",
-                        data=line_payload
+                        data=line_payload,
                     )
 
         # Log update
@@ -357,15 +412,18 @@ def update_purchase_order(request):
             user=user,
             message=f"Purchase order {purchase_order['number']} updated and posted for corporate {corporate_id} with status {purchase_order['status']}",
             state_name="Completed",
-            extra={"purchase_order_id": purchase_order["id"], "line_count": len(submitted_lines)},
-            request=request
+            extra={
+                "purchase_order_id": purchase_order["id"],
+                "line_count": len(submitted_lines),
+            },
+            request=request,
         )
 
         # Fetch fresh lines for response
         db_lines = registry.database(
             model_name="PurchaseOrderLine",
             operation="filter",
-            data={"purchase_order_id": purchase_order["id"]}
+            data={"purchase_order_id": purchase_order["id"]},
         )
         purchase_order["lines"] = [
             {
@@ -380,15 +438,15 @@ def update_purchase_order(request):
                 "sub_total": float(line.get("sub_total", 0)),
                 "total": float(line.get("total", 0)),
                 "total_discount": float(line.get("total_discount", 0)),
-                "taxable": {
-                    "id": str(line.get("taxable_id", "")),
-                    "code": str(line.get("taxable_id")),
-                    "label": str(line.get("taxable_id"))
-                } if line.get("taxable_id") else {
-                    "id": "exempt",
-                    "code": "exempt",
-                    "label": "Exempt (0%)"
-                }
+                "taxable": (
+                    {
+                        "id": str(line.get("taxable_id", "")),
+                        "code": str(line.get("taxable_id")),
+                        "label": str(line.get("taxable_id")),
+                    }
+                    if line.get("taxable_id")
+                    else {"id": "exempt", "code": "exempt", "label": "Exempt (0%)"}
+                ),
             }
             for line in db_lines
         ]
@@ -402,7 +460,7 @@ def update_purchase_order(request):
         return ResponseProvider(
             message="Purchase order updated and posted successfully",
             data=purchase_order,
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -411,9 +469,12 @@ def update_purchase_order(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while updating purchase order", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while updating purchase order", code=500
+        ).exception()
+
 
 @csrf_exempt
 def save_purchase_order_draft(request):
@@ -440,9 +501,13 @@ def save_purchase_order_draft(request):
         data, metadata = get_clean_data(request)
         user = metadata.get("user")
         if not user:
-            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+            return ResponseProvider(
+                message="User not authenticated", code=401
+            ).unauthorized()
 
-        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        user_id = (
+            user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+        )
         if not user_id:
             return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -452,72 +517,102 @@ def save_purchase_order_draft(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Handle vendor/customer field
         vendor_id = data.get("vendor") or data.get("customer")
         if not vendor_id:
-            return ResponseProvider(message="Vendor is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Vendor is required", code=400
+            ).bad_request()
 
         # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id": vendor_id, "corporate_id": corporate_id, "is_active": True}
+            data={"id": vendor_id, "corporate_id": corporate_id, "is_active": True},
         )
         if not vendors:
-            return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor not found or inactive for this corporate", code=404
+            ).bad_request()
 
         # Validate required fields
-        required_fields = ["vendor", "date", "number", "expected_delivery", "created_by"]
+        required_fields = [
+            "vendor",
+            "date",
+            "number",
+            "expected_delivery",
+            "created_by",
+        ]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         # Validate created_by
         buyers = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"id": data["created_by"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["created_by"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not buyers:
-            return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Created by user not found or inactive for this corporate",
+                code=404,
+            ).bad_request()
 
         # Validate quotation if provided
         quotation = data.get("quotation", "")
 
         # Process purchase order lines and calculate totals
         lines = data.get("lines", [])
-        sub_total = Decimal('0.00')
-        tax_total = Decimal('0.00')
-        total_discount = Decimal('0.00')
-        total = Decimal('0.00')
+        sub_total = Decimal("0.00")
+        tax_total = Decimal("0.00")
+        total_discount = Decimal("0.00")
+        total = Decimal("0.00")
 
         for line_data in lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
+            required_line_fields = [
+                "description",
+                "quantity",
+                "unit_price",
+                "discount",
+                "taxable_id",
+            ]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Purchase order line field {field.replace('_', ' ').title()} is required",
-                        code=400).bad_request()
+                        code=400,
+                    ).bad_request()
 
             taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
-            tax_rate_value = Decimal('0')
+            tax_rate_value = Decimal("0")
             if taxable_id:
                 tax_rates = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id}
+                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
                 )
                 if not tax_rates:
-                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                    return ResponseProvider(
+                        message=f"Tax rate {taxable_id} not found", code=404
+                    ).bad_request()
                 tax_rate_value = get_tax_rate_value(tax_rates[0])
 
             qty = to_decimal(line_data["quantity"])
@@ -551,21 +646,21 @@ def save_purchase_order_draft(request):
                 "status": "DRAFT",
             }
             purchase_order = registry.database(
-                model_name="PurchaseOrder",
-                operation="create",
-                data=purchase_order_data
+                model_name="PurchaseOrder", operation="create", data=purchase_order_data
             )
 
             for line_data in lines:
                 taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
-                tax_rate_value = Decimal('0')
+                tax_rate_value = Decimal("0")
                 if taxable_id:
                     tax_rates = registry.database(
                         model_name="TaxRate",
                         operation="filter",
-                        data={"id": taxable_id}
+                        data={"id": taxable_id},
                     )
-                    tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
+                    tax_rate_value = (
+                        get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal("0")
+                    )
 
                 qty = to_decimal(line_data["quantity"])
                 unit_price = to_decimal(line_data["unit_price"])
@@ -591,7 +686,7 @@ def save_purchase_order_draft(request):
                 registry.database(
                     model_name="PurchaseOrderLine",
                     operation="create",
-                    data=line_data_for_creation
+                    data=line_data_for_creation,
                 )
 
         # Log success
@@ -600,15 +695,19 @@ def save_purchase_order_draft(request):
             user=user,
             message=f"Purchase order draft {purchase_order['number']} saved for corporate {corporate_id}",
             state_name="Completed",
-            extra={"purchase_order_id": purchase_order["id"], "line_count": len(lines), "vendor_id": vendor_id},
-            request=request
+            extra={
+                "purchase_order_id": purchase_order["id"],
+                "line_count": len(lines),
+                "vendor_id": vendor_id,
+            },
+            request=request,
         )
 
         # Fetch lines for response
         lines = registry.database(
             model_name="PurchaseOrderLine",
             operation="filter",
-            data={"purchase_order_id": purchase_order["id"]}
+            data={"purchase_order_id": purchase_order["id"]},
         )
         purchase_order_response = {
             "id": str(purchase_order.get("id", "")),
@@ -642,24 +741,24 @@ def save_purchase_order_draft(request):
                     "sub_total": float(line.get("sub_total", 0)),
                     "total": float(line.get("total", 0)),
                     "total_discount": float(line.get("total_discount", 0)),
-                    "taxable": {
-                        "id": str(line.get("taxable_id", "")),
-                        "code": str(line.get("taxable_id")),
-                        "label": str(line.get("taxable_id"))
-                    } if line.get("taxable_id") else {
-                        "id": "exempt",
-                        "code": "exempt",
-                        "label": "Exempt (0%)"
-                    }
+                    "taxable": (
+                        {
+                            "id": str(line.get("taxable_id", "")),
+                            "code": str(line.get("taxable_id")),
+                            "label": str(line.get("taxable_id")),
+                        }
+                        if line.get("taxable_id")
+                        else {"id": "exempt", "code": "exempt", "label": "Exempt (0%)"}
+                    ),
                 }
                 for line in lines
-            ]
+            ],
         }
 
         return ResponseProvider(
             message="Purchase order draft saved successfully",
             data=purchase_order_response,
-            code=201
+            code=201,
         ).success()
 
     except Exception as e:
@@ -669,9 +768,13 @@ def save_purchase_order_draft(request):
             message=f"Failed to save purchase order draft: {str(e)}",
             state_name="Failed",
             extra={"data": data, "error": str(e)},
-            request=request
+            request=request,
         )
-        return ResponseProvider(message=f"An error occurred while saving purchase order draft: {str(e)}", code=500).exception()
+        return ResponseProvider(
+            message=f"An error occurred while saving purchase order draft: {str(e)}",
+            code=500,
+        ).exception()
+
 
 @csrf_exempt
 def create_and_post_purchase_order(request):
@@ -702,9 +805,11 @@ def create_and_post_purchase_order(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -715,48 +820,73 @@ def create_and_post_purchase_order(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Validate required fields
-        required_fields = ["vendor", "date", "number", "expected_delivery", "created_by"]
+        required_fields = [
+            "vendor",
+            "date",
+            "number",
+            "expected_delivery",
+            "created_by",
+        ]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id": data["vendor"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["vendor"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not vendors:
-            return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor not found or inactive for this corporate", code=404
+            ).bad_request()
         vendor = vendors[0]
 
         # Validate created_by user
         buyers = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"id": data["created_by"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["created_by"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not buyers:
-            return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Created by user not found or inactive for this corporate",
+                code=404,
+            ).bad_request()
 
         # Validate corporate
         corporates = registry.database(
-            model_name="Corporate",
-            operation="filter",
-            data={"id": corporate_id}
+            model_name="Corporate", operation="filter", data={"id": corporate_id}
         )
         if not corporates:
-            return ResponseProvider(message="Corporate not found", code=404).bad_request()
+            return ResponseProvider(
+                message="Corporate not found", code=404
+            ).bad_request()
         corporate = corporates[0]
 
         # Validate optional quotation by number
@@ -765,42 +895,54 @@ def create_and_post_purchase_order(request):
             quotations = registry.database(
                 model_name="Quotation",
                 operation="filter",
-                data={"number": data["quotation_number"], "corporate_id": corporate_id}
+                data={"number": data["quotation_number"], "corporate_id": corporate_id},
             )
             if not quotations:
-                return ResponseProvider(message=f"Quotation with number {data['quotation_number']} not found for this corporate", code=404).bad_request()
+                return ResponseProvider(
+                    message=f"Quotation with number {data['quotation_number']} not found for this corporate",
+                    code=404,
+                ).bad_request()
             quotation = quotations[0]
 
         # Process purchase order lines and calculate totals
         lines = data.get("lines", [])
         if not lines:
-            return ResponseProvider(message="At least one purchase order line is required", code=400).bad_request()
+            return ResponseProvider(
+                message="At least one purchase order line is required", code=400
+            ).bad_request()
 
-        sub_total = Decimal('0.00')
-        tax_total = Decimal('0.00')
-        total_discount = Decimal('0.00')
-        total = Decimal('0.00')
+        sub_total = Decimal("0.00")
+        tax_total = Decimal("0.00")
+        total_discount = Decimal("0.00")
+        total = Decimal("0.00")
 
         for line_data in lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
+            required_line_fields = [
+                "description",
+                "quantity",
+                "unit_price",
+                "discount",
+                "taxable_id",
+            ]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Purchase order line field {field.replace('_', ' ').title()} is required",
-                        code=400).bad_request()
+                        code=400,
+                    ).bad_request()
 
             taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
             if taxable_id:
                 tax_rates = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id}
+                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
                 )
                 if not tax_rates:
-                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                    return ResponseProvider(
+                        message=f"Tax rate {taxable_id} not found", code=404
+                    ).bad_request()
                 tax_rate_value = get_tax_rate_value(tax_rates[0])
             else:
-                tax_rate_value = Decimal('0')
+                tax_rate_value = Decimal("0")
 
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
@@ -833,21 +975,21 @@ def create_and_post_purchase_order(request):
                 "status": "POSTED",
             }
             purchase_order = registry.database(
-                model_name="PurchaseOrder",
-                operation="create",
-                data=purchase_order_data
+                model_name="PurchaseOrder", operation="create", data=purchase_order_data
             )
 
             for line_data in lines:
                 taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
-                tax_rate_value = Decimal('0')
+                tax_rate_value = Decimal("0")
                 if taxable_id:
                     tax_rates = registry.database(
                         model_name="TaxRate",
                         operation="filter",
-                        data={"id": taxable_id}
+                        data={"id": taxable_id},
                     )
-                    tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
+                    tax_rate_value = (
+                        get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal("0")
+                    )
 
                 qty = to_decimal(line_data["quantity"])
                 unit_price = to_decimal(line_data["unit_price"])
@@ -873,7 +1015,7 @@ def create_and_post_purchase_order(request):
                 registry.database(
                     model_name="PurchaseOrderLine",
                     operation="create",
-                    data=line_data_for_creation
+                    data=line_data_for_creation,
                 )
 
         # Log the transaction
@@ -883,14 +1025,14 @@ def create_and_post_purchase_order(request):
             message=f"Purchase order {purchase_order['number']} created and posted for corporate {corporate_id}",
             state_name="Completed",
             extra={"purchase_order_id": purchase_order["id"], "line_count": len(lines)},
-            request=request
+            request=request,
         )
 
         # Fetch lines for response
         lines = registry.database(
             model_name="PurchaseOrderLine",
             operation="filter",
-            data={"purchase_order_id": purchase_order["id"]}
+            data={"purchase_order_id": purchase_order["id"]},
         )
         purchase_order["lines"] = [
             {
@@ -905,15 +1047,15 @@ def create_and_post_purchase_order(request):
                 "sub_total": float(line.get("sub_total", 0)),
                 "total": float(line.get("total", 0)),
                 "total_discount": float(line.get("total_discount", 0)),
-                "taxable": {
-                    "id": str(line.get("taxable_id", "")),
-                    "code": str(line.get("taxable_id")),
-                    "label": str(line.get("taxable_id"))
-                } if line.get("taxable_id") else {
-                    "id": "exempt",
-                    "code": "exempt",
-                    "label": "Exempt (0%)"
-                }
+                "taxable": (
+                    {
+                        "id": str(line.get("taxable_id", "")),
+                        "code": str(line.get("taxable_id")),
+                        "label": str(line.get("taxable_id")),
+                    }
+                    if line.get("taxable_id")
+                    else {"id": "exempt", "code": "exempt", "label": "Exempt (0%)"}
+                ),
             }
             for line in lines
         ]
@@ -927,7 +1069,7 @@ def create_and_post_purchase_order(request):
         return ResponseProvider(
             message="Purchase order created and posted successfully",
             data=purchase_order,
-            code=201
+            code=201,
         ).success()
 
     except Exception as e:
@@ -936,9 +1078,13 @@ def create_and_post_purchase_order(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while creating and posting purchase order", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while creating and posting purchase order",
+            code=500,
+        ).exception()
+
 
 @csrf_exempt
 def list_purchase_orders(request):
@@ -954,9 +1100,11 @@ def list_purchase_orders(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -966,28 +1114,30 @@ def list_purchase_orders(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         purchase_orders = registry.database(
             model_name="PurchaseOrder",
             operation="filter",
-            data={"corporate_id": corporate_id}
+            data={"corporate_id": corporate_id},
         )
 
         def tax_display(taxable_id_value):
             if not taxable_id_value:
                 return "Exempt (0%)"
             tr = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id_value}
+                model_name="TaxRate", operation="filter", data={"id": taxable_id_value}
             )
             return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
 
@@ -996,7 +1146,7 @@ def list_purchase_orders(request):
             lines = registry.database(
                 model_name="PurchaseOrderLine",
                 operation="filter",
-                data={"purchase_order_id": po["id"]}
+                data={"purchase_order_id": po["id"]},
             )
             # Calculate total for the purchase order
             po_total = sum(float(line.get("total", 0)) for line in lines)
@@ -1007,7 +1157,7 @@ def list_purchase_orders(request):
                 user_data = registry.database(
                     model_name="CustomUser",
                     operation="filter",
-                    data={"id": created_by_id}
+                    data={"id": created_by_id},
                 )
                 if user_data:
                     user = user_data[0]
@@ -1016,56 +1166,71 @@ def list_purchase_orders(request):
                     username = user.get("username", "")
                     # Construct full name or fall back to username
                     created_by_name = (
-                        f"{first_name} {last_name}".strip() or username or str(created_by_id)
+                        f"{first_name} {last_name}".strip()
+                        or username
+                        or str(created_by_id)
                     )
 
-            serialized_purchase_orders.append({
-                "id": str(po["id"]),
-                "number": po["number"],
-                "vendor": str(po["vendor_id"]),
-                "date": po["date"],
-                "expected_delivery": po["expected_delivery"],
-                "status": po["status"],
-                "created_by": created_by_id,
-                "ship_date": po.get("ship_date"),
-                "ship_via": po["ship_via"],
-                "terms": po["terms"],
-                "fob": po["fob"],
-                "comments": po["comments"],
-                "quotation": str(po["quotation"]) if po.get("quotation") else None,
-                "total": float(po_total),
-                "lines": [
-                    {
-                        "id": str(line.get("id", "")),
-                        "description": line.get("description", ""),
-                        "quantity": float(line.get("quantity", 0)),
-                        "unit_price": float(line.get("unit_price", 0)),
-                        "amount": float(line.get("amount", 0)),
-                        "discount": float(line.get("discount", 0)),
-                        "taxable_id": str(line.get("taxable_id", "")),
-                        "tax_amount": float(line.get("tax_amount", 0)),
-                        "sub_total": float(line.get("sub_total", 0)),
-                        "total": float(line.get("total", 0)),
-                        "total_discount": float(line.get("total_discount", 0)),
-                        "taxable": {
-                            "id": str(line.get("taxable_id", "")),
-                            "code": tax_display(line.get("taxable_id")),
-                            "label": tax_display(line.get("taxable_id"))
-                        } if line.get("taxable_id") else {
-                            "id": "exempt",
-                            "code": "exempt",
-                            "label": "Exempt (0%)"
+            serialized_purchase_orders.append(
+                {
+                    "id": str(po["id"]),
+                    "number": po["number"],
+                    "vendor": str(po["vendor_id"]),
+                    "date": po["date"],
+                    "expected_delivery": po["expected_delivery"],
+                    "status": po["status"],
+                    "created_by": created_by_id,
+                    "ship_date": po.get("ship_date"),
+                    "ship_via": po["ship_via"],
+                    "terms": po["terms"],
+                    "fob": po["fob"],
+                    "comments": po["comments"],
+                    "quotation": str(po["quotation"]) if po.get("quotation") else None,
+                    "total": float(po_total),
+                    "lines": [
+                        {
+                            "id": str(line.get("id", "")),
+                            "description": line.get("description", ""),
+                            "quantity": float(line.get("quantity", 0)),
+                            "unit_price": float(line.get("unit_price", 0)),
+                            "amount": float(line.get("amount", 0)),
+                            "discount": float(line.get("discount", 0)),
+                            "taxable_id": str(line.get("taxable_id", "")),
+                            "tax_amount": float(line.get("tax_amount", 0)),
+                            "sub_total": float(line.get("sub_total", 0)),
+                            "total": float(line.get("total", 0)),
+                            "total_discount": float(line.get("total_discount", 0)),
+                            "taxable": (
+                                {
+                                    "id": str(line.get("taxable_id", "")),
+                                    "code": tax_display(line.get("taxable_id")),
+                                    "label": tax_display(line.get("taxable_id")),
+                                }
+                                if line.get("taxable_id")
+                                else {
+                                    "id": "exempt",
+                                    "code": "exempt",
+                                    "label": "Exempt (0%)",
+                                }
+                            ),
                         }
-                    }
-                    for line in lines
-                ]
-            })
+                        for line in lines
+                    ],
+                }
+            )
 
         statuses = [po["status"] for po in purchase_orders]
         status_counts = dict(Counter(statuses))
         total = len(purchase_orders)
 
-        all_statuses = {"DRAFT": 0, "SENT": 0, "CONFIRMED": 0, "RECEIVED": 0, "PARTIALLY_RECEIVED": 0, "CANCELLED": 0}
+        all_statuses = {
+            "DRAFT": 0,
+            "SENT": 0,
+            "CONFIRMED": 0,
+            "RECEIVED": 0,
+            "PARTIALLY_RECEIVED": 0,
+            "CANCELLED": 0,
+        }
         all_statuses.update(status_counts)
 
         TransactionLogBase.log(
@@ -1074,17 +1239,17 @@ def list_purchase_orders(request):
             message=f"Retrieved {total} purchase orders for corporate {corporate_id}",
             state_name="Success",
             extra={"status_counts": all_statuses},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             data={
                 "purchase_orders": serialized_purchase_orders,
                 "total": total,
-                "status_counts": all_statuses
+                "status_counts": all_statuses,
             },
             message="Purchase orders retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -1093,9 +1258,12 @@ def list_purchase_orders(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving purchase orders", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving purchase orders", code=500
+        ).exception()
+
 
 @csrf_exempt
 def get_purchase_order(request):
@@ -1115,9 +1283,11 @@ def get_purchase_order(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -1127,41 +1297,47 @@ def get_purchase_order(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         purchase_order_id = data.get("id")
         if not purchase_order_id:
-            return ResponseProvider(message="Purchase order ID is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Purchase order ID is required", code=400
+            ).bad_request()
 
         purchase_orders = registry.database(
             model_name="PurchaseOrder",
             operation="filter",
-            data={"id": purchase_order_id, "corporate_id": corporate_id}
+            data={"id": purchase_order_id, "corporate_id": corporate_id},
         )
         if not purchase_orders:
-            return ResponseProvider(message="Purchase order not found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Purchase order not found for this corporate", code=404
+            ).bad_request()
 
         purchase_order = purchase_orders[0]
         lines = registry.database(
             model_name="PurchaseOrderLine",
             operation="filter",
-            data={"purchase_order_id": purchase_order_id}
+            data={"purchase_order_id": purchase_order_id},
         )
 
         def tax_display(taxable_id_value):
             if not taxable_id_value:
                 return "Exempt (0%)"
             tr = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id_value}
+                model_name="TaxRate", operation="filter", data={"id": taxable_id_value}
             )
             return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
 
@@ -1178,19 +1354,21 @@ def get_purchase_order(request):
                 "sub_total": float(line.get("sub_total", 0)),
                 "total": float(line.get("total", 0)),
                 "total_discount": float(line.get("total_discount", 0)),
-                "taxable": {
-                    "id": str(line.get("taxable_id", "")),
-                    "code": tax_display(line.get("taxable_id")),
-                    "label": tax_display(line.get("taxable_id"))
-                } if line.get("taxable_id") else {
-                    "id": "exempt",
-                    "code": "exempt",
-                    "label": "Exempt (0%)"
-                }
+                "taxable": (
+                    {
+                        "id": str(line.get("taxable_id", "")),
+                        "code": tax_display(line.get("taxable_id")),
+                        "label": tax_display(line.get("taxable_id")),
+                    }
+                    if line.get("taxable_id")
+                    else {"id": "exempt", "code": "exempt", "label": "Exempt (0%)"}
+                ),
             }
             for line in lines
         ]
-        purchase_order["total"] = float(sum(to_decimal(line.get("total", 0)) for line in lines))
+        purchase_order["total"] = float(
+            sum(to_decimal(line.get("total", 0)) for line in lines)
+        )
 
         TransactionLogBase.log(
             transaction_type="PURCHASE_ORDER_GET_SUCCESS",
@@ -1198,13 +1376,13 @@ def get_purchase_order(request):
             message=f"Purchase order {purchase_order_id} retrieved for corporate {corporate_id}",
             state_name="Success",
             extra={"purchase_order_id": purchase_order_id, "line_count": len(lines)},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message="Purchase order retrieved successfully",
             data=purchase_order,
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -1213,9 +1391,12 @@ def get_purchase_order(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving purchase order", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving purchase order", code=500
+        ).exception()
+
 
 @csrf_exempt
 def delete_purchase_order(request):
@@ -1235,9 +1416,11 @@ def delete_purchase_order(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -1247,46 +1430,54 @@ def delete_purchase_order(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         purchase_order_id = data.get("id")
         if not purchase_order_id:
-            return ResponseProvider(message="Purchase order ID is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Purchase order ID is required", code=400
+            ).bad_request()
 
         purchase_orders = registry.database(
             model_name="PurchaseOrder",
             operation="filter",
-            data={"id": purchase_order_id, "corporate_id": corporate_id}
+            data={"id": purchase_order_id, "corporate_id": corporate_id},
         )
         if not purchase_orders:
-            return ResponseProvider(message="Purchase order not found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Purchase order not found for this corporate", code=404
+            ).bad_request()
 
         with transaction.atomic():
             registry.database(
                 model_name="PurchaseOrder",
                 operation="delete",
                 instance_id=purchase_order_id,
-                data={"id": purchase_order_id}
+                data={"id": purchase_order_id},
             )
 
             lines = registry.database(
                 model_name="PurchaseOrderLine",
                 operation="filter",
-                data={"purchase_order_id": purchase_order_id}
+                data={"purchase_order_id": purchase_order_id},
             )
             for line in lines:
                 registry.database(
                     model_name="PurchaseOrderLine",
                     operation="delete",
                     instance_id=line["id"],
-                    data={"id": line["id"]}
+                    data={"id": line["id"]},
                 )
 
         TransactionLogBase.log(
@@ -1295,13 +1486,13 @@ def delete_purchase_order(request):
             message=f"Purchase order {purchase_order_id} soft-deleted",
             state_name="Completed",
             extra={"purchase_order_id": purchase_order_id, "line_count": len(lines)},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message="Purchase order deleted successfully",
             data={"purchase_order_id": purchase_order_id},
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -1310,9 +1501,12 @@ def delete_purchase_order(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while deleting purchase order", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while deleting purchase order", code=500
+        ).exception()
+
 
 @csrf_exempt
 def convert_quotation_to_purchase_order(request):
@@ -1336,9 +1530,11 @@ def convert_quotation_to_purchase_order(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -1348,62 +1544,87 @@ def convert_quotation_to_purchase_order(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
-        required_fields = ["quotation_id", "vendor_id", "date", "number", "expected_delivery", "buyer"]
+        required_fields = [
+            "quotation_id",
+            "vendor_id",
+            "date",
+            "number",
+            "expected_delivery",
+            "buyer",
+        ]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         quotations = registry.database(
             model_name="Quotation",
             operation="filter",
-            data={"id": data["quotation_id"], "corporate_id": corporate_id}
+            data={"id": data["quotation_id"], "corporate_id": corporate_id},
         )
         if not quotations:
-            return ResponseProvider(message="Quotation not found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Quotation not found for this corporate", code=404
+            ).bad_request()
         quotation = quotations[0]
 
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id": data["vendor_id"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["vendor_id"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not vendors:
-            return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor not found or inactive for this corporate", code=404
+            ).bad_request()
         vendor = vendors[0]
 
         buyers = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"id": data["buyer"], "corporate_id": corporate_id, "is_active": True}
+            data={"id": data["buyer"], "corporate_id": corporate_id, "is_active": True},
         )
         if not buyers:
-            return ResponseProvider(message="Buyer not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Buyer not found or inactive for this corporate", code=404
+            ).bad_request()
 
         corporates = registry.database(
-            model_name="Corporate",
-            operation="filter",
-            data={"id": corporate_id}
+            model_name="Corporate", operation="filter", data={"id": corporate_id}
         )
         if not corporates:
-            return ResponseProvider(message="Corporate not found", code=404).bad_request()
+            return ResponseProvider(
+                message="Corporate not found", code=404
+            ).bad_request()
         corporate = corporates[0]
 
         quotation_lines = registry.database(
             model_name="QuotationLine",
             operation="filter",
-            data={"quotation_id": quotation["id"]}
+            data={"quotation_id": quotation["id"]},
         )
         if not quotation_lines:
-            return ResponseProvider(message="No lines found for this quotation", code=400).bad_request()
+            return ResponseProvider(
+                message="No lines found for this quotation", code=400
+            ).bad_request()
 
         with transaction.atomic():
             purchase_order_data = {
@@ -1426,21 +1647,21 @@ def convert_quotation_to_purchase_order(request):
                 "total_discount": float(quotation.get("total_discount", 0.00)),
             }
             purchase_order = registry.database(
-                model_name="PurchaseOrder",
-                operation="create",
-                data=purchase_order_data
+                model_name="PurchaseOrder", operation="create", data=purchase_order_data
             )
 
             for line in quotation_lines:
                 taxable_id = normalize_taxable_id(line.get("taxable_id"))
-                tax_rate_value = Decimal('0')
+                tax_rate_value = Decimal("0")
                 if taxable_id:
                     tax_rates = registry.database(
                         model_name="TaxRate",
                         operation="filter",
-                        data={"id": taxable_id}
+                        data={"id": taxable_id},
                     )
-                    tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
+                    tax_rate_value = (
+                        get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal("0")
+                    )
 
                 qty = to_decimal(line["quantity"])
                 unit_price = to_decimal(line["unit_price"])
@@ -1464,9 +1685,7 @@ def convert_quotation_to_purchase_order(request):
                     "total_discount": float(line["discount"]),
                 }
                 registry.database(
-                    model_name="PurchaseOrderLine",
-                    operation="create",
-                    data=line_data
+                    model_name="PurchaseOrderLine", operation="create", data=line_data
                 )
 
         TransactionLogBase.log(
@@ -1474,22 +1693,25 @@ def convert_quotation_to_purchase_order(request):
             user=user,
             message=f"Quotation {quotation['number']} converted to purchase order {purchase_order['number']} for corporate {corporate_id}",
             state_name="Completed",
-            extra={"quotation_id": quotation["id"], "purchase_order_id": purchase_order["id"], "line_count": len(quotation_lines)},
-            request=request
+            extra={
+                "quotation_id": quotation["id"],
+                "purchase_order_id": purchase_order["id"],
+                "line_count": len(quotation_lines),
+            },
+            request=request,
         )
 
         purchase_order_lines = registry.database(
             model_name="PurchaseOrderLine",
             operation="filter",
-            data={"purchase_order_id": purchase_order["id"]}
+            data={"purchase_order_id": purchase_order["id"]},
         )
+
         def tax_display(taxable_id_value):
             if not taxable_id_value:
                 return "Exempt (0%)"
             tr = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id_value}
+                model_name="TaxRate", operation="filter", data={"id": taxable_id_value}
             )
             return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
 
@@ -1506,15 +1728,15 @@ def convert_quotation_to_purchase_order(request):
                 "sub_total": float(line.get("sub_total", 0)),
                 "total": float(line.get("total", 0)),
                 "total_discount": float(line.get("total_discount", 0)),
-                "taxable": {
-                    "id": str(line.get("taxable_id", "")),
-                    "code": tax_display(line.get("taxable_id")),
-                    "label": tax_display(line.get("taxable_id"))
-                } if line.get("taxable_id") else {
-                    "id": "exempt",
-                    "code": "exempt",
-                    "label": "Exempt (0%)"
-                }
+                "taxable": (
+                    {
+                        "id": str(line.get("taxable_id", "")),
+                        "code": tax_display(line.get("taxable_id")),
+                        "label": tax_display(line.get("taxable_id")),
+                    }
+                    if line.get("taxable_id")
+                    else {"id": "exempt", "code": "exempt", "label": "Exempt (0%)"}
+                ),
             }
             for line in purchase_order_lines
         ]
@@ -1527,7 +1749,7 @@ def convert_quotation_to_purchase_order(request):
                     user=user,
                     message="Vendor has no email",
                     state_name="Failed",
-                    request=request
+                    request=request,
                 )
             else:
                 subject = f"Purchase Order {purchase_order['number']} from {corporate['name']}"
@@ -1571,35 +1793,37 @@ def convert_quotation_to_purchase_order(request):
                 </html>
                 """
                 notification_handler = DocumentNotificationHandler()
-                notifications = [{
-                    "message_type": "EMAIL",
-                    "organisation_id": corporate_id,
-                    "destination": to_email,
-                    "message": message,
-                    "subject": subject,
-                }]
-                send_result = notification_handler.send_document_notification(notifications, trans=None, attachment=None, cc=None)
+                notifications = [
+                    {
+                        "message_type": "EMAIL",
+                        "organisation_id": corporate_id,
+                        "destination": to_email,
+                        "message": message,
+                        "subject": subject,
+                    }
+                ]
+                send_result = notification_handler.send_document_notification(
+                    notifications, trans=None, attachment=None, cc=None
+                )
                 if send_result != "success":
                     TransactionLogBase.log(
                         transaction_type="PURCHASE_ORDER_SEND_FAILED",
                         user=user,
                         message="Failed to send purchase order email",
                         state_name="Failed",
-                        request=request
+                        request=request,
                     )
                 else:
                     registry.database(
                         model_name="PurchaseOrder",
                         operation="update",
                         instance_id=purchase_order["id"],
-                        data={"id": purchase_order["id"], "status": "SENT"}
+                        data={"id": purchase_order["id"], "status": "SENT"},
                     )
                     purchase_order["status"] = "SENT"
 
         return ResponseProvider(
-            message="Purchase order created successfully",
-            data=purchase_order,
-            code=201
+            message="Purchase order created successfully", data=purchase_order, code=201
         ).success()
 
     except Exception as e:
@@ -1608,6 +1832,9 @@ def convert_quotation_to_purchase_order(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while converting quotation to purchase order", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while converting quotation to purchase order",
+            code=500,
+        ).exception()

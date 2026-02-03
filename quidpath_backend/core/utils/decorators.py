@@ -1,6 +1,7 @@
 # decorators.py
-from django.http import JsonResponse
 from functools import wraps
+
+from django.http import JsonResponse
 
 
 def require_authenticated(view_func):

@@ -1,7 +1,9 @@
 # AccountingService.py (full corrected code)
-from decimal import Decimal
-from django.db import transaction
 from datetime import date
+from decimal import Decimal
+
+from django.db import transaction
+
 from quidpath_backend.core.utils.registry import ServiceRegistry
 
 
@@ -19,13 +21,37 @@ class AccountingService:
         If required is provided, only check/create those; otherwise, create all defaults if missing.
         """
         default_configs = {
-            "accounts_receivable": {"code": "1200", "name": "Accounts Receivable", "type": "ASSET"},
-            "sales_revenue": {"code": "4000", "name": "Sales Revenue", "type": "REVENUE"},
+            "accounts_receivable": {
+                "code": "1200",
+                "name": "Accounts Receivable",
+                "type": "ASSET",
+            },
+            "sales_revenue": {
+                "code": "4000",
+                "name": "Sales Revenue",
+                "type": "REVENUE",
+            },
             "vat_payable": {"code": "2200", "name": "VAT Payable", "type": "LIABILITY"},
-            "accounts_payable": {"code": "2100", "name": "Accounts Payable", "type": "LIABILITY"},
-            "operating_expense": {"code": "6000", "name": "Operating Expenses", "type": "EXPENSE"},
-            "vat_receivable": {"code": "1210", "name": "VAT Receivable", "type": "ASSET"},
-            "cost_of_goods_sold": {"code": "5000", "name": "Cost of Goods Sold", "type": "EXPENSE"},
+            "accounts_payable": {
+                "code": "2100",
+                "name": "Accounts Payable",
+                "type": "LIABILITY",
+            },
+            "operating_expense": {
+                "code": "6000",
+                "name": "Operating Expenses",
+                "type": "EXPENSE",
+            },
+            "vat_receivable": {
+                "code": "1210",
+                "name": "VAT Receivable",
+                "type": "ASSET",
+            },
+            "cost_of_goods_sold": {
+                "code": "5000",
+                "name": "Cost of Goods Sold",
+                "type": "EXPENSE",
+            },
             "cash": {"code": "1100", "name": "Cash", "type": "ASSET"},
         }
 
@@ -41,13 +67,16 @@ class AccountingService:
             type_data = self.registry.database(
                 model_name="AccountType",
                 operation="filter",
-                data={"name": config["type"]}
+                data={"name": config["type"]},
             )
             if not type_data:
                 new_type = self.registry.database(
                     model_name="AccountType",
                     operation="create",
-                    data={"name": config["type"], "description": f"{config['type']} accounts"}
+                    data={
+                        "name": config["type"],
+                        "description": f"{config['type']} accounts",
+                    },
                 )
                 type_id = new_type["id"]
             else:
@@ -57,11 +86,11 @@ class AccountingService:
             account_data = self.registry.database(
                 model_name="Account",
                 operation="filter",
-                data={"corporate_id": corporate_id, "code": config["code"]}
+                data={"corporate_id": corporate_id, "code": config["code"]},
             ) or self.registry.database(
                 model_name="Account",
                 operation="filter",
-                data={"corporate_id": corporate_id, "name": config["name"]}
+                data={"corporate_id": corporate_id, "name": config["name"]},
             )
 
             if not account_data:
@@ -71,12 +100,10 @@ class AccountingService:
                     "name": config["name"],
                     "account_type_id": type_id,
                     "is_active": True,
-                    "description": f"Default {config['name']} account"
+                    "description": f"Default {config['name']} account",
                 }
                 new_account = self.registry.database(
-                    model_name="Account",
-                    operation="create",
-                    data=new_account_data
+                    model_name="Account", operation="create", data=new_account_data
                 )
                 accounts[key] = new_account["id"]
             else:
@@ -93,9 +120,7 @@ class AccountingService:
         """
         # Get invoice data
         invoices = self.registry.database(
-            model_name="Invoices",
-            operation="filter",
-            data={"id": invoice_id}
+            model_name="Invoices", operation="filter", data={"id": invoice_id}
         )
 
         if not invoices:
@@ -107,12 +132,14 @@ class AccountingService:
         lines = self.registry.database(
             model_name="InvoiceLine",
             operation="filter",
-            data={"invoice_id": invoice_id}
+            data={"invoice_id": invoice_id},
         )
 
         # Get or create default accounts
         required_accounts = ["accounts_receivable", "sales_revenue", "vat_payable"]
-        accounts = self.get_or_create_default_accounts(invoice["corporate_id"], required=required_accounts)
+        accounts = self.get_or_create_default_accounts(
+            invoice["corporate_id"], required=required_accounts
+        )
 
         with transaction.atomic():
             # Create journal entry
@@ -123,14 +150,14 @@ class AccountingService:
                 "description": f"Sales invoice {invoice['number']}",
                 "source_type": "invoice",
                 "source_id": invoice_id,
-                "created_by_id": user.get("id") if isinstance(user, dict) else getattr(user, 'id'),
-                "is_posted": True
+                "created_by_id": (
+                    user.get("id") if isinstance(user, dict) else getattr(user, "id")
+                ),
+                "is_posted": True,
             }
 
             journal_entry = self.registry.database(
-                model_name="JournalEntry",
-                operation="create",
-                data=je_data
+                model_name="JournalEntry", operation="create", data=je_data
             )
 
             total_amount = Decimal(str(invoice.get("total", 0)))
@@ -146,8 +173,8 @@ class AccountingService:
                     "account_id": accounts["accounts_receivable"],
                     "debit": float(total_amount),
                     "credit": 0.00,
-                    "description": f"Invoice {invoice['number']} - Customer receivable"
-                }
+                    "description": f"Invoice {invoice['number']} - Customer receivable",
+                },
             )
 
             # Cr. Sales Revenue (net amount)
@@ -160,8 +187,8 @@ class AccountingService:
                         "account_id": accounts["sales_revenue"],
                         "debit": 0.00,
                         "credit": float(revenue_amount),
-                        "description": f"Invoice {invoice['number']} - Sales revenue"
-                    }
+                        "description": f"Invoice {invoice['number']} - Sales revenue",
+                    },
                 )
 
             # Cr. VAT Payable (tax amount)
@@ -174,8 +201,8 @@ class AccountingService:
                         "account_id": accounts["vat_payable"],
                         "debit": 0.00,
                         "credit": float(tax_total),
-                        "description": f"Invoice {invoice['number']} - VAT collected"
-                    }
+                        "description": f"Invoice {invoice['number']} - VAT collected",
+                    },
                 )
 
             return journal_entry
@@ -189,9 +216,7 @@ class AccountingService:
         """
         # Get vendor bill data
         vendor_bills = self.registry.database(
-            model_name="VendorBill",
-            operation="filter",
-            data={"id": vendor_bill_id}
+            model_name="VendorBill", operation="filter", data={"id": vendor_bill_id}
         )
 
         if not vendor_bills:
@@ -203,12 +228,14 @@ class AccountingService:
         lines = self.registry.database(
             model_name="VendorBillLine",
             operation="filter",
-            data={"vendor_bill_id": vendor_bill_id}
+            data={"vendor_bill_id": vendor_bill_id},
         )
 
         # Get or create default accounts
         required_accounts = ["accounts_payable", "operating_expense", "vat_receivable"]
-        accounts = self.get_or_create_default_accounts(vendor_bill["corporate_id"], required=required_accounts)
+        accounts = self.get_or_create_default_accounts(
+            vendor_bill["corporate_id"], required=required_accounts
+        )
 
         with transaction.atomic():
             # Create journal entry
@@ -219,14 +246,14 @@ class AccountingService:
                 "description": f"Vendor bill {vendor_bill['number']}",
                 "source_type": "vendor_bill",
                 "source_id": vendor_bill_id,
-                "created_by_id": user.get("id") if isinstance(user, dict) else getattr(user, 'id'),
-                "is_posted": True
+                "created_by_id": (
+                    user.get("id") if isinstance(user, dict) else getattr(user, "id")
+                ),
+                "is_posted": True,
             }
 
             journal_entry = self.registry.database(
-                model_name="JournalEntry",
-                operation="create",
-                data=je_data
+                model_name="JournalEntry", operation="create", data=je_data
             )
 
             total_amount = Decimal(str(vendor_bill.get("total", 0)))
@@ -243,8 +270,8 @@ class AccountingService:
                         "account_id": accounts["operating_expense"],
                         "debit": float(expense_amount),
                         "credit": 0.00,
-                        "description": f"Bill {vendor_bill['number']} - Operating expense"
-                    }
+                        "description": f"Bill {vendor_bill['number']} - Operating expense",
+                    },
                 )
 
             # Dr. VAT Receivable (tax amount)
@@ -257,8 +284,8 @@ class AccountingService:
                         "account_id": accounts["vat_receivable"],
                         "debit": float(tax_total),
                         "credit": 0.00,
-                        "description": f"Bill {vendor_bill['number']} - VAT input"
-                    }
+                        "description": f"Bill {vendor_bill['number']} - VAT input",
+                    },
                 )
 
             # Cr. Accounts Payable (total amount)
@@ -270,8 +297,8 @@ class AccountingService:
                     "account_id": accounts["accounts_payable"],
                     "debit": 0.00,
                     "credit": float(total_amount),
-                    "description": f"Bill {vendor_bill['number']} - Vendor payable"
-                }
+                    "description": f"Bill {vendor_bill['number']} - Vendor payable",
+                },
             )
 
             return journal_entry
@@ -285,9 +312,7 @@ class AccountingService:
         """
         # Get expense data
         expenses = self.registry.database(
-            model_name="Expense",
-            operation="filter",
-            data={"id": expense_id}
+            model_name="Expense", operation="filter", data={"id": expense_id}
         )
 
         if not expenses:
@@ -295,12 +320,16 @@ class AccountingService:
 
         expense = expenses[0]
 
-        total_amount = Decimal(str(expense["amount"])) + Decimal(str(expense.get("tax_amount", 0)))
+        total_amount = Decimal(str(expense["amount"])) + Decimal(
+            str(expense.get("tax_amount", 0))
+        )
         tax_amount = Decimal(str(expense.get("tax_amount", 0)))
 
         # Get or create default accounts if needed (only vat_receivable if tax > 0)
         required = ["vat_receivable"] if tax_amount > 0 else []
-        accounts = self.get_or_create_default_accounts(expense["corporate_id"], required=required)
+        accounts = self.get_or_create_default_accounts(
+            expense["corporate_id"], required=required
+        )
 
         with transaction.atomic():
             # Create journal entry
@@ -311,14 +340,14 @@ class AccountingService:
                 "description": expense["description"],
                 "source_type": "expense",
                 "source_id": expense_id,
-                "created_by_id": user.get("id") if isinstance(user, dict) else getattr(user, 'id'),
-                "is_posted": True
+                "created_by_id": (
+                    user.get("id") if isinstance(user, dict) else getattr(user, "id")
+                ),
+                "is_posted": True,
             }
 
             journal_entry = self.registry.database(
-                model_name="JournalEntry",
-                operation="create",
-                data=je_data
+                model_name="JournalEntry", operation="create", data=je_data
             )
 
             amount = Decimal(str(expense["amount"]))
@@ -332,8 +361,8 @@ class AccountingService:
                     "account_id": expense["expense_account_id"],
                     "debit": float(amount),
                     "credit": 0.00,
-                    "description": expense["description"]
-                }
+                    "description": expense["description"],
+                },
             )
 
             # Dr. VAT Input (if applicable)
@@ -348,8 +377,8 @@ class AccountingService:
                             "account_id": vat_receivable_id,
                             "debit": float(tax_amount),
                             "credit": 0.00,
-                            "description": f"{expense['description']} - VAT input"
-                        }
+                            "description": f"{expense['description']} - VAT input",
+                        },
                     )
 
             # Cr. Payment Account
@@ -361,8 +390,8 @@ class AccountingService:
                     "account_id": expense["payment_account_id"],
                     "debit": 0.00,
                     "credit": float(total_amount),
-                    "description": f"{expense['description']} - Payment"
-                }
+                    "description": f"{expense['description']} - Payment",
+                },
             )
 
             return journal_entry
@@ -375,9 +404,7 @@ class AccountingService:
         """
         # Get payment data from the specified model
         payments = self.registry.database(
-            model_name=payment_model,
-            operation="filter",
-            data={"id": payment_id}
+            model_name=payment_model, operation="filter", data={"id": payment_id}
         )
 
         if not payments:
@@ -400,7 +427,9 @@ class AccountingService:
             required = ["accounts_payable"]
         else:
             required = []
-        accounts = self.get_or_create_default_accounts(payment["corporate_id"], required=required)
+        accounts = self.get_or_create_default_accounts(
+            payment["corporate_id"], required=required
+        )
 
         with transaction.atomic():
             # Create journal entry
@@ -411,17 +440,19 @@ class AccountingService:
                 "description": payment.get("notes", f"{payment_type} payment"),
                 "source_type": "payment",
                 "source_id": payment_id,
-                "created_by_id": user.get("id") if isinstance(user, dict) else getattr(user, 'id'),
-                "is_posted": True
+                "created_by_id": (
+                    user.get("id") if isinstance(user, dict) else getattr(user, "id")
+                ),
+                "is_posted": True,
             }
 
             journal_entry = self.registry.database(
-                model_name="JournalEntry",
-                operation="create",
-                data=je_data
+                model_name="JournalEntry", operation="create", data=je_data
             )
 
-            amount = Decimal(str(payment.get("amount_disbursed", payment.get("amount_received", 0))))
+            amount = Decimal(
+                str(payment.get("amount_disbursed", payment.get("amount_received", 0)))
+            )
 
             if payment_type == "CUSTOMER_PAYMENT":
                 # Dr. Bank Account
@@ -433,8 +464,8 @@ class AccountingService:
                         "account_id": payment["account_id"],
                         "debit": float(amount),
                         "credit": 0.00,
-                        "description": f"Customer payment {payment.get('payment_number', payment['id'])}"
-                    }
+                        "description": f"Customer payment {payment.get('payment_number', payment['id'])}",
+                    },
                 )
 
                 # Cr. Accounts Receivable
@@ -446,8 +477,8 @@ class AccountingService:
                         "account_id": accounts["accounts_receivable"],
                         "debit": 0.00,
                         "credit": float(amount),
-                        "description": f"Customer payment {payment.get('payment_number', payment['id'])}"
-                    }
+                        "description": f"Customer payment {payment.get('payment_number', payment['id'])}",
+                    },
                 )
 
             elif payment_type == "VENDOR_PAYMENT":
@@ -460,8 +491,8 @@ class AccountingService:
                         "account_id": accounts["accounts_payable"],
                         "debit": float(amount),
                         "credit": 0.00,
-                        "description": f"Vendor payment {payment.get('payment_number', payment['id'])}"
-                    }
+                        "description": f"Vendor payment {payment.get('payment_number', payment['id'])}",
+                    },
                 )
 
                 # Cr. Bank Account
@@ -473,8 +504,8 @@ class AccountingService:
                         "account_id": payment["account_id"],
                         "debit": 0.00,
                         "credit": float(amount),
-                        "description": f"Vendor payment {payment.get('payment_number', payment['id'])}"
-                    }
+                        "description": f"Vendor payment {payment.get('payment_number', payment['id'])}",
+                    },
                 )
 
             return journal_entry

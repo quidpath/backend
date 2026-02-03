@@ -1,7 +1,10 @@
 import logging
-from django.core.exceptions import ObjectDoesNotExist
 from typing import Optional
-from OrgAuth.models import Corporate  # Adjust the import to match your project structure
+
+from django.core.exceptions import ObjectDoesNotExist
+
+from OrgAuth.models import \
+    Corporate  # Adjust the import to match your project structure
 
 log = logging.getLogger(__name__)
 
@@ -28,5 +31,8 @@ class CorporateService:
             return corporate
 
         except Exception as e:
-            log.error(f"Error retrieving corporate with ID {corporate_id}: {str(e)}", exc_info=True)
+            log.error(
+                f"Error retrieving corporate with ID {corporate_id}: {str(e)}",
+                exc_info=True,
+            )
             return None

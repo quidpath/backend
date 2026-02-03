@@ -7,12 +7,14 @@ from quidpath_backend.core.base_models.base import BaseModel
 
 class Vendor(BaseModel):
     CATEGORY_CHOICES = [
-        ('individual', 'Individual'),
-        ('company', 'Company'),
+        ("individual", "Individual"),
+        ("company", "Company"),
     ]
 
     category = models.CharField(max_length=10, choices=CATEGORY_CHOICES)
-    corporate = models.ForeignKey(Corporate, on_delete= models.CASCADE, related_name= "vendors")
+    corporate = models.ForeignKey(
+        Corporate, on_delete=models.CASCADE, related_name="vendors"
+    )
     company_name = models.CharField(max_length=255, null=True, blank=True)
     first_name = models.CharField(max_length=255)
     last_name = models.CharField(max_length=255)
@@ -28,12 +30,14 @@ class Vendor(BaseModel):
     tax_id = models.CharField(max_length=100, null=True, blank=True)
 
     def __str__(self):
-        if self.category == 'company' and self.company_name:
+        if self.category == "company" and self.company_name:
             return self.company_name
-        return f'{self.first_name} {self.last_name}'
+        return f"{self.first_name} {self.last_name}"
 
     def clean(self):
-        if self.category == 'company' and not self.company_name:
+        if self.category == "company" and not self.company_name:
             raise ValidationError("Company name is required for company vendors.")
-        if self.category == 'individual' and self.company_name:
-            raise ValidationError("Company name should be blank for individual vendors.")
+        if self.category == "individual" and self.company_name:
+            raise ValidationError(
+                "Company name should be blank for individual vendors."
+            )

@@ -1,5 +1,7 @@
-from django.db.models import Model, QuerySet
 from typing import Any, Optional
+
+from django.db.models import Model, QuerySet
+
 
 class ServiceBase:
     def __init__(self, manager: QuerySet):
@@ -55,7 +57,7 @@ class ServiceBase:
         """
         instance = self.manager.filter(pk=instance_id).first()
         if instance:
-            if soft and hasattr(instance, 'is_active'):
+            if soft and hasattr(instance, "is_active"):
                 instance.is_active = False
                 instance.save()
             else:

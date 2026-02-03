@@ -1,8 +1,9 @@
 # core/utils/registry.py
 from datetime import datetime
-from django.db.models import Q, QuerySet, Model
+from typing import Any, Dict, Optional, Type, Union
+
 from django.contrib.contenttypes.models import ContentType
-from typing import Any, Dict, Type, Optional, Union
+from django.db.models import Model, Q, QuerySet
 
 from quidpath_backend.core.Services.service_base import ServiceBase
 
@@ -44,7 +45,9 @@ class ServiceRegistry:
             value = getattr(instance, field.name)
             if field.is_relation:
                 data[f"{field.name}_id"] = getattr(instance, f"{field.name}_id")
-            data[field.name] = value.isoformat() if isinstance(value, datetime) else value
+            data[field.name] = (
+                value.isoformat() if isinstance(value, datetime) else value
+            )
         return data
 
     def database(
@@ -54,7 +57,7 @@ class ServiceRegistry:
         instance_id: Optional[Any] = None,
         data: Optional[Union[Dict[str, Any], Q]] = None,
         soft: bool = True,
-        additional_filters: Optional[Dict[str, Any]] = None
+        additional_filters: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """
         Perform CRUD operations dynamically based on the model name and operation.
@@ -64,21 +67,23 @@ class ServiceRegistry:
         service = self.get_service(model_class)
         data = data or {}
 
-        if operation == 'create':
+        if operation == "create":
             return self.serialize_data(service.create(**data))
-        elif operation == 'get':
+        elif operation == "get":
             if not data:
-                raise ValueError("Filter criteria must be provided for 'get' operation.")
+                raise ValueError(
+                    "Filter criteria must be provided for 'get' operation."
+                )
             return self.serialize_data(service.get(**data))
-        elif operation == 'update':
+        elif operation == "update":
             if instance_id is None:
                 raise ValueError("Instance ID is required for 'update' operation.")
             return self.serialize_data(service.update(instance_id, **data))
-        elif operation == 'delete':
+        elif operation == "delete":
             if instance_id is None:
                 raise ValueError("Instance ID is required for 'delete' operation.")
             return service.delete(instance_id, soft=soft)
-        elif operation == 'filter':
+        elif operation == "filter":
             query = Q()
             if isinstance(data, Q):
                 query &= data
@@ -89,7 +94,7 @@ class ServiceRegistry:
             if additional_filters:
                 query &= Q(**additional_filters)
             return self.serialize_data(service.manager.filter(query))
-        elif operation == 'all':
+        elif operation == "all":
             return self.serialize_data(service.get_all_records())
         else:
             raise ValueError(f"Unsupported operation: {operation}")
@@ -98,9 +103,11 @@ class ServiceRegistry:
         self,
         model_name: str,
         query: Q,
-        additional_filters: Optional[Dict[str, Any]] = None
+        additional_filters: Optional[Dict[str, Any]] = None,
     ) -> QuerySet:
         """
         Advanced filtering using Q objects.
         """
-        return self.database(model_name, 'filter', data=query, additional_filters=additional_filters)
+        return self.database(
+            model_name, "filter", data=query, additional_filters=additional_filters
+        )

@@ -17,8 +17,7 @@ def create_superadmin_on_approval(sender, instance: Corporate, created: bool, **
             return
 
         existing_superadmin = CorporateUser.objects.filter(
-            corporate=instance,
-            role=superadmin_role
+            corporate=instance, role=superadmin_role
         )
         if existing_superadmin.exists():
             return
@@ -34,24 +33,28 @@ def create_superadmin_on_approval(sender, instance: Corporate, created: bool, **
             email=email,
             corporate=instance,
             role=superadmin_role,
-            is_active=True
+            is_active=True,
         )
         user.set_password(password)
         user.save()
 
         # Send email
-        NotificationServiceHandler().send_notification([{
-            "message_type": "2",
-            "organisation_id": str(instance.id),
-            "destination": email,
-            "message": f"""
+        NotificationServiceHandler().send_notification(
+            [
+                {
+                    "message_type": "2",
+                    "organisation_id": str(instance.id),
+                    "destination": email,
+                    "message": f"""
                 <h3>Your Company has been approved</h3>
                 <p>Login using the following credentials:</p>
                 <p>Username: <b>{username}</b></p>
                 <p>Password: <b>{password}</b></p>
                 <p>Please change your password after first login.</p>
-            """
-        }])
+            """,
+                }
+            ]
+        )
 
         if not instance.is_verified:
             instance.is_verified = True

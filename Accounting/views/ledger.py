@@ -1,15 +1,17 @@
 # ledger.py
 import csv
-from decimal import Decimal
-from datetime import datetime, date
-from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse
-from django.db import transaction
 from collections import defaultdict
+from datetime import date, datetime
+from decimal import Decimal
+
+from django.db import transaction
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 
 
 def _safe_parse_date(value):
@@ -48,9 +50,11 @@ def list_ledger(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -61,14 +65,18 @@ def list_ledger(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse parameters
         account_id = data.get("account_id")
@@ -90,9 +98,7 @@ def list_ledger(request):
         # Filter by date range if provided
         if start_date or end_date:
             journal_entries = registry.database(
-                model_name="JournalEntry",
-                operation="filter",
-                data=je_filter
+                model_name="JournalEntry", operation="filter", data=je_filter
             )
             filtered_je_ids = []
             for je in journal_entries:
@@ -106,17 +112,13 @@ def list_ledger(request):
             je_ids_set = set(filtered_je_ids)
         else:
             journal_entries = registry.database(
-                model_name="JournalEntry",
-                operation="filter",
-                data=je_filter
+                model_name="JournalEntry", operation="filter", data=je_filter
             )
             je_ids_set = {je["id"] for je in journal_entries}
 
         # Get all journal entry lines
         all_lines = registry.database(
-            model_name="JournalEntryLine",
-            operation="filter",
-            data={}
+            model_name="JournalEntryLine", operation="filter", data={}
         )
 
         # Filter lines by journal entry IDs and account
@@ -133,13 +135,15 @@ def list_ledger(request):
         accounts = registry.database(
             model_name="Account",
             operation="filter",
-            data={"id__in": list(account_ids), "corporate_id": corporate_id}
+            data={"id__in": list(account_ids), "corporate_id": corporate_id},
         )
         account_map = {acc["id"]: acc for acc in accounts}
 
         # Get journal entry information
         je_ids_list = list(je_ids_set)
-        je_data_map = {je["id"]: je for je in journal_entries if je["id"] in je_ids_list}
+        je_data_map = {
+            je["id"]: je for je in journal_entries if je["id"] in je_ids_list
+        }
 
         # Group by account and calculate running balances
         account_ledgers = defaultdict(list)
@@ -149,22 +153,22 @@ def list_ledger(request):
             je = je_data_map.get(je_id, {})
             account = account_map.get(account_id, {})
 
-            account_ledgers[account_id].append({
-                "line": line,
-                "journal_entry": je,
-                "account": account
-            })
+            account_ledgers[account_id].append(
+                {"line": line, "journal_entry": je, "account": account}
+            )
 
         # Build ledger entries with running balances
         ledger_entries = []
         for account_id, entries in account_ledgers.items():
             account = account_map.get(account_id, {})
-            
+
             # Sort by date, then by journal entry ID
-            entries.sort(key=lambda x: (
-                _safe_parse_date(x["journal_entry"].get("date")) or date.today(),
-                x["journal_entry"].get("id", "")
-            ))
+            entries.sort(
+                key=lambda x: (
+                    _safe_parse_date(x["journal_entry"].get("date")) or date.today(),
+                    x["journal_entry"].get("id", ""),
+                )
+            )
 
             # Calculate opening balance (all transactions before start_date)
             opening_balance = Decimal("0.00")
@@ -174,7 +178,7 @@ def list_ledger(request):
                     je_date = _safe_parse_date(entry["journal_entry"].get("date"))
                     if je_date and je_date < start_date:
                         opening_lines.append(entry["line"])
-                
+
                 for line in opening_lines:
                     debit = Decimal(str(line.get("debit", 0)))
                     credit = Decimal(str(line.get("credit", 0)))
@@ -195,27 +199,30 @@ def list_ledger(request):
                 if end_date and je_date and je_date > end_date:
                     continue
 
-                ledger_entries.append({
-                    "id": str(line["id"]),
-                    "account_id": str(account_id),
-                    "account_code": account.get("code", ""),
-                    "account_name": account.get("name", ""),
-                    "date": str(je_date) if je_date else "",
-                    "journal_entry_reference": je.get("reference", ""),
-                    "journal_entry_id": str(je_id),
-                    "description": line.get("description", "") or je.get("description", ""),
-                    "debit": str(debit),
-                    "credit": str(credit),
-                    "balance": str(running_balance),
-                    "status": "Posted" if je.get("is_posted", False) else "Draft"
-                })
+                ledger_entries.append(
+                    {
+                        "id": str(line["id"]),
+                        "account_id": str(account_id),
+                        "account_code": account.get("code", ""),
+                        "account_name": account.get("name", ""),
+                        "date": str(je_date) if je_date else "",
+                        "journal_entry_reference": je.get("reference", ""),
+                        "journal_entry_id": str(je_id),
+                        "description": line.get("description", "")
+                        or je.get("description", ""),
+                        "debit": str(debit),
+                        "credit": str(credit),
+                        "balance": str(running_balance),
+                        "status": "Posted" if je.get("is_posted", False) else "Draft",
+                    }
+                )
 
         # Sort by date and reference
         ledger_entries.sort(key=lambda x: (x["date"], x["journal_entry_reference"]))
 
         # Apply pagination
         total = len(ledger_entries)
-        paginated_entries = ledger_entries[offset:offset + limit]
+        paginated_entries = ledger_entries[offset : offset + limit]
 
         TransactionLogBase.log(
             transaction_type="LEDGER_RETRIEVED",
@@ -232,7 +239,7 @@ def list_ledger(request):
                 "total": total,
                 "page": page,
                 "limit": limit,
-                "opening_balance": str(opening_balance) if account_id else None
+                "opening_balance": str(opening_balance) if account_id else None,
             },
             message="Ledger retrieved successfully",
             code=200,
@@ -269,9 +276,11 @@ def download_ledger(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -282,14 +291,18 @@ def download_ledger(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse parameters
         account_id = data.get("account_id")
@@ -308,9 +321,7 @@ def download_ledger(request):
 
         # Get journal entries
         journal_entries = registry.database(
-            model_name="JournalEntry",
-            operation="filter",
-            data=je_filter
+            model_name="JournalEntry", operation="filter", data=je_filter
         )
 
         # Filter by date range
@@ -328,19 +339,22 @@ def download_ledger(request):
 
         # Get journal entry lines
         all_lines = registry.database(
-            model_name="JournalEntryLine",
-            operation="filter",
-            data={}
+            model_name="JournalEntryLine", operation="filter", data={}
         )
 
-        lines = [line for line in all_lines if line["journal_entry_id"] in je_ids_set and (not account_id or line["account_id"] == account_id)]
+        lines = [
+            line
+            for line in all_lines
+            if line["journal_entry_id"] in je_ids_set
+            and (not account_id or line["account_id"] == account_id)
+        ]
 
         # Get account and journal entry info
         account_ids = {line["account_id"] for line in lines}
         accounts = registry.database(
             model_name="Account",
             operation="filter",
-            data={"id__in": list(account_ids), "corporate_id": corporate_id}
+            data={"id__in": list(account_ids), "corporate_id": corporate_id},
         )
         account_map = {acc["id"]: acc for acc in accounts}
         je_data_map = {je["id"]: je for je in journal_entries if je["id"] in je_ids_set}
@@ -355,16 +369,19 @@ def download_ledger(request):
             debit = Decimal(str(line.get("debit", 0)))
             credit = Decimal(str(line.get("credit", 0)))
 
-            ledger_entries.append({
-                "Date": str(je_date) if je_date else "",
-                "Account Code": account.get("code", ""),
-                "Account Name": account.get("name", ""),
-                "Reference": je.get("reference", ""),
-                "Description": line.get("description", "") or je.get("description", ""),
-                "Debit": str(debit),
-                "Credit": str(credit),
-                "Status": "Posted" if je.get("is_posted", False) else "Draft"
-            })
+            ledger_entries.append(
+                {
+                    "Date": str(je_date) if je_date else "",
+                    "Account Code": account.get("code", ""),
+                    "Account Name": account.get("name", ""),
+                    "Reference": je.get("reference", ""),
+                    "Description": line.get("description", "")
+                    or je.get("description", ""),
+                    "Debit": str(debit),
+                    "Credit": str(credit),
+                    "Status": "Posted" if je.get("is_posted", False) else "Draft",
+                }
+            )
 
         # Sort by date
         ledger_entries.sort(key=lambda x: x["Date"])
@@ -375,7 +392,19 @@ def download_ledger(request):
             filename = f"ledger_{corporate_id}_{date.today()}.csv"
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
-            writer = csv.DictWriter(response, fieldnames=["Date", "Account Code", "Account Name", "Reference", "Description", "Debit", "Credit", "Status"])
+            writer = csv.DictWriter(
+                response,
+                fieldnames=[
+                    "Date",
+                    "Account Code",
+                    "Account Name",
+                    "Reference",
+                    "Description",
+                    "Debit",
+                    "Credit",
+                    "Status",
+                ],
+            )
             writer.writeheader()
             writer.writerows(ledger_entries)
 
@@ -390,7 +419,8 @@ def download_ledger(request):
             return response
         else:
             return ResponseProvider(
-                message=f"Export format '{export_format}' not supported. Use 'csv'.", code=400
+                message=f"Export format '{export_format}' not supported. Use 'csv'.",
+                code=400,
             ).bad_request()
 
     except Exception as e:
@@ -404,4 +434,3 @@ def download_ledger(request):
         return ResponseProvider(
             message="An error occurred while exporting ledger", code=500
         ).exception()
-

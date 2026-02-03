@@ -3,9 +3,9 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+import dj_database_url
 from corsheaders.defaults import default_headers
 from dotenv import load_dotenv
-import dj_database_url
 
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -17,10 +17,9 @@ load_dotenv(ENV_FILE)
 # Security & Debug
 SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-dev-key")
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
-ALLOWED_HOSTS = os.environ.get(
-    "ALLOWED_HOSTS",
-    "localhost,127.0.0.1,0.0.0.0"
-).split(",")
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0").split(
+    ","
+)
 
 # Application definition
 INSTALLED_APPS = [
@@ -76,7 +75,9 @@ WSGI_APPLICATION = "quidpath_backend.wsgi.application"
 # Database (PostgreSQL via DATABASE_URL)
 DATABASES = {
     "default": dj_database_url.config(
-        default=os.environ.get("DATABASE_URL"),  # e.g. postgres://devuser:devpass@db:5432/devdb
+        default=os.environ.get(
+            "DATABASE_URL"
+        ),  # e.g. postgres://devuser:devpass@db:5432/devdb
         conn_max_age=600,
     )
 }
@@ -87,7 +88,9 @@ if os.environ.get("REQUIRE_DB_SSL", "false").lower() == "true":
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -120,8 +123,7 @@ DEFAULT_FROM_EMAIL = "noreply@quidpath.com"
 
 # Billing Service Configuration
 BILLING_SERVICE_URL = os.environ.get(
-    "BILLING_SERVICE_URL",
-    "http://localhost:8002/api/billing"
+    "BILLING_SERVICE_URL", "http://localhost:8002/api/billing"
 )
 
 # Internationalization
@@ -136,7 +138,7 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 # Custom User
 AUTH_USER_MODEL = "Authentication.CustomUser"
@@ -147,9 +149,20 @@ CORS_ALLOWED_ORIGINS = [
     "https://quidpath.com",
     "https://www.quidpath.com",
     "http://localhost:3000",
-    "https://quidpath-erp-frontend-production.up.railway.app"
-
+    "https://quidpath-erp-frontend-production.up.railway.app",
 ]
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
 ]
+
+# JWT Configuration for Microservices
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", SECRET_KEY)
+
+# Service API Keys for Microservices
+SERVICE_API_KEYS = {
+    "billing-service": os.environ.get("BILLING_SERVICE_API_KEY", ""),
+    "tazama-service": os.environ.get("TAZAMA_SERVICE_API_KEY", ""),
+}
+
+# Webhook Configuration
+BILLING_WEBHOOK_SECRET = os.environ.get("BILLING_WEBHOOK_SECRET", "")

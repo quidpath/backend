@@ -1,14 +1,16 @@
 # aging_reports.py
 import csv
-from decimal import Decimal
-from datetime import datetime, date, timedelta
-from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse
 from collections import defaultdict
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 
 
 def _safe_parse_date(value):
@@ -44,9 +46,11 @@ def get_aging_report(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -57,14 +61,18 @@ def get_aging_report(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse parameters
         as_of_date_raw = data.get("as_of_date")
@@ -81,7 +89,9 @@ def get_aging_report(request):
             as_of_date = date.today()
 
         if report_type not in ["sales", "purchases"]:
-            return ResponseProvider(message="Type must be 'sales' or 'purchases'", code=400).bad_request()
+            return ResponseProvider(
+                message="Type must be 'sales' or 'purchases'", code=400
+            ).bad_request()
 
         # Get posted invoices or vendor bills
         if report_type == "sales":
@@ -103,7 +113,7 @@ def get_aging_report(request):
         documents = registry.database(
             model_name=model_name,
             operation="filter",
-            data={"corporate_id": corporate_id, **status_filter}
+            data={"corporate_id": corporate_id, **status_filter},
         )
 
         # Get payments to calculate outstanding amounts
@@ -117,7 +127,7 @@ def get_aging_report(request):
         all_payments = registry.database(
             model_name=payment_model,
             operation="filter",
-            data={"corporate_id": corporate_id}
+            data={"corporate_id": corporate_id},
         )
 
         # Calculate outstanding per document
@@ -125,17 +135,25 @@ def get_aging_report(request):
         for payment in all_payments:
             doc_id = payment.get(payment_doc_field)
             if doc_id:
-                amount = Decimal(str(payment.get("amount_disbursed", payment.get("amount_received", 0))))
+                amount = Decimal(
+                    str(
+                        payment.get(
+                            "amount_disbursed", payment.get("amount_received", 0)
+                        )
+                    )
+                )
                 document_payments[doc_id] += amount
 
         # Calculate aging per partner
-        partner_aging = defaultdict(lambda: {
-            "current": Decimal("0.00"),
-            "buckets": {bucket: Decimal("0.00") for bucket in aging_buckets},
-            "over": Decimal("0.00"),
-            "total": Decimal("0.00"),
-            "documents": []
-        })
+        partner_aging = defaultdict(
+            lambda: {
+                "current": Decimal("0.00"),
+                "buckets": {bucket: Decimal("0.00") for bucket in aging_buckets},
+                "over": Decimal("0.00"),
+                "total": Decimal("0.00"),
+                "documents": [],
+            }
+        )
 
         # Get partner information
         partner_ids = set()
@@ -147,7 +165,7 @@ def get_aging_report(request):
         partners = registry.database(
             model_name=partner_model,
             operation="filter",
-            data={"id__in": list(partner_ids), "corporate_id": corporate_id}
+            data={"id__in": list(partner_ids), "corporate_id": corporate_id},
         )
         partner_map = {p["id"]: p for p in partners}
 
@@ -195,7 +213,7 @@ def get_aging_report(request):
                 partner_info["buckets"][bucket] += outstanding
 
             partner_info["total"] += outstanding
-            
+
             # Get additional invoice details for sales aging
             doc_data = {
                 "id": str(doc["id"]),
@@ -205,9 +223,9 @@ def get_aging_report(request):
                 "total": str(total_amount),
                 "paid": str(paid_amount),
                 "outstanding": str(outstanding),
-                "days_overdue": days_overdue
+                "days_overdue": days_overdue,
             }
-            
+
             # Add invoice-specific fields for sales aging
             if report_type == "sales":
                 doc_data["invoice_date"] = str(doc.get("date", ""))
@@ -220,14 +238,14 @@ def get_aging_report(request):
                     customers = registry.database(
                         model_name="Customer",
                         operation="filter",
-                        data={"id": customer_id, "corporate_id": corporate_id}
+                        data={"id": customer_id, "corporate_id": corporate_id},
                     )
                     if customers:
                         customer = customers[0]
                         doc_data["customer_name"] = customer.get("name", "")
                         doc_data["customer_code"] = customer.get("code", "")
                         doc_data["customer_email"] = customer.get("email", "")
-            
+
             # Add vendor-specific fields for purchases aging
             elif report_type == "purchases":
                 doc_data["bill_date"] = str(doc.get("date", ""))
@@ -240,30 +258,34 @@ def get_aging_report(request):
                     vendors = registry.database(
                         model_name="Vendor",
                         operation="filter",
-                        data={"id": vendor_id, "corporate_id": corporate_id}
+                        data={"id": vendor_id, "corporate_id": corporate_id},
                     )
                     if vendors:
                         vendor = vendors[0]
                         doc_data["vendor_name"] = vendor.get("name", "")
                         doc_data["vendor_code"] = vendor.get("code", "")
                         doc_data["vendor_email"] = vendor.get("email", "")
-            
+
             partner_info["documents"].append(doc_data)
 
         # Build response
         aging_entries = []
         for partner_id, aging_data in partner_aging.items():
             partner = partner_map.get(partner_id, {})
-            aging_entries.append({
-                "partner_id": str(partner_id),
-                "partner_name": partner.get("name", ""),
-                "partner_code": partner.get("code", ""),
-                "current": str(aging_data["current"]),
-                "buckets": {str(k): str(v) for k, v in aging_data["buckets"].items()},
-                "over": str(aging_data["over"]),
-                "total": str(aging_data["total"]),
-                "documents": aging_data["documents"]
-            })
+            aging_entries.append(
+                {
+                    "partner_id": str(partner_id),
+                    "partner_name": partner.get("name", ""),
+                    "partner_code": partner.get("code", ""),
+                    "current": str(aging_data["current"]),
+                    "buckets": {
+                        str(k): str(v) for k, v in aging_data["buckets"].items()
+                    },
+                    "over": str(aging_data["over"]),
+                    "total": str(aging_data["total"]),
+                    "documents": aging_data["documents"],
+                }
+            )
 
         # Sort by total outstanding (descending)
         aging_entries.sort(key=lambda x: Decimal(x["total"]), reverse=True)
@@ -272,11 +294,16 @@ def get_aging_report(request):
         totals = {
             "current": str(sum(Decimal(e["current"]) for e in aging_entries)),
             "buckets": {
-                str(bucket): str(sum(Decimal(e["buckets"].get(str(bucket), "0")) for e in aging_entries))
+                str(bucket): str(
+                    sum(
+                        Decimal(e["buckets"].get(str(bucket), "0"))
+                        for e in aging_entries
+                    )
+                )
                 for bucket in aging_buckets
             },
             "over": str(sum(Decimal(e["over"]) for e in aging_entries)),
-            "total": str(sum(Decimal(e["total"]) for e in aging_entries))
+            "total": str(sum(Decimal(e["total"]) for e in aging_entries)),
         }
 
         aging_data = {
@@ -284,7 +311,7 @@ def get_aging_report(request):
             "type": report_type,
             "aging_buckets": aging_buckets,
             "entries": aging_entries,
-            "totals": totals
+            "totals": totals,
         }
 
         TransactionLogBase.log(
@@ -332,9 +359,11 @@ def download_aging_report(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -345,14 +374,18 @@ def download_aging_report(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         as_of_date_raw = data.get("as_of_date")
         report_type = data.get("type", "sales").lower()
@@ -378,19 +411,25 @@ def download_aging_report(request):
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
             # Fieldnames
-            fieldnames = ["Partner", "Current"] + [f"{bucket} Days" for bucket in aging_buckets] + ["Over", "Total"]
+            fieldnames = (
+                ["Partner", "Current"]
+                + [f"{bucket} Days" for bucket in aging_buckets]
+                + ["Over", "Total"]
+            )
             writer = csv.DictWriter(response, fieldnames=fieldnames)
             writer.writeheader()
 
             # Note: This is a simplified export. Full implementation would fetch actual data
             # For now, returning empty CSV with structure
-            writer.writerow({
-                "Partner": "Sample",
-                "Current": "0.00",
-                **{f"{bucket} Days": "0.00" for bucket in aging_buckets},
-                "Over": "0.00",
-                "Total": "0.00"
-            })
+            writer.writerow(
+                {
+                    "Partner": "Sample",
+                    "Current": "0.00",
+                    **{f"{bucket} Days": "0.00" for bucket in aging_buckets},
+                    "Over": "0.00",
+                    "Total": "0.00",
+                }
+            )
 
             TransactionLogBase.log(
                 transaction_type="AGING_REPORT_EXPORTED",
@@ -403,7 +442,8 @@ def download_aging_report(request):
             return response
         else:
             return ResponseProvider(
-                message=f"Export format '{export_format}' not supported. Use 'csv'.", code=400
+                message=f"Export format '{export_format}' not supported. Use 'csv'.",
+                code=400,
             ).bad_request()
 
     except Exception as e:
@@ -417,4 +457,3 @@ def download_aging_report(request):
         return ResponseProvider(
             message="An error occurred while exporting aging report", code=500
         ).exception()
-

@@ -1,14 +1,16 @@
 # summary_reports.py
 import csv
-from decimal import Decimal
-from datetime import datetime, date, timedelta
-from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse
 from collections import defaultdict
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 
 
 def _safe_parse_date(value):
@@ -44,9 +46,11 @@ def get_sales_summary(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -57,14 +61,18 @@ def get_sales_summary(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse dates
         today = date.today()
@@ -72,17 +80,25 @@ def get_sales_summary(request):
         end_date_str = data.get("end_date")
         group_by = data.get("group_by", "both")
 
-        start_date = today.replace(day=1) if not start_date_str else _safe_parse_date(str(start_date_str)) or today.replace(day=1)
-        end_date = today if not end_date_str else _safe_parse_date(str(end_date_str)) or today
+        start_date = (
+            today.replace(day=1)
+            if not start_date_str
+            else _safe_parse_date(str(start_date_str)) or today.replace(day=1)
+        )
+        end_date = (
+            today if not end_date_str else _safe_parse_date(str(end_date_str)) or today
+        )
 
         if start_date > end_date:
-            return ResponseProvider(message="Start date must be before end date", code=400).bad_request()
+            return ResponseProvider(
+                message="Start date must be before end date", code=400
+            ).bad_request()
 
         # Get posted invoices
         invoices = registry.database(
             model_name="Invoices",
             operation="filter",
-            data={"corporate_id": corporate_id, "status": "POSTED"}
+            data={"corporate_id": corporate_id, "status": "POSTED"},
         )
 
         # Filter by date range
@@ -93,31 +109,43 @@ def get_sales_summary(request):
                 filtered_invoices.append(invoice)
 
         # Get customer information
-        customer_ids = {inv.get("customer_id") for inv in filtered_invoices if inv.get("customer_id")}
+        customer_ids = {
+            inv.get("customer_id")
+            for inv in filtered_invoices
+            if inv.get("customer_id")
+        }
         customers = registry.database(
             model_name="Customer",
             operation="filter",
-            data={"id__in": list(customer_ids), "corporate_id": corporate_id}
+            data={"id__in": list(customer_ids), "corporate_id": corporate_id},
         )
         customer_map = {c["id"]: c for c in customers}
 
         # Group data
         if group_by in ["date", "both"]:
-            date_summary = defaultdict(lambda: {
-                "count": 0,
-                "sub_total": Decimal("0.00"),
-                "tax_total": Decimal("0.00"),
-                "total": Decimal("0.00")
-            })
+            date_summary = defaultdict(
+                lambda: {
+                    "count": 0,
+                    "sub_total": Decimal("0.00"),
+                    "tax_total": Decimal("0.00"),
+                    "total": Decimal("0.00"),
+                }
+            )
 
             for invoice in filtered_invoices:
                 inv_date = _safe_parse_date(invoice.get("date"))
                 if inv_date:
                     date_key = str(inv_date)
                     date_summary[date_key]["count"] += 1
-                    date_summary[date_key]["sub_total"] += Decimal(str(invoice.get("sub_total", 0)))
-                    date_summary[date_key]["tax_total"] += Decimal(str(invoice.get("tax_total", 0)))
-                    date_summary[date_key]["total"] += Decimal(str(invoice.get("total", 0)))
+                    date_summary[date_key]["sub_total"] += Decimal(
+                        str(invoice.get("sub_total", 0))
+                    )
+                    date_summary[date_key]["tax_total"] += Decimal(
+                        str(invoice.get("tax_total", 0))
+                    )
+                    date_summary[date_key]["total"] += Decimal(
+                        str(invoice.get("total", 0))
+                    )
 
             date_summary_list = [
                 {
@@ -125,7 +153,7 @@ def get_sales_summary(request):
                     "count": summary["count"],
                     "sub_total": str(summary["sub_total"]),
                     "tax_total": str(summary["tax_total"]),
-                    "total": str(summary["total"])
+                    "total": str(summary["total"]),
                 }
                 for date_key, summary in sorted(date_summary.items())
             ]
@@ -133,20 +161,28 @@ def get_sales_summary(request):
             date_summary_list = []
 
         if group_by in ["customer", "both"]:
-            customer_summary = defaultdict(lambda: {
-                "count": 0,
-                "sub_total": Decimal("0.00"),
-                "tax_total": Decimal("0.00"),
-                "total": Decimal("0.00")
-            })
+            customer_summary = defaultdict(
+                lambda: {
+                    "count": 0,
+                    "sub_total": Decimal("0.00"),
+                    "tax_total": Decimal("0.00"),
+                    "total": Decimal("0.00"),
+                }
+            )
 
             for invoice in filtered_invoices:
                 customer_id = invoice.get("customer_id")
                 if customer_id:
                     customer_summary[customer_id]["count"] += 1
-                    customer_summary[customer_id]["sub_total"] += Decimal(str(invoice.get("sub_total", 0)))
-                    customer_summary[customer_id]["tax_total"] += Decimal(str(invoice.get("tax_total", 0)))
-                    customer_summary[customer_id]["total"] += Decimal(str(invoice.get("total", 0)))
+                    customer_summary[customer_id]["sub_total"] += Decimal(
+                        str(invoice.get("sub_total", 0))
+                    )
+                    customer_summary[customer_id]["tax_total"] += Decimal(
+                        str(invoice.get("tax_total", 0))
+                    )
+                    customer_summary[customer_id]["total"] += Decimal(
+                        str(invoice.get("total", 0))
+                    )
 
             customer_summary_list = [
                 {
@@ -156,7 +192,7 @@ def get_sales_summary(request):
                     "count": summary["count"],
                     "sub_total": str(summary["sub_total"]),
                     "tax_total": str(summary["tax_total"]),
-                    "total": str(summary["total"])
+                    "total": str(summary["total"]),
                 }
                 for customer_id, summary in customer_summary.items()
             ]
@@ -165,9 +201,15 @@ def get_sales_summary(request):
 
         # Calculate totals
         total_count = len(filtered_invoices)
-        total_sub_total = sum(Decimal(str(inv.get("sub_total", 0))) for inv in filtered_invoices)
-        total_tax = sum(Decimal(str(inv.get("tax_total", 0))) for inv in filtered_invoices)
-        total_amount = sum(Decimal(str(inv.get("total", 0))) for inv in filtered_invoices)
+        total_sub_total = sum(
+            Decimal(str(inv.get("sub_total", 0))) for inv in filtered_invoices
+        )
+        total_tax = sum(
+            Decimal(str(inv.get("tax_total", 0))) for inv in filtered_invoices
+        )
+        total_amount = sum(
+            Decimal(str(inv.get("total", 0))) for inv in filtered_invoices
+        )
 
         summary_data = {
             "start_date": str(start_date),
@@ -179,8 +221,8 @@ def get_sales_summary(request):
                 "count": total_count,
                 "sub_total": str(total_sub_total),
                 "tax_total": str(total_tax),
-                "total": str(total_amount)
-            }
+                "total": str(total_amount),
+            },
         }
 
         TransactionLogBase.log(
@@ -230,9 +272,11 @@ def get_purchases_summary(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -243,14 +287,18 @@ def get_purchases_summary(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse dates
         today = date.today()
@@ -258,17 +306,25 @@ def get_purchases_summary(request):
         end_date_str = data.get("end_date")
         group_by = data.get("group_by", "both")
 
-        start_date = today.replace(day=1) if not start_date_str else _safe_parse_date(str(start_date_str)) or today.replace(day=1)
-        end_date = today if not end_date_str else _safe_parse_date(str(end_date_str)) or today
+        start_date = (
+            today.replace(day=1)
+            if not start_date_str
+            else _safe_parse_date(str(start_date_str)) or today.replace(day=1)
+        )
+        end_date = (
+            today if not end_date_str else _safe_parse_date(str(end_date_str)) or today
+        )
 
         if start_date > end_date:
-            return ResponseProvider(message="Start date must be before end date", code=400).bad_request()
+            return ResponseProvider(
+                message="Start date must be before end date", code=400
+            ).bad_request()
 
         # Get posted vendor bills
         vendor_bills = registry.database(
             model_name="VendorBill",
             operation="filter",
-            data={"corporate_id": corporate_id, "status": "POSTED"}
+            data={"corporate_id": corporate_id, "status": "POSTED"},
         )
 
         # Filter by date range
@@ -279,31 +335,41 @@ def get_purchases_summary(request):
                 filtered_bills.append(bill)
 
         # Get vendor information
-        vendor_ids = {bill.get("vendor_id") for bill in filtered_bills if bill.get("vendor_id")}
+        vendor_ids = {
+            bill.get("vendor_id") for bill in filtered_bills if bill.get("vendor_id")
+        }
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id__in": list(vendor_ids), "corporate_id": corporate_id}
+            data={"id__in": list(vendor_ids), "corporate_id": corporate_id},
         )
         vendor_map = {v["id"]: v for v in vendors}
 
         # Group data (similar to sales)
         if group_by in ["date", "both"]:
-            date_summary = defaultdict(lambda: {
-                "count": 0,
-                "sub_total": Decimal("0.00"),
-                "tax_total": Decimal("0.00"),
-                "total": Decimal("0.00")
-            })
+            date_summary = defaultdict(
+                lambda: {
+                    "count": 0,
+                    "sub_total": Decimal("0.00"),
+                    "tax_total": Decimal("0.00"),
+                    "total": Decimal("0.00"),
+                }
+            )
 
             for bill in filtered_bills:
                 bill_date = _safe_parse_date(bill.get("date"))
                 if bill_date:
                     date_key = str(bill_date)
                     date_summary[date_key]["count"] += 1
-                    date_summary[date_key]["sub_total"] += Decimal(str(bill.get("sub_total", 0)))
-                    date_summary[date_key]["tax_total"] += Decimal(str(bill.get("tax_total", 0)))
-                    date_summary[date_key]["total"] += Decimal(str(bill.get("total", 0)))
+                    date_summary[date_key]["sub_total"] += Decimal(
+                        str(bill.get("sub_total", 0))
+                    )
+                    date_summary[date_key]["tax_total"] += Decimal(
+                        str(bill.get("tax_total", 0))
+                    )
+                    date_summary[date_key]["total"] += Decimal(
+                        str(bill.get("total", 0))
+                    )
 
             date_summary_list = [
                 {
@@ -311,7 +377,7 @@ def get_purchases_summary(request):
                     "count": summary["count"],
                     "sub_total": str(summary["sub_total"]),
                     "tax_total": str(summary["tax_total"]),
-                    "total": str(summary["total"])
+                    "total": str(summary["total"]),
                 }
                 for date_key, summary in sorted(date_summary.items())
             ]
@@ -319,20 +385,28 @@ def get_purchases_summary(request):
             date_summary_list = []
 
         if group_by in ["vendor", "both"]:
-            vendor_summary = defaultdict(lambda: {
-                "count": 0,
-                "sub_total": Decimal("0.00"),
-                "tax_total": Decimal("0.00"),
-                "total": Decimal("0.00")
-            })
+            vendor_summary = defaultdict(
+                lambda: {
+                    "count": 0,
+                    "sub_total": Decimal("0.00"),
+                    "tax_total": Decimal("0.00"),
+                    "total": Decimal("0.00"),
+                }
+            )
 
             for bill in filtered_bills:
                 vendor_id = bill.get("vendor_id")
                 if vendor_id:
                     vendor_summary[vendor_id]["count"] += 1
-                    vendor_summary[vendor_id]["sub_total"] += Decimal(str(bill.get("sub_total", 0)))
-                    vendor_summary[vendor_id]["tax_total"] += Decimal(str(bill.get("tax_total", 0)))
-                    vendor_summary[vendor_id]["total"] += Decimal(str(bill.get("total", 0)))
+                    vendor_summary[vendor_id]["sub_total"] += Decimal(
+                        str(bill.get("sub_total", 0))
+                    )
+                    vendor_summary[vendor_id]["tax_total"] += Decimal(
+                        str(bill.get("tax_total", 0))
+                    )
+                    vendor_summary[vendor_id]["total"] += Decimal(
+                        str(bill.get("total", 0))
+                    )
 
             vendor_summary_list = [
                 {
@@ -342,7 +416,7 @@ def get_purchases_summary(request):
                     "count": summary["count"],
                     "sub_total": str(summary["sub_total"]),
                     "tax_total": str(summary["tax_total"]),
-                    "total": str(summary["total"])
+                    "total": str(summary["total"]),
                 }
                 for vendor_id, summary in vendor_summary.items()
             ]
@@ -351,9 +425,15 @@ def get_purchases_summary(request):
 
         # Calculate totals
         total_count = len(filtered_bills)
-        total_sub_total = sum(Decimal(str(bill.get("sub_total", 0))) for bill in filtered_bills)
-        total_tax = sum(Decimal(str(bill.get("tax_total", 0))) for bill in filtered_bills)
-        total_amount = sum(Decimal(str(bill.get("total", 0))) for bill in filtered_bills)
+        total_sub_total = sum(
+            Decimal(str(bill.get("sub_total", 0))) for bill in filtered_bills
+        )
+        total_tax = sum(
+            Decimal(str(bill.get("tax_total", 0))) for bill in filtered_bills
+        )
+        total_amount = sum(
+            Decimal(str(bill.get("total", 0))) for bill in filtered_bills
+        )
 
         summary_data = {
             "start_date": str(start_date),
@@ -365,8 +445,8 @@ def get_purchases_summary(request):
                 "count": total_count,
                 "sub_total": str(total_sub_total),
                 "tax_total": str(total_tax),
-                "total": str(total_amount)
-            }
+                "total": str(total_amount),
+            },
         }
 
         TransactionLogBase.log(
@@ -416,9 +496,11 @@ def get_expenses_summary(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -429,14 +511,18 @@ def get_expenses_summary(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse dates
         today = date.today()
@@ -444,17 +530,25 @@ def get_expenses_summary(request):
         end_date_str = data.get("end_date")
         group_by = data.get("group_by", "both")
 
-        start_date = today.replace(day=1) if not start_date_str else _safe_parse_date(str(start_date_str)) or today.replace(day=1)
-        end_date = today if not end_date_str else _safe_parse_date(str(end_date_str)) or today
+        start_date = (
+            today.replace(day=1)
+            if not start_date_str
+            else _safe_parse_date(str(start_date_str)) or today.replace(day=1)
+        )
+        end_date = (
+            today if not end_date_str else _safe_parse_date(str(end_date_str)) or today
+        )
 
         if start_date > end_date:
-            return ResponseProvider(message="Start date must be before end date", code=400).bad_request()
+            return ResponseProvider(
+                message="Start date must be before end date", code=400
+            ).bad_request()
 
         # Get posted expenses
         expenses = registry.database(
             model_name="Expense",
             operation="filter",
-            data={"corporate_id": corporate_id, "is_posted": True}
+            data={"corporate_id": corporate_id, "is_posted": True},
         )
 
         # Filter by date range
@@ -466,21 +560,29 @@ def get_expenses_summary(request):
 
         # Group data
         if group_by in ["date", "both"]:
-            date_summary = defaultdict(lambda: {
-                "count": 0,
-                "amount": Decimal("0.00"),
-                "tax_amount": Decimal("0.00"),
-                "total": Decimal("0.00")
-            })
+            date_summary = defaultdict(
+                lambda: {
+                    "count": 0,
+                    "amount": Decimal("0.00"),
+                    "tax_amount": Decimal("0.00"),
+                    "total": Decimal("0.00"),
+                }
+            )
 
             for expense in filtered_expenses:
                 exp_date = _safe_parse_date(expense.get("date"))
                 if exp_date:
                     date_key = str(exp_date)
                     date_summary[date_key]["count"] += 1
-                    date_summary[date_key]["amount"] += Decimal(str(expense.get("amount", 0)))
-                    date_summary[date_key]["tax_amount"] += Decimal(str(expense.get("tax_amount", 0)))
-                    date_summary[date_key]["total"] += Decimal(str(expense.get("amount", 0))) + Decimal(str(expense.get("tax_amount", 0)))
+                    date_summary[date_key]["amount"] += Decimal(
+                        str(expense.get("amount", 0))
+                    )
+                    date_summary[date_key]["tax_amount"] += Decimal(
+                        str(expense.get("tax_amount", 0))
+                    )
+                    date_summary[date_key]["total"] += Decimal(
+                        str(expense.get("amount", 0))
+                    ) + Decimal(str(expense.get("tax_amount", 0)))
 
             date_summary_list = [
                 {
@@ -488,7 +590,7 @@ def get_expenses_summary(request):
                     "count": summary["count"],
                     "amount": str(summary["amount"]),
                     "tax_amount": str(summary["tax_amount"]),
-                    "total": str(summary["total"])
+                    "total": str(summary["total"]),
                 }
                 for date_key, summary in sorted(date_summary.items())
             ]
@@ -496,19 +598,27 @@ def get_expenses_summary(request):
             date_summary_list = []
 
         if group_by in ["category", "both"]:
-            category_summary = defaultdict(lambda: {
-                "count": 0,
-                "amount": Decimal("0.00"),
-                "tax_amount": Decimal("0.00"),
-                "total": Decimal("0.00")
-            })
+            category_summary = defaultdict(
+                lambda: {
+                    "count": 0,
+                    "amount": Decimal("0.00"),
+                    "tax_amount": Decimal("0.00"),
+                    "total": Decimal("0.00"),
+                }
+            )
 
             for expense in filtered_expenses:
                 category = expense.get("category", "OTHER")
                 category_summary[category]["count"] += 1
-                category_summary[category]["amount"] += Decimal(str(expense.get("amount", 0)))
-                category_summary[category]["tax_amount"] += Decimal(str(expense.get("tax_amount", 0)))
-                category_summary[category]["total"] += Decimal(str(expense.get("amount", 0))) + Decimal(str(expense.get("tax_amount", 0)))
+                category_summary[category]["amount"] += Decimal(
+                    str(expense.get("amount", 0))
+                )
+                category_summary[category]["tax_amount"] += Decimal(
+                    str(expense.get("tax_amount", 0))
+                )
+                category_summary[category]["total"] += Decimal(
+                    str(expense.get("amount", 0))
+                ) + Decimal(str(expense.get("tax_amount", 0)))
 
             category_summary_list = [
                 {
@@ -516,7 +626,7 @@ def get_expenses_summary(request):
                     "count": summary["count"],
                     "amount": str(summary["amount"]),
                     "tax_amount": str(summary["tax_amount"]),
-                    "total": str(summary["total"])
+                    "total": str(summary["total"]),
                 }
                 for category, summary in category_summary.items()
             ]
@@ -525,8 +635,12 @@ def get_expenses_summary(request):
 
         # Calculate totals
         total_count = len(filtered_expenses)
-        total_amount = sum(Decimal(str(exp.get("amount", 0))) for exp in filtered_expenses)
-        total_tax = sum(Decimal(str(exp.get("tax_amount", 0))) for exp in filtered_expenses)
+        total_amount = sum(
+            Decimal(str(exp.get("amount", 0))) for exp in filtered_expenses
+        )
+        total_tax = sum(
+            Decimal(str(exp.get("tax_amount", 0))) for exp in filtered_expenses
+        )
         total_all = total_amount + total_tax
 
         summary_data = {
@@ -539,8 +653,8 @@ def get_expenses_summary(request):
                 "count": total_count,
                 "amount": str(total_amount),
                 "tax_amount": str(total_tax),
-                "total": str(total_all)
-            }
+                "total": str(total_all),
+            },
         }
 
         TransactionLogBase.log(
@@ -569,4 +683,3 @@ def get_expenses_summary(request):
         return ResponseProvider(
             message="An error occurred while retrieving expenses summary", code=500
         ).exception()
-

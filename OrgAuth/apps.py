@@ -2,5 +2,5 @@ from django.apps import AppConfig
 
 
 class OrgauthConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'OrgAuth'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "OrgAuth"

@@ -1,8 +1,10 @@
 # settings/prod.py
-from .base import *
-import os
 import logging
+import os
+
 from corsheaders.defaults import default_headers
+
+from .base import *
 
 logger = logging.getLogger(__name__)
 print("Using Production Settings")
@@ -14,8 +16,7 @@ DEBUG = False
 
 # Load allowed hosts from environment (comma-separated)
 ALLOWED_HOSTS = os.environ.get(
-    "ALLOWED_HOSTS",
-    "api.quidpath.com,quidpath.com,www.quidpath.com"
+    "ALLOWED_HOSTS", "api.quidpath.com,quidpath.com,www.quidpath.com"
 ).split(",")
 
 # ====================================

@@ -1,11 +1,11 @@
 import json
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from django.http import JsonResponse, HttpResponse
-from django.db import models
 from django.core.files.base import File
+from django.db import models
+from django.http import HttpResponse, JsonResponse
 
 from .registry import ServiceRegistry
 from .superserializer import json_super_serializer
@@ -38,7 +38,9 @@ def comprehensive_serializer(obj):
             # Handle different field types
             if isinstance(field_value, models.Model):
                 # Foreign key - just return the ID
-                result[f"{field_name}_id"] = str(field_value.pk) if field_value.pk else None
+                result[f"{field_name}_id"] = (
+                    str(field_value.pk) if field_value.pk else None
+                )
             elif isinstance(field_value, (datetime, date)):
                 result[field_name] = field_value.isoformat() if field_value else None
             elif isinstance(field_value, UUID):
@@ -98,28 +100,30 @@ class ResponseProvider:
         return JsonResponse(
             self.data,
             status=status,
-            json_dumps_params={'default': comprehensive_serializer},
-            safe=False  # Allow non-dict objects to be serialized
+            json_dumps_params={"default": comprehensive_serializer},
+            safe=False,  # Allow non-dict objects to be serialized
         )
 
     def success(self):
         """Return a success response (200) with comprehensive serialization"""
         try:
             # Serialize the data first to catch any serialization errors
-            serialized_data = json.loads(json.dumps(self.data, default=comprehensive_serializer))
+            serialized_data = json.loads(
+                json.dumps(self.data, default=comprehensive_serializer)
+            )
 
             return JsonResponse(
                 serialized_data,
                 status=200,
-                json_dumps_params={'default': comprehensive_serializer},
-                safe=False
+                json_dumps_params={"default": comprehensive_serializer},
+                safe=False,
             )
         except Exception as e:
             # Log the error and return a safe error response
             error_response = {
                 "code": 500,
                 "message": "Serialization error occurred",
-                "error": str(e)
+                "error": str(e),
             }
             return JsonResponse(error_response, status=500)
 

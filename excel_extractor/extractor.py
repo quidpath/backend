@@ -5,13 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Iterable, Union
 
-from .exceptions import (
-    ExtractorError,
-    LabelNotFoundError,
-    MissingFieldError,
-    ValidationError,
-    ValueNormalizationError,
-)
+from .exceptions import (ExtractorError, LabelNotFoundError, MissingFieldError,
+                         ValidationError, ValueNormalizationError)
 from .intelligent import StatementParser
 from .specs import INCOME_STATEMENT_SPEC, StatementSpec
 from .validators import validate_financials
@@ -44,7 +39,9 @@ class FinancialExtractor:
             )
             self.parser = StatementParser(spec, label_threshold=label_threshold)
         else:
-            self.parser = StatementParser(INCOME_STATEMENT_SPEC, label_threshold=label_threshold)
+            self.parser = StatementParser(
+                INCOME_STATEMENT_SPEC, label_threshold=label_threshold
+            )
 
     def extract(self, file_path: Union[str, Path]) -> Dict[str, Any]:
         """Extract financials and return the response payload."""
@@ -69,5 +66,3 @@ class FinancialExtractor:
         validate_financials(consolidated)
         consolidated["risk_level"] = data.get("risk_level")
         return consolidated
-
-

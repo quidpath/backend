@@ -3,9 +3,9 @@ import traceback
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.email import NotificationServiceHandler
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
@@ -35,12 +35,17 @@ def add_bank_account(request):
         registry = ServiceRegistry()
 
         # Validate required fields
-        required_items = ["corporate", "bank_name", "account_number", "account_name", "currency"]
+        required_items = [
+            "corporate",
+            "bank_name",
+            "account_number",
+            "account_name",
+            "currency",
+        ]
         for item in required_items:
             if item not in data:
                 return ResponseProvider(
-                    message=f"{item.replace('_', ' ').title()} is required",
-                    code=400
+                    message=f"{item.replace('_', ' ').title()} is required", code=400
                 ).bad_request()
 
         corporate_id = data.get("corporate")
@@ -49,13 +54,12 @@ def add_bank_account(request):
         corporates = registry.database(
             model_name="Corporate",
             operation="filter",
-            data={"id": corporate_id, "is_active": True}
+            data={"id": corporate_id, "is_active": True},
         )
 
         if not corporates or len(corporates) == 0:
             return ResponseProvider(
-                message="Corporate not found or inactive",
-                code=404
+                message="Corporate not found or inactive", code=404
             ).bad_request()
 
         corporate = corporates[0]
@@ -68,14 +72,14 @@ def add_bank_account(request):
                 "corporate": corporate_id,
                 "account_number": data.get("account_number"),
                 "bank_name": data.get("bank_name"),
-                "is_active": True
-            }
+                "is_active": True,
+            },
         )
 
         if existing_accounts and len(existing_accounts) > 0:
             return ResponseProvider(
                 message="Bank account with the same account number and bank already exists for this corporate.",
-                code=409
+                code=409,
             ).bad_request()
 
         # Create bank account - Try corporate_id field name
@@ -90,7 +94,7 @@ def add_bank_account(request):
                 "currency": data.get("currency"),
                 "is_default": data.get("is_default", False),
                 "is_active": True,
-            }
+            },
         )
 
         # Prepare email notification
@@ -98,11 +102,12 @@ def add_bank_account(request):
         notif_response = {"status": "skipped", "message": "No email on file"}
 
         if destination_email:
-            notification_payload = [{
-                "message_type": "EMAIL",
-                "organisation_id": str(corporate["id"]),
-                "destination": destination_email,
-                "message": f"""
+            notification_payload = [
+                {
+                    "message_type": "EMAIL",
+                    "organisation_id": str(corporate["id"]),
+                    "destination": destination_email,
+                    "message": f"""
                     Dear {corporate.get("name", "Corporate")},
                     <br/><br/>
                     A new bank account has been successfully added:
@@ -115,9 +120,12 @@ def add_bank_account(request):
                     <br/>
                     Regards,<br/>ERP Team
                 """,
-            }]
+                }
+            ]
             try:
-                notif_response = NotificationServiceHandler().send_notification(notification_payload)
+                notif_response = NotificationServiceHandler().send_notification(
+                    notification_payload
+                )
             except Exception as email_error:
                 notif_response = {"status": "failed", "message": str(email_error)}
 
@@ -129,7 +137,7 @@ def add_bank_account(request):
             state_name="Completed",
             extra={"bank_account_id": str(new_account["id"])},
             notification_resp=notif_response,
-            request=request
+            request=request,
         )
 
         # Handle notification response safely - works with any return type
@@ -139,7 +147,9 @@ def add_bank_account(request):
             elif isinstance(notif_response, str):
                 notification_status = notif_response
             else:
-                notification_status = str(notif_response) if notif_response else "unknown"
+                notification_status = (
+                    str(notif_response) if notif_response else "unknown"
+                )
         except:
             notification_status = "unknown"
 
@@ -148,39 +158,39 @@ def add_bank_account(request):
             data={
                 "account": new_account,
                 "corporate_id": corporate_id,
-                "notification_status": notification_status
+                "notification_status": notification_status,
             },
-            code=201
+            code=201,
         ).success()
 
     except ValueError as ve:
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_CREATION_VALIDATION_ERROR",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=f"Validation error: {str(ve)}",
             state_name="Failed",
-            request=request
+            request=request,
         )
         return ResponseProvider(
-            message=f"Validation error: {str(ve)}",
-            code=400
+            message=f"Validation error: {str(ve)}", code=400
         ).bad_request()
 
     except Exception as e:
         error_trace = traceback.format_exc()
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_CREATION_FAILED",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=error_trace,
             state_name="Failed",
-            request=request
+            request=request,
         )
         return ResponseProvider(
-            message="An error occurred while creating bank account",
-            code=500
+            message="An error occurred while creating bank account", code=500
         ).exception()
 
+
 from django.views.decorators.csrf import csrf_exempt
+
 
 @csrf_exempt
 def list_bank_accounts(request):
@@ -197,10 +207,14 @@ def list_bank_accounts(request):
         data, metadata = get_clean_data(request)
         user = metadata.get("user")
         if not user:
-            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+            return ResponseProvider(
+                message="User not authenticated", code=401
+            ).unauthorized()
 
         # Get user_id safely
-        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        user_id = (
+            user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+        )
         if not user_id:
             return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -210,20 +224,24 @@ def list_bank_accounts(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Get list of active bank accounts for the corporate
         accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"corporate_id": corporate_id, "is_active": True}
+            data={"corporate_id": corporate_id, "is_active": True},
         )
 
         # Log success
@@ -233,7 +251,7 @@ def list_bank_accounts(request):
             message=f"Retrieved {len(accounts)} bank accounts for corporate {corporate_id}",
             state_name="Success",
             extra={"account_count": len(accounts)},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
@@ -241,30 +259,35 @@ def list_bank_accounts(request):
             data={
                 "accounts": accounts,
                 "count": len(accounts),
-                "corporate_id": corporate_id
+                "corporate_id": corporate_id,
             },
-            code=200
+            code=200,
         ).success()
 
     except ValueError as ve:
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_LIST_VALIDATION_ERROR",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=f"Validation error: {str(ve)}",
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message=f"Validation error: {str(ve)}", code=400).bad_request()
+        return ResponseProvider(
+            message=f"Validation error: {str(ve)}", code=400
+        ).bad_request()
 
     except Exception as e:
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_LIST_FAILED",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=f"Unexpected error: {str(e)}",
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving bank accounts", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving bank accounts", code=500
+        ).exception()
+
 
 @csrf_exempt
 def update_bank_account(request):
@@ -293,33 +316,40 @@ def update_bank_account(request):
         account_id = data.get("id")
         if not account_id:
             return ResponseProvider(
-                message="Bank account ID is required",
-                code=400
+                message="Bank account ID is required", code=400
             ).bad_request()
 
         # Check if bank account exists and is active
         existing_accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"id": account_id, "is_active": True}
+            data={"id": account_id, "is_active": True},
         )
 
         if not existing_accounts or len(existing_accounts) == 0:
             return ResponseProvider(
-                message="Bank account not found or inactive",
-                code=404
+                message="Bank account not found or inactive", code=404
             ).bad_request()
 
         existing_account = existing_accounts[0]
 
         # Prepare update fields - only include allowed fields that are present
-        allowed_fields = ["bank_name", "account_name", "account_number", "currency", "is_default"]
-        update_fields = {key: value for key, value in data.items() if key in allowed_fields and value is not None}
+        allowed_fields = [
+            "bank_name",
+            "account_name",
+            "account_number",
+            "currency",
+            "is_default",
+        ]
+        update_fields = {
+            key: value
+            for key, value in data.items()
+            if key in allowed_fields and value is not None
+        }
 
         if not update_fields:
             return ResponseProvider(
-                message="No valid fields provided for update",
-                code=400
+                message="No valid fields provided for update", code=400
             ).bad_request()
 
         # Perform update
@@ -327,7 +357,7 @@ def update_bank_account(request):
             model_name="BankAccount",
             operation="update",
             instance_id=account_id,
-            data=update_fields
+            data=update_fields,
         )
 
         # Log successful update
@@ -338,44 +368,42 @@ def update_bank_account(request):
             state_name="Completed",
             extra={
                 "bank_account_id": str(account_id),
-                "updated_fields": list(update_fields.keys())
+                "updated_fields": list(update_fields.keys()),
             },
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message="Bank account updated successfully",
             data={
                 "account": updated_account,
-                "updated_fields": list(update_fields.keys())
+                "updated_fields": list(update_fields.keys()),
             },
-            code=200
+            code=200,
         ).success()
 
     except ValueError as ve:
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_UPDATE_VALIDATION_ERROR",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=f"Validation error: {str(ve)}",
             state_name="Failed",
-            request=request
+            request=request,
         )
         return ResponseProvider(
-            message=f"Validation error: {str(ve)}",
-            code=400
+            message=f"Validation error: {str(ve)}", code=400
         ).bad_request()
 
     except Exception as e:
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_UPDATE_FAILED",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=f"Unexpected error: {str(e)}",
             state_name="Failed",
-            request=request
+            request=request,
         )
         return ResponseProvider(
-            message="An error occurred while updating bank account",
-            code=500
+            message="An error occurred while updating bank account", code=500
         ).exception()
 
 
@@ -401,21 +429,19 @@ def delete_bank_account(request):
         account_id = data.get("id")
         if not account_id:
             return ResponseProvider(
-                message="Bank account ID is required",
-                code=400
+                message="Bank account ID is required", code=400
             ).bad_request()
 
         # Check if bank account exists and is active
         existing_accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"id": account_id, "is_active": True}
+            data={"id": account_id, "is_active": True},
         )
 
         if not existing_accounts or len(existing_accounts) == 0:
             return ResponseProvider(
-                message="Bank account not found or already inactive",
-                code=404
+                message="Bank account not found or already inactive", code=404
             ).bad_request()
 
         existing_account = existing_accounts[0]
@@ -425,7 +451,7 @@ def delete_bank_account(request):
             model_name="BankAccount",
             operation="delete",
             instance_id=account_id,
-            data={"id": account_id, "is_active": False}
+            data={"id": account_id, "is_active": False},
         )
 
         # Log successful deletion
@@ -437,42 +463,37 @@ def delete_bank_account(request):
             extra={
                 "bank_account_id": str(account_id),
                 "account_number": existing_account.get("account_number"),
-                "bank_name": existing_account.get("bank_name")
+                "bank_name": existing_account.get("bank_name"),
             },
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message="Bank account deleted successfully",
-            data={
-                "account_id": account_id,
-                "status": "inactive"
-            },
-            code=200
+            data={"account_id": account_id, "status": "inactive"},
+            code=200,
         ).success()
 
     except ValueError as ve:
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_DELETE_VALIDATION_ERROR",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=f"Validation error: {str(ve)}",
             state_name="Failed",
-            request=request
+            request=request,
         )
         return ResponseProvider(
-            message=f"Validation error: {str(ve)}",
-            code=400
+            message=f"Validation error: {str(ve)}", code=400
         ).bad_request()
 
     except Exception as e:
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_DELETE_FAILED",
-            user=metadata.get("user") if 'metadata' in locals() else None,
+            user=metadata.get("user") if "metadata" in locals() else None,
             message=f"Unexpected error: {str(e)}",
             state_name="Failed",
-            request=request
+            request=request,
         )
         return ResponseProvider(
-            message="An error occurred while deleting bank account",
-            code=500
+            message="An error occurred while deleting bank account", code=500
         ).exception()

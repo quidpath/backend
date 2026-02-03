@@ -12,9 +12,9 @@ from OrgAuth.models import Corporate
 from quidpath_backend.core.utils.decorators import require_authenticated
 from quidpath_backend.core.utils.email import NotificationServiceHandler
 from quidpath_backend.core.utils.json_response import ResponseProvider
-from quidpath_backend.core.utils.request_parser import get_clean_data
 from quidpath_backend.core.utils.Logbase import TransactionLogBase, logger
 from quidpath_backend.core.utils.registry import ServiceRegistry
+from quidpath_backend.core.utils.request_parser import get_clean_data
 
 
 @csrf_exempt
@@ -27,14 +27,26 @@ def create_corporate(request):
         if not corporate_name:
             return JsonResponse({"error": "Corporate name is required"}, status=400)
 
-        existing = ServiceRegistry().database("corporate", "filter", data={"name": corporate_name})
+        existing = ServiceRegistry().database(
+            "corporate", "filter", data={"name": corporate_name}
+        )
         if existing:
-            return JsonResponse({"error": f"A corporate with the name '{corporate_name}' already exists."}, status=400)
+            return JsonResponse(
+                {
+                    "error": f"A corporate with the name '{corporate_name}' already exists."
+                },
+                status=400,
+            )
 
         if email:
-            existing_email = ServiceRegistry().database("corporate", "filter", data={"email": email})
+            existing_email = ServiceRegistry().database(
+                "corporate", "filter", data={"email": email}
+            )
             if existing_email:
-                return JsonResponse({"error": f"A corporate with the email '{email}' already exists."}, status=400)
+                return JsonResponse(
+                    {"error": f"A corporate with the email '{email}' already exists."},
+                    status=400,
+                )
 
         # ✅ Create the corporate
         corporate = ServiceRegistry().database("corporate", "create", data=data)
@@ -48,44 +60,62 @@ def create_corporate(request):
 
         # ✅ Create 30-day free trial subscription via Billing Service
         try:
-            from quidpath_backend.core.billing_client import BillingServiceClient
-            
+            from quidpath_backend.core.billing_client import \
+                BillingServiceClient
+
             billing_client = BillingServiceClient()
             trial_result = billing_client.create_trial(
                 corporate_id=str(corporate_id),
                 corporate_name=corporate_name,
-                plan_tier='starter'
+                plan_tier="starter",
             )
-            
-            if not trial_result.get('success'):
-                logger.warning(f"Failed to create trial for corporate {corporate_id}: {trial_result.get('message')}")
-            
+
+            if not trial_result.get("success"):
+                logger.warning(
+                    f"Failed to create trial for corporate {corporate_id}: {trial_result.get('message')}"
+                )
+
             # Fallback: Create local trial record if billing service fails
             try:
-                    from Payments.models.organization_billing import OrganizationSubscription
-                    from django.utils import timezone
-                    from datetime import timedelta
-                    from decimal import Decimal
+                from datetime import timedelta
+                from decimal import Decimal
 
-                    trial_end = timezone.now().date() + timedelta(days=30)
-                    OrganizationSubscription.objects.create(
-                        corporate_id=corporate_id,
-                        plan_type="basic",
-                        status="trial",
-                        monthly_price_usd=Decimal('0.00'),
-                        start_date=timezone.now().date(),
-                        end_date=trial_end,
-                        max_users=5,
-                    current_users=1,)
-                    logger.info(f"Created 30-day trial subscription for corporate {corporate_name}")
+                from django.utils import timezone
+
+                from Payments.models.organization_billing import \
+                    OrganizationSubscription
+
+                trial_end = timezone.now().date() + timedelta(days=30)
+                OrganizationSubscription.objects.create(
+                    corporate_id=corporate_id,
+                    plan_type="basic",
+                    status="trial",
+                    monthly_price_usd=Decimal("0.00"),
+                    start_date=timezone.now().date(),
+                    end_date=trial_end,
+                    max_users=5,
+                    current_users=1,
+                )
+                logger.info(
+                    f"Created 30-day trial subscription for corporate {corporate_name}"
+                )
             except Exception as e:
-                logger.error(f"Failed to create trial subscription: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Failed to create trial subscription: {str(e)}", exc_info=True
+                )
         except Exception as e:
-            logger.error(f"Failed to create trial subscription: {str(e)}", exc_info=True)
+            logger.error(
+                f"Failed to create trial subscription: {str(e)}", exc_info=True
+            )
             # Don't fail corporate creation if trial creation fails
 
         # ✅ Log the creation
-        TransactionLogBase.log("CORPORATE_CREATED", user=None, message=f"Corporate {corporate_name} created",request=request)
+        TransactionLogBase.log(
+            "CORPORATE_CREATED",
+            user=None,
+            message=f"Corporate {corporate_name} created",
+            request=request,
+        )
 
         # ✅ Send email notification
         notification_service = NotificationServiceHandler()
@@ -93,17 +123,24 @@ def create_corporate(request):
         replace_items = {"corporate_name": corporate_name}
         message = notification_service.createCorporateEmail(**replace_items)
 
-        notification_service.send_notification([{
-            "message_type": "2",
-            "organisation_id": corporate_id,
-            "destination": email_recipient,
-            "message": message
-        }])
+        notification_service.send_notification(
+            [
+                {
+                    "message_type": "2",
+                    "organisation_id": corporate_id,
+                    "destination": email_recipient,
+                    "message": message,
+                }
+            ]
+        )
 
-        return JsonResponse({"message": "Corporate created successfully", "id": corporate_id})
+        return JsonResponse(
+            {"message": "Corporate created successfully", "id": corporate_id}
+        )
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+
 
 @csrf_exempt
 def list_corporates(request):
@@ -119,13 +156,19 @@ def list_corporates(request):
                     field_name = field.name
                     value = getattr(corp, field_name)
 
-                    if isinstance(value, ImageFieldFile):  # Catch raw ImageFieldFile directly
+                    if isinstance(
+                        value, ImageFieldFile
+                    ):  # Catch raw ImageFieldFile directly
                         if value and value.path:
                             try:
                                 with open(value.path, "rb") as img:
-                                    encoded = base64.b64encode(img.read()).decode("utf-8")
+                                    encoded = base64.b64encode(img.read()).decode(
+                                        "utf-8"
+                                    )
                                     ext = value.name.split(".")[-1].lower()
-                                    corp_dict[field_name] = f"data:image/{ext};base64,{encoded}"
+                                    corp_dict[field_name] = (
+                                        f"data:image/{ext};base64,{encoded}"
+                                    )
                             except Exception:
                                 corp_dict[field_name] = None
                         else:
@@ -139,14 +182,20 @@ def list_corporates(request):
                         if value and value.path:
                             try:
                                 with open(value.path, "rb") as img:
-                                    encoded = base64.b64encode(img.read()).decode("utf-8")
+                                    encoded = base64.b64encode(img.read()).decode(
+                                        "utf-8"
+                                    )
                                     ext = value.name.split(".")[-1].lower()
-                                    corp_dict[key] = f"data:image/{ext};base64,{encoded}"
+                                    corp_dict[key] = (
+                                        f"data:image/{ext};base64,{encoded}"
+                                    )
                             except Exception:
                                 corp_dict[key] = None
                         else:
                             corp_dict[key] = None
-                    elif isinstance(value, str) and value.lower().endswith((".jpg", ".jpeg", ".png", ".gif")):
+                    elif isinstance(value, str) and value.lower().endswith(
+                        (".jpg", ".jpeg", ".png", ".gif")
+                    ):
                         try:
                             with open(value, "rb") as img:
                                 encoded = base64.b64encode(img.read()).decode("utf-8")
@@ -172,21 +221,21 @@ def process_base64_image(base64_string, filename_prefix="profile"):
     Process base64 image string and return ContentFile
     """
     try:
-        if base64_string.startswith('data:'):
-            header, data = base64_string.split(',', 1)
-            if 'jpeg' in header or 'jpg' in header:
-                ext = 'jpg'
-            elif 'png' in header:
-                ext = 'png'
-            elif 'gif' in header:
-                ext = 'gif'
-            elif 'webp' in header:
-                ext = 'webp'
+        if base64_string.startswith("data:"):
+            header, data = base64_string.split(",", 1)
+            if "jpeg" in header or "jpg" in header:
+                ext = "jpg"
+            elif "png" in header:
+                ext = "png"
+            elif "gif" in header:
+                ext = "gif"
+            elif "webp" in header:
+                ext = "webp"
             else:
-                ext = 'jpg'
+                ext = "jpg"
         else:
             data = base64_string
-            ext = 'jpg'
+            ext = "jpg"
         image_data = base64.b64decode(data)
         filename = f"{filename_prefix}_{uuid.uuid4().hex[:8]}.{ext}"
         return ContentFile(image_data, name=filename)
@@ -206,9 +255,13 @@ def update_corporate(request):
         user = metadata.get("user")
         if not user:
             logger.warning("User not authenticated")
-            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+            return ResponseProvider(
+                message="User not authenticated", code=401
+            ).unauthorized()
 
-        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        user_id = (
+            user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+        )
         if not user_id:
             logger.warning("User ID not found")
             return ResponseProvider(message="User ID not found", code=400).bad_request()
@@ -222,43 +275,59 @@ def update_corporate(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         logger.debug(f"Corporate users: {corporate_users}")
         if not corporate_users:
             logger.warning("No corporate association found for user")
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
             logger.warning("Corporate ID not found in corporate_users")
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Handle base64 logo
         logger.debug("Processing logo data")
         logo_data = data.get("logo")
-        if logo_data and isinstance(logo_data, str) and logo_data.startswith("data:image/"):
+        if (
+            logo_data
+            and isinstance(logo_data, str)
+            and logo_data.startswith("data:image/")
+        ):
             try:
                 logger.debug("Decoding base64 logo")
                 base64_string = logo_data.split(";base64,")[-1]
                 image_data = base64.b64decode(base64_string)
                 if len(image_data) > 5 * 1024 * 1024:
                     logger.warning("Image size exceeds 5MB limit")
-                    return JsonResponse({"error": "Image size exceeds 5MB limit"}, status=400)
+                    return JsonResponse(
+                        {"error": "Image size exceeds 5MB limit"}, status=400
+                    )
 
                 ext = logo_data.split(";")[0].split("/")[-1]
-                processed_logo = ContentFile(image_data, name=f"logo_{corporate_id}.{ext}")
+                processed_logo = ContentFile(
+                    image_data, name=f"logo_{corporate_id}.{ext}"
+                )
                 data["logo"] = processed_logo
                 logger.debug("Logo processed successfully")
             except Exception as e:
                 logger.error(f"Failed to process base64 logo: {str(e)}", exc_info=True)
-                return JsonResponse({"error": f"Invalid base64 image data: {str(e)}"}, status=400)
+                return JsonResponse(
+                    {"error": f"Invalid base64 image data: {str(e)}"}, status=400
+                )
         elif logo_data == "":
             logger.debug("Logo removal requested")
             data["logo"] = None
         elif logo_data:
             logger.warning("Invalid logo format")
-            return JsonResponse({"error": "Logo must be a valid base64-encoded image"}, status=400)
+            return JsonResponse(
+                {"error": "Logo must be a valid base64-encoded image"}, status=400
+            )
 
         # Update corporate
         logger.debug(f"Updating Corporate with ID: {corporate_id}, data: {data}")
@@ -269,22 +338,24 @@ def update_corporate(request):
         if isinstance(updated, dict):
             logger.debug(f"Fetching Corporate instance for ID: {corporate_id}")
             updated = registry.database(
-                model_name="Corporate",
-                operation="filter",
-                data={"id": corporate_id}
+                model_name="Corporate", operation="filter", data={"id": corporate_id}
             )
             logger.debug(f"Filter result: {updated}")
             if not updated:
                 logger.error("Failed to retrieve updated corporate")
-                return JsonResponse({"error": "Failed to retrieve updated corporate"}, status=400)
+                return JsonResponse(
+                    {"error": "Failed to retrieve updated corporate"}, status=400
+                )
             updated = updated[0] if isinstance(updated, list) else updated
 
         # Convert to dict with base64 logo
         logger.debug("Converting updated to dict")
-        updated_dict = model_to_dict(updated) if not isinstance(updated, dict) else updated
+        updated_dict = (
+            model_to_dict(updated) if not isinstance(updated, dict) else updated
+        )
         if updated_dict.get("logo"):
             try:
-                if hasattr(updated, 'logo') and hasattr(updated.logo, 'path'):
+                if hasattr(updated, "logo") and hasattr(updated.logo, "path"):
                     logger.debug("Encoding logo to base64")
                     with open(updated.logo.path, "rb") as img:
                         encoded = base64.b64encode(img.read()).decode("utf-8")
@@ -292,7 +363,9 @@ def update_corporate(request):
                         updated_dict["logo"] = f"data:image/{ext};base64,{encoded}"
                 else:
                     # If logo is an ImageFieldFile or string, convert to URL or null
-                    updated_dict["logo"] = str(updated_dict["logo"]) if updated_dict["logo"] else None
+                    updated_dict["logo"] = (
+                        str(updated_dict["logo"]) if updated_dict["logo"] else None
+                    )
             except Exception as e:
                 logger.error(f"Failed to encode logo: {str(e)}", exc_info=True)
                 updated_dict["logo"] = None
@@ -304,7 +377,7 @@ def update_corporate(request):
             "CORPORATE_UPDATED",
             user=user,
             message=f"Corporate {updated_dict.get('name', 'Unknown')} updated (fields: {', '.join(changed_fields)})",
-            request=request
+            request=request,
         )
 
         # Send notification
@@ -312,26 +385,29 @@ def update_corporate(request):
             logger.debug(f"Sending notification to {updated_dict.get('email')}")
             try:
                 notification_service = NotificationServiceHandler()
-                notification_service.send_notification([{
-                    "message_type": "2",
-                    "organisation_id": updated_dict.get("id"),
-                    "destination": updated_dict.get("email"),
-                    "message": f"""
+                notification_service.send_notification(
+                    [
+                        {
+                            "message_type": "2",
+                            "organisation_id": updated_dict.get("id"),
+                            "destination": updated_dict.get("email"),
+                            "message": f"""
                         <h3>Corporate Profile Updated</h3>
                         <p>Dear {updated_dict.get('name', 'Customer')},</p>
                         <p>Your corporate profile has been successfully updated.</p>
                         <p>Fields updated: {', '.join(changed_fields)}</p>
                         <p>If this was unexpected, please contact support.</p>
-                    """
-                }])
+                    """,
+                        }
+                    ]
+                )
             except Exception as e:
                 logger.error(f"Failed to send notification: {str(e)}", exc_info=True)
 
         logger.info("Corporate updated successfully")
-        return JsonResponse({
-            "message": "Corporate updated successfully",
-            "corporate": updated_dict
-        })
+        return JsonResponse(
+            {"message": "Corporate updated successfully", "corporate": updated_dict}
+        )
 
     except ValueError as ve:
         logger.error(f"Validation error: {str(ve)}", exc_info=True)
@@ -339,6 +415,7 @@ def update_corporate(request):
     except Exception as e:
         logger.error(f"Unexpected error in update_corporate: {str(e)}", exc_info=True)
         return JsonResponse({"error": "An unexpected error occurred"}, status=500)
+
 
 @csrf_exempt
 def delete_corporate(request):
@@ -350,7 +427,9 @@ def delete_corporate(request):
 
     try:
         # Retrieve the corporate record as a dict
-        corporates = ServiceRegistry().database("corporate", "filter", data={"id": corp_id})
+        corporates = ServiceRegistry().database(
+            "corporate", "filter", data={"id": corp_id}
+        )
 
         corporate = corporates[0] if corporates else None
 
@@ -361,23 +440,33 @@ def delete_corporate(request):
         email = corporate.get("email")
 
         # Delete using a filter instead of instance_id
-        ServiceRegistry().database("corporate","delete",corp_id)
+        ServiceRegistry().database("corporate", "delete", corp_id)
 
-        TransactionLogBase.log("CORPORATE_DELETED", user=None, message=f"Corporate '{name}' (ID {corp_id}) deleted",request=request)
+        TransactionLogBase.log(
+            "CORPORATE_DELETED",
+            user=None,
+            message=f"Corporate '{name}' (ID {corp_id}) deleted",
+            request=request,
+        )
 
         if email:
-            NotificationServiceHandler().send_notification([{
-                "organisation_id": corp_id,
-                "destination": email,
-                "message_type": "2",
-                "message": f"Dear {name}, your organisation account has been deleted from our system. "
-                           f"If this was unexpected, kindly contact support."
-            }])
+            NotificationServiceHandler().send_notification(
+                [
+                    {
+                        "organisation_id": corp_id,
+                        "destination": email,
+                        "message_type": "2",
+                        "message": f"Dear {name}, your organisation account has been deleted from our system. "
+                        f"If this was unexpected, kindly contact support.",
+                    }
+                ]
+            )
 
         return JsonResponse({"message": f"Corporate '{name}' deleted successfully"})
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+
 
 @csrf_exempt
 def approve_corporate(request):
@@ -386,7 +475,9 @@ def approve_corporate(request):
     decision_raw = data.get("approved")
 
     if corporate_id is None or decision_raw is None:
-        return JsonResponse({"error": "Corporate ID and approval decision are required."}, status=400)
+        return JsonResponse(
+            {"error": "Corporate ID and approval decision are required."}, status=400
+        )
 
     try:
         decision = str(decision_raw).lower() == "true"  # ✅ Ensures boolean
@@ -404,7 +495,10 @@ def approve_corporate(request):
 
             # ✅ Manually trigger signal (if you use post_save signal normally)
             from OrgAuth.core.signals import create_superadmin_on_approval
-            create_superadmin_on_approval(sender=Corporate, instance=corporate, created=False)
+
+            create_superadmin_on_approval(
+                sender=Corporate, instance=corporate, created=False
+            )
 
             message = "Corporate approved successfully."
         else:
@@ -412,29 +506,34 @@ def approve_corporate(request):
             corporate.is_disapproved = True
             corporate.save()
 
-            NotificationServiceHandler().send_notification([{
-                "message_type": "2",
-                "organisation_id": corporate.id,
-                "destination": corporate.email,
-                "message": f"""
+            NotificationServiceHandler().send_notification(
+                [
+                    {
+                        "message_type": "2",
+                        "organisation_id": corporate.id,
+                        "destination": corporate.email,
+                        "message": f"""
                     <h3>Application Update</h3>
                     <p>We regret to inform you that your organisation has not been approved at this time.</p>
                     <p>Thank you for your interest.</p>
-                """
-            }])
+                """,
+                    }
+                ]
+            )
             message = "Corporate disapproved and notified."
 
         TransactionLogBase.log(
             "CORPORATE_APPROVAL_DECISION",
             user=request.user,
             message=f"Corporate {corporate.name} approval decision: {decision}",
-            request=request
+            request=request,
         )
 
         return JsonResponse({"message": message})
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+
 
 @csrf_exempt
 def suspend_corporate(request):
@@ -457,24 +556,29 @@ def suspend_corporate(request):
             "CORPORATE_SUSPENDED",
             user=getattr(request, "user", None),  # Optional fallback
             message=f"Corporate {corporate.name} suspended",
-            request=request
+            request=request,
         )
 
         # Send suspension notification
-        NotificationServiceHandler().send_notification([{
-            "message_type": "2",
-            "organisation_id": str(corporate.id),
-            "destination": corporate.email,
-            "message": f"""
+        NotificationServiceHandler().send_notification(
+            [
+                {
+                    "message_type": "2",
+                    "organisation_id": str(corporate.id),
+                    "destination": corporate.email,
+                    "message": f"""
                 <h3>Your account has been suspended</h3>
                 <p>Dear {corporate.name},</p>
                 <p>We regret to inform you that your corporate account has been suspended.</p>
                 <p>If you believe this is a mistake, please contact support.</p>
-            """
-        }])
+            """,
+                }
+            ]
+        )
 
-        return JsonResponse({"message": "Corporate suspended and notified successfully."})
+        return JsonResponse(
+            {"message": "Corporate suspended and notified successfully."}
+        )
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
-

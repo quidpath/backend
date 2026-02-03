@@ -1,14 +1,16 @@
 # invoice_payments.py (full corrected code)
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from django.views.decorators.csrf import csrf_exempt
+
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
+
 from Payments.models import RecordPayment
 from quidpath_backend.core.utils.AccountingService import AccountingService
 from quidpath_backend.core.utils.json_response import ResponseProvider
-from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.Logbase import TransactionLogBase, logger
+from quidpath_backend.core.utils.registry import ServiceRegistry
+from quidpath_backend.core.utils.request_parser import get_clean_data
 
 
 def validate_decimal_precision(value, field_name, max_decimal_places=2):
@@ -17,7 +19,9 @@ def validate_decimal_precision(value, field_name, max_decimal_places=2):
         decimal_val = Decimal(str(value))
         # Check if it has more than max_decimal_places
         if decimal_val.as_tuple().exponent < -max_decimal_places:
-            raise ValueError(f"{field_name} cannot have more than {max_decimal_places} decimal places")
+            raise ValueError(
+                f"{field_name} cannot have more than {max_decimal_places} decimal places"
+            )
         return decimal_val
     except (InvalidOperation, ValueError) as e:
         raise ValueError(f"Invalid {field_name}: {str(e)}")
@@ -41,7 +45,9 @@ def validate_payment_allocations(allocations, available_amount, invoices_dict):
         try:
             amount_applied = Decimal(str(alloc.get("amount_applied", 0)))
             if amount_applied <= 0:
-                errors.append(f"Allocation {i + 1}: amount_applied must be greater than 0")
+                errors.append(
+                    f"Allocation {i + 1}: amount_applied must be greater than 0"
+                )
                 continue
             total_allocated += amount_applied
         except (InvalidOperation, ValueError):
@@ -50,7 +56,8 @@ def validate_payment_allocations(allocations, available_amount, invoices_dict):
 
     if total_allocated > available_amount:
         errors.append(
-            f"Total allocated amount ({total_allocated}) exceeds available payment amount ({available_amount})")
+            f"Total allocated amount ({total_allocated}) exceeds available payment amount ({available_amount})"
+        )
 
     return errors
 
@@ -69,9 +76,11 @@ def list_customers(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -81,19 +90,23 @@ def list_customers(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         customers = registry.database(
             model_name="Customer",
             operation="filter",
-            data={"corporate_id": corporate_id, "is_active": True}
+            data={"corporate_id": corporate_id, "is_active": True},
         )
 
         serialized_customers = [
@@ -110,7 +123,7 @@ def list_customers(request):
                 "city": customer.get("city", ""),
                 "state": customer.get("state", ""),
                 "zip_code": customer.get("zip_code", ""),
-                "country": customer.get("country", "")
+                "country": customer.get("country", ""),
             }
             for customer in customers
         ]
@@ -121,13 +134,13 @@ def list_customers(request):
             message=f"Retrieved {len(customers)} customers for corporate {corporate_id}",
             state_name="Success",
             extra={"customer_count": len(customers)},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             data={"customers": serialized_customers, "total": len(customers)},
             message="Customers retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -136,9 +149,11 @@ def list_customers(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving customers", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving customers", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -159,15 +174,19 @@ def list_unpaid_invoices(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
     customer_id = data.get("customer_id")
     if not customer_id:
-        return ResponseProvider(message="Customer ID is required", code=400).bad_request()
+        return ResponseProvider(
+            message="Customer ID is required", code=400
+        ).bad_request()
 
     try:
         registry = ServiceRegistry()
@@ -175,28 +194,37 @@ def list_unpaid_invoices(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         customers = registry.database(
             model_name="Customer",
             operation="filter",
-            data={"id": customer_id, "corporate_id": corporate_id, "is_active": True}
+            data={"id": customer_id, "corporate_id": corporate_id, "is_active": True},
         )
         if not customers:
-            return ResponseProvider(message="Customer not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Customer not found or inactive", code=404
+            ).bad_request()
 
         invoices = registry.database(
             model_name="Invoices",
             operation="filter",
-            data={"customer_id": customer_id, "corporate_id": corporate_id,
-                  "status__in": ["ISSUED", "PARTIALLY_PAID", "OVERDUE"]}
+            data={
+                "customer_id": customer_id,
+                "corporate_id": corporate_id,
+                "status__in": ["ISSUED", "PARTIALLY_PAID", "OVERDUE"],
+            },
         )
 
         serialized_invoices = []
@@ -205,7 +233,7 @@ def list_unpaid_invoices(request):
             payments = registry.database(
                 model_name="RecordPaymentLine",
                 operation="filter",
-                data={"invoice_id": inv["id"]}
+                data={"invoice_id": inv["id"]},
             )
             total_paid = sum(Decimal(str(p["amount_applied"])) for p in payments)
             total = Decimal(str(inv.get("total", 0)))
@@ -221,7 +249,11 @@ def list_unpaid_invoices(request):
                 if isinstance(due_date_value, str):
                     due_date = date.fromisoformat(due_date_value)
                 elif isinstance(due_date_value, (date, datetime)):
-                    due_date = due_date_value.date() if isinstance(due_date_value, datetime) else due_date_value
+                    due_date = (
+                        due_date_value.date()
+                        if isinstance(due_date_value, datetime)
+                        else due_date_value
+                    )
                 else:
                     continue  # skip invoice if due_date is invalid
 
@@ -238,20 +270,22 @@ def list_unpaid_invoices(request):
                     model_name="Invoices",
                     operation="update",
                     instance_id=inv["id"],
-                    data={"status": new_status}
+                    data={"status": new_status},
                 )
 
             # Include only invoices with outstanding amounts
             if outstanding_amount > 0:
-                serialized_invoices.append({
-                    "id": str(inv["id"]),
-                    "number": inv["number"],
-                    "date": inv["date"],
-                    "due_date": inv["due_date"],
-                    "total": float(total),
-                    "outstanding_amount": float(outstanding_amount),
-                    "status": new_status
-                })
+                serialized_invoices.append(
+                    {
+                        "id": str(inv["id"]),
+                        "number": inv["number"],
+                        "date": inv["date"],
+                        "due_date": inv["due_date"],
+                        "total": float(total),
+                        "outstanding_amount": float(outstanding_amount),
+                        "status": new_status,
+                    }
+                )
 
         # Sort invoices by due_date (ascending)
         serialized_invoices = sorted(serialized_invoices, key=lambda x: x["due_date"])
@@ -261,14 +295,17 @@ def list_unpaid_invoices(request):
             user=user,
             message=f"Retrieved {len(serialized_invoices)} unpaid invoices for customer {customer_id}",
             state_name="Success",
-            extra={"customer_id": customer_id, "invoice_count": len(serialized_invoices)},
-            request=request
+            extra={
+                "customer_id": customer_id,
+                "invoice_count": len(serialized_invoices),
+            },
+            request=request,
         )
 
         return ResponseProvider(
             data={"invoices": serialized_invoices, "total": len(serialized_invoices)},
             message="Unpaid invoices retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -277,9 +314,11 @@ def list_unpaid_invoices(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving unpaid invoices", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving unpaid invoices", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -319,16 +358,20 @@ def record_payment(request):
             message=f"Invalid request data: {str(e)}",
             state_name="Failed",
             request=request,
-            extra={"request_body": str(request.body)}
+            extra={"request_body": str(request.body)},
         )
-        return ResponseProvider(message=f"Invalid request data: {str(e)}", code=400).bad_request()
+        return ResponseProvider(
+            message=f"Invalid request data: {str(e)}", code=400
+        ).bad_request()
 
     user = metadata.get("user")
     if not user:
         logger.error("User not authenticated")
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     logger.debug("User ID: %s", user_id)
     if not user_id:
         logger.error("User ID not found")
@@ -342,20 +385,30 @@ def record_payment(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         logger.debug("Corporate users: %s", corporate_users)
         if not corporate_users:
             logger.error("No corporate association for user_id: %s", user_id)
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         logger.debug("Corporate ID: %s", corporate_id)
         if not corporate_id:
             logger.error("Corporate ID not found")
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
-        required_fields = ["customer_id", "amount_received", "payment_date", "payment_method", "account_id"]
+        required_fields = [
+            "customer_id",
+            "amount_received",
+            "payment_date",
+            "payment_method",
+            "account_id",
+        ]
         for field in required_fields:
             if field not in data:
                 logger.error("Missing required field: %s", field)
@@ -364,50 +417,71 @@ def record_payment(request):
                     user=user,
                     message=f"{field.replace('_', ' ').title()} is required",
                     state_name="Failed",
-                    request=request
+                    request=request,
                 )
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
-                                        code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
-        logger.debug("Fetching customers for customer_id: %s, corporate_id: %s", data["customer_id"], corporate_id)
+        logger.debug(
+            "Fetching customers for customer_id: %s, corporate_id: %s",
+            data["customer_id"],
+            corporate_id,
+        )
         customers = registry.database(
             model_name="Customer",
             operation="filter",
-            data={"id": data["customer_id"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["customer_id"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         logger.debug("Customers: %s", customers)
         if not customers:
             logger.error("Customer not found or inactive: %s", data["customer_id"])
-            return ResponseProvider(message="Customer not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Customer not found or inactive", code=404
+            ).bad_request()
 
-        logger.debug("Fetching accounts for account_id: %s, corporate_id: %s", data["account_id"], corporate_id)
+        logger.debug(
+            "Fetching accounts for account_id: %s, corporate_id: %s",
+            data["account_id"],
+            corporate_id,
+        )
         accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"id": data["account_id"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["account_id"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         logger.debug("Accounts: %s", accounts)
         if not accounts:
             logger.error("Bank account not found or inactive: %s", data["account_id"])
-            return ResponseProvider(message="Bank account not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Bank account not found or inactive", code=404
+            ).bad_request()
 
         bank_account = accounts[0]
 
         # Get or create ledger account for this bank account (same logic as above)
         ledger_account_id = bank_account.get("ledger_account_id")
         if not ledger_account_id:
-            logger.debug("Creating ledger account for bank_account: %s", bank_account["id"])
+            logger.debug(
+                "Creating ledger account for bank_account: %s", bank_account["id"]
+            )
             # Get ASSET account type
             type_data = registry.database(
-                model_name="AccountType",
-                operation="filter",
-                data={"name": "ASSET"}
+                model_name="AccountType", operation="filter", data={"name": "ASSET"}
             )
             if not type_data:
                 new_type = registry.database(
                     model_name="AccountType",
                     operation="create",
-                    data={"name": "ASSET", "description": "Asset accounts"}
+                    data={"name": "ASSET", "description": "Asset accounts"},
                 )
                 type_id = new_type["id"]
             else:
@@ -417,7 +491,7 @@ def record_payment(request):
             asset_accounts = registry.database(
                 model_name="Account",
                 operation="filter",
-                data={"corporate_id": corporate_id, "account_type_id": type_id}
+                data={"corporate_id": corporate_id, "account_type_id": type_id},
             )
             codes = []
             for acc in asset_accounts:
@@ -434,12 +508,10 @@ def record_payment(request):
                 "name": f"{bank_account['bank_name']} - {bank_account['account_name']}",
                 "account_type_id": type_id,
                 "is_active": True,
-                "description": f"Ledger account for bank account {bank_account['account_number']}"
+                "description": f"Ledger account for bank account {bank_account['account_number']}",
             }
             new_account = registry.database(
-                model_name="Account",
-                operation="create",
-                data=new_account_data
+                model_name="Account", operation="create", data=new_account_data
             )
             ledger_account_id = new_account["id"]
 
@@ -448,13 +520,15 @@ def record_payment(request):
                 model_name="BankAccount",
                 operation="update",
                 instance_id=bank_account["id"],
-                data={"ledger_account_id": ledger_account_id}
+                data={"ledger_account_id": ledger_account_id},
             )
             logger.debug("Created and linked ledger account: %s", ledger_account_id)
 
         # ENHANCED: Use validation function with proper error handling
         try:
-            amount_received = validate_decimal_precision(data["amount_received"], "Amount received")
+            amount_received = validate_decimal_precision(
+                data["amount_received"], "Amount received"
+            )
         except ValueError as e:
             logger.error("Amount validation error: %s", str(e))
             TransactionLogBase.log(
@@ -462,15 +536,19 @@ def record_payment(request):
                 user=user,
                 message=str(e),
                 state_name="Failed",
-                request=request
+                request=request,
             )
             return ResponseProvider(message=str(e), code=400).bad_request()
         if amount_received <= 0:
             logger.error("Amount received must be greater than 0: %s", amount_received)
-            return ResponseProvider(message="Amount received must be greater than 0", code=400).bad_request()
+            return ResponseProvider(
+                message="Amount received must be greater than 0", code=400
+            ).bad_request()
 
         try:
-            bank_charges = validate_decimal_precision(data.get("bank_charges", 0), "Bank charges")
+            bank_charges = validate_decimal_precision(
+                data.get("bank_charges", 0), "Bank charges"
+            )
         except ValueError as e:
             logger.error("Bank charges validation error: %s", str(e))
             TransactionLogBase.log(
@@ -478,19 +556,27 @@ def record_payment(request):
                 user=user,
                 message=str(e),
                 state_name="Failed",
-                request=request
+                request=request,
             )
             return ResponseProvider(message=str(e), code=400).bad_request()
         if bank_charges < 0:
             logger.error("Bank charges cannot be negative: %s", bank_charges)
-            return ResponseProvider(message="Bank charges cannot be negative", code=400).bad_request()
+            return ResponseProvider(
+                message="Bank charges cannot be negative", code=400
+            ).bad_request()
 
         payment_method = data["payment_method"]
         valid_methods = [choice[0] for choice in RecordPayment.METHOD_TYPES]
         if payment_method not in valid_methods:
-            logger.error("Invalid payment method: %s, valid methods: %s", payment_method, valid_methods)
-            return ResponseProvider(message=f"Invalid payment method. Must be one of: {', '.join(valid_methods)}",
-                                    code=400).bad_request()
+            logger.error(
+                "Invalid payment method: %s, valid methods: %s",
+                payment_method,
+                valid_methods,
+            )
+            return ResponseProvider(
+                message=f"Invalid payment method. Must be one of: {', '.join(valid_methods)}",
+                code=400,
+            ).bad_request()
 
         with transaction.atomic():
             payment_data = {
@@ -506,22 +592,27 @@ def record_payment(request):
                 "notes": data.get("notes", ""),
                 "amount_used": "0",
                 "amount_refunded": "0",
-                "amount_excess": "0"
+                "amount_excess": "0",
             }
             logger.debug("Creating payment with data: %s", payment_data)
             payment = registry.database(
-                model_name="RecordPayment",
-                operation="create",
-                data=payment_data
+                model_name="RecordPayment", operation="create", data=payment_data
             )
             logger.debug("Payment created: %s", payment)
 
-            logger.debug("Fetching invoices for customer_id: %s, corporate_id: %s", data["customer_id"], corporate_id)
+            logger.debug(
+                "Fetching invoices for customer_id: %s, corporate_id: %s",
+                data["customer_id"],
+                corporate_id,
+            )
             invoices = registry.database(
                 model_name="Invoices",
                 operation="filter",
-                data={"customer_id": data["customer_id"], "corporate_id": corporate_id,
-                      "status__in": ["ISSUED", "PARTIALLY_PAID", "OVERDUE"]}
+                data={
+                    "customer_id": data["customer_id"],
+                    "corporate_id": corporate_id,
+                    "status__in": ["ISSUED", "PARTIALLY_PAID", "OVERDUE"],
+                },
             )
             logger.debug("Invoices: %s", invoices)
 
@@ -536,9 +627,7 @@ def record_payment(request):
             if allocations:
                 invoices_dict = {str(inv["id"]): inv for inv in invoices}
                 validation_errors = validate_payment_allocations(
-                    allocations,
-                    amount_remaining,
-                    invoices_dict
+                    allocations, amount_remaining, invoices_dict
                 )
                 if validation_errors:
                     error_msg = "; ".join(validation_errors)
@@ -548,10 +637,11 @@ def record_payment(request):
                         user=user,
                         message=f"Allocation validation failed: {error_msg}",
                         state_name="Failed",
-                        request=request
+                        request=request,
                     )
-                    return ResponseProvider(message=f"Allocation validation failed: {error_msg}",
-                                            code=400).bad_request()
+                    return ResponseProvider(
+                        message=f"Allocation validation failed: {error_msg}", code=400
+                    ).bad_request()
 
             # Pre-validate allocations
             if allocations:
@@ -573,29 +663,44 @@ def record_payment(request):
                     try:
                         amount_applied = Decimal(str(alloc.get("amount_applied", 0)))
                     except Exception as e:
-                        logger.error("Invalid amount_applied format for invoice %s: %s", invoice_id, str(e))
+                        logger.error(
+                            "Invalid amount_applied format for invoice %s: %s",
+                            invoice_id,
+                            str(e),
+                        )
                         continue
                     if amount_applied <= 0:
-                        logger.debug("Skipping allocation with non-positive amount: %s", alloc)
+                        logger.debug(
+                            "Skipping allocation with non-positive amount: %s", alloc
+                        )
                         continue
 
                     invoice = valid_invoices[str(invoice_id)]
                     payments = registry.database(
                         model_name="RecordPaymentLine",
                         operation="filter",
-                        data={"invoice_id": invoice_id}
+                        data={"invoice_id": invoice_id},
                     )
-                    total_paid = sum(Decimal(str(p["amount_applied"])) for p in payments)
+                    total_paid = sum(
+                        Decimal(str(p["amount_applied"])) for p in payments
+                    )
                     outstanding = Decimal(str(invoice["total"])) - total_paid
 
                     if amount_applied > outstanding:
-                        logger.warning("Amount applied %s exceeds outstanding %s for invoice %s, skipping",
-                                       amount_applied, outstanding, invoice["number"])
+                        logger.warning(
+                            "Amount applied %s exceeds outstanding %s for invoice %s, skipping",
+                            amount_applied,
+                            outstanding,
+                            invoice["number"],
+                        )
                         continue
 
                     if amount_applied > amount_remaining:
-                        logger.warning("Amount applied %s exceeds remaining payment %s, skipping", amount_applied,
-                                       amount_remaining)
+                        logger.warning(
+                            "Amount applied %s exceeds remaining payment %s, skipping",
+                            amount_applied,
+                            amount_remaining,
+                        )
                         continue
 
                     line_data = {
@@ -604,32 +709,43 @@ def record_payment(request):
                         "invoice_date": invoice["date"],
                         "invoice_amount": str(invoice["total"]),
                         "amount_due": str(outstanding),
-                        "amount_applied": str(amount_applied)
+                        "amount_applied": str(amount_applied),
                     }
                     payment_lines.append(line_data)
                     amount_used += amount_applied
                     amount_remaining -= amount_applied
-                    manually_processed.add(str(invoice_id))  # ADDED: Track processed invoices
+                    manually_processed.add(
+                        str(invoice_id)
+                    )  # ADDED: Track processed invoices
                     logger.debug("Added payment line: %s", line_data)
 
             # FIXED: Automatic allocation excludes manually processed invoices
             if amount_remaining > 0:
-                logger.debug("Processing automatic allocation with remaining amount: %s", amount_remaining)
-                for invoice in sorted(invoices, key=lambda x: x["due_date"]):  # Oldest first
+                logger.debug(
+                    "Processing automatic allocation with remaining amount: %s",
+                    amount_remaining,
+                )
+                for invoice in sorted(
+                    invoices, key=lambda x: x["due_date"]
+                ):  # Oldest first
                     if amount_remaining <= 0:
                         break
 
                     # ADDED: Skip if already manually processed
                     if str(invoice["id"]) in manually_processed:
-                        logger.debug("Skipping manually processed invoice: %s", invoice["id"])
+                        logger.debug(
+                            "Skipping manually processed invoice: %s", invoice["id"]
+                        )
                         continue
 
                     payments = registry.database(
                         model_name="RecordPaymentLine",
                         operation="filter",
-                        data={"invoice_id": invoice["id"]}
+                        data={"invoice_id": invoice["id"]},
                     )
-                    total_paid = sum(Decimal(str(p["amount_applied"])) for p in payments)
+                    total_paid = sum(
+                        Decimal(str(p["amount_applied"])) for p in payments
+                    )
                     outstanding = Decimal(str(invoice["total"])) - total_paid
 
                     if outstanding <= 0:
@@ -643,7 +759,7 @@ def record_payment(request):
                         "invoice_date": invoice["date"],
                         "invoice_amount": str(invoice["total"]),
                         "amount_due": str(outstanding),
-                        "amount_applied": str(amount_to_apply)
+                        "amount_applied": str(amount_to_apply),
                     }
                     payment_lines.append(line_data)
                     amount_used += amount_to_apply
@@ -654,9 +770,7 @@ def record_payment(request):
             for line_data in payment_lines:
                 logger.debug("Creating payment line: %s", line_data)
                 registry.database(
-                    model_name="RecordPaymentLine",
-                    operation="create",
-                    data=line_data
+                    model_name="RecordPaymentLine", operation="create", data=line_data
                 )
 
             # Update invoice statuses after all payment lines are created
@@ -671,16 +785,20 @@ def record_payment(request):
                 processed_invoices.add(invoice_id)
 
                 logger.debug("Updating status for invoice_id: %s", invoice_id)
-                invoice = next((inv for inv in invoices if inv["id"] == invoice_id), None)
+                invoice = next(
+                    (inv for inv in invoices if inv["id"] == invoice_id), None
+                )
                 if not invoice:
-                    logger.error("Invoice %s not found during status update", invoice_id)
+                    logger.error(
+                        "Invoice %s not found during status update", invoice_id
+                    )
                     continue
 
                 # Fetch all payments for this invoice (including the ones just created)
                 payments = registry.database(
                     model_name="RecordPaymentLine",
                     operation="filter",
-                    data={"invoice_id": invoice_id}
+                    data={"invoice_id": invoice_id},
                 )
                 total_paid = sum(Decimal(str(p["amount_applied"])) for p in payments)
                 invoice_total = Decimal(str(invoice["total"]))
@@ -694,27 +812,32 @@ def record_payment(request):
                 else:
                     new_status = "ISSUED" if due_date >= today else "OVERDUE"
 
-                logger.debug("Updating invoice %s to status: %s (total_paid: %s, invoice_total: %s)",
-                             invoice_id, new_status, total_paid, invoice_total)
+                logger.debug(
+                    "Updating invoice %s to status: %s (total_paid: %s, invoice_total: %s)",
+                    invoice_id,
+                    new_status,
+                    total_paid,
+                    invoice_total,
+                )
 
                 registry.database(
                     model_name="Invoices",
                     operation="update",
                     instance_id=invoice_id,
-                    data={"status": new_status}
+                    data={"status": new_status},
                 )
 
             amount_excess = amount_remaining if amount_remaining > 0 else Decimal("0")
             payment_update_data = {
                 "amount_used": str(amount_used),
-                "amount_excess": str(amount_excess)
+                "amount_excess": str(amount_excess),
             }
             logger.debug("Updating payment with: %s", payment_update_data)
             registry.database(
                 model_name="RecordPayment",
                 operation="update",
                 instance_id=payment["id"],
-                data=payment_update_data
+                data=payment_update_data,
             )
             payment.update(payment_update_data)
 
@@ -728,21 +851,26 @@ def record_payment(request):
                     model_name="RecordPayment",
                     operation="update",
                     instance_id=payment["id"],
-                    data={"journal_entry_id": journal_entry["id"], "is_posted": True}
+                    data={"journal_entry_id": journal_entry["id"], "is_posted": True},
                 )
                 payment["journal_entry_id"] = journal_entry["id"]
                 payment["is_posted"] = True
-                logger.info("Journal entry created successfully: %s", journal_entry["id"])
+                logger.info(
+                    "Journal entry created successfully: %s", journal_entry["id"]
+                )
 
             except Exception as journal_error:
-                logger.error("Failed to create journal entry for payment %s: %s",
-                             payment["id"], str(journal_error))
+                logger.error(
+                    "Failed to create journal entry for payment %s: %s",
+                    payment["id"],
+                    str(journal_error),
+                )
                 TransactionLogBase.log(
                     transaction_type="PAYMENT_JOURNAL_FAILED",
                     user=user,
                     message=str(journal_error),
                     state_name="Failed",
-                    request=request
+                    request=request,
                 )
                 raise
 
@@ -757,9 +885,9 @@ def record_payment(request):
                     "amount_received": str(amount_received),
                     "amount_used": str(amount_used),
                     "amount_excess": str(amount_excess),
-                    "invoice_count": len(payment_lines)
+                    "invoice_count": len(payment_lines),
                 },
-                request=request
+                request=request,
             )
 
             # Serialize payment response
@@ -779,15 +907,16 @@ def record_payment(request):
                 "lines": [
                     {
                         "invoice_id": str(line["invoice_id"]),
-                        "amount_applied": float(Decimal(str(line["amount_applied"])))
-                    } for line in payment_lines
-                ]
+                        "amount_applied": float(Decimal(str(line["amount_applied"]))),
+                    }
+                    for line in payment_lines
+                ],
             }
 
             return ResponseProvider(
                 data={"payment": serialized_payment},
                 message="Payment recorded and distributed successfully",
-                code=201
+                code=201,
             ).success()
 
     except Exception as e:
@@ -796,6 +925,8 @@ def record_payment(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while recording payment", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while recording payment", code=500
+        ).exception()

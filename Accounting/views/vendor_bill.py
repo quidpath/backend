@@ -1,17 +1,18 @@
 # enhanced_vendor_bills.py
-from decimal import Decimal, InvalidOperation
-import json
 import ast
+import json
 import re
-from django.views.decorators.csrf import csrf_exempt
-from django.db import transaction
 from collections import Counter
-from datetime import datetime, date
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
+
+from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
 
 from quidpath_backend.core.utils.AccountingService import AccountingService
 from quidpath_backend.core.utils.DocsEmail import DocumentNotificationHandler
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
@@ -34,9 +35,7 @@ def normalize_taxable_id(raw, registry):
     if not raw:
         # Find default exempt tax rate
         default_rate = registry.database(
-            model_name="TaxRate",
-            operation="filter",
-            data={"name": "exempt"}
+            model_name="TaxRate", operation="filter", data={"name": "exempt"}
         )
         if default_rate:
             return default_rate[0]["id"]
@@ -46,7 +45,7 @@ def normalize_taxable_id(raw, registry):
         return raw.get("id")
 
     if isinstance(raw, str):
-        s = raw.strip().strip('\'"""''')
+        s = raw.strip().strip('\'"""' "")
         if s.startswith("{") and s.endswith("}"):
             try:
                 d = json.loads(s.replace("'", '"'))
@@ -91,9 +90,11 @@ def create_vendor_bill(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -105,35 +106,48 @@ def create_vendor_bill(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Validate required fields
         required_fields = ["vendor", "date", "number", "due_date"]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
-                                        code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         # Normalize and validate status
         normalized_status = str(data.get("status", "DRAFT")).upper()
         if normalized_status not in {"DRAFT", "POSTED"}:
-            return ResponseProvider(message="Invalid status. Must be 'DRAFT' or 'POSTED'", code=400).bad_request()
+            return ResponseProvider(
+                message="Invalid status. Must be 'DRAFT' or 'POSTED'", code=400
+            ).bad_request()
 
         # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id": data["vendor"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["vendor"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not vendors:
-            return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor not found or inactive for this corporate", code=404
+            ).bad_request()
 
         # Validate purchase order if provided
         purchase_order_id = None
@@ -142,46 +156,59 @@ def create_vendor_bill(request):
             purchase_orders = registry.database(
                 model_name="PurchaseOrder",
                 operation="filter",
-                data={"number": purchase_order_input, "corporate_id": corporate_id, "status": "POSTED"}
+                data={
+                    "number": purchase_order_input,
+                    "corporate_id": corporate_id,
+                    "status": "POSTED",
+                },
             )
             if not purchase_orders:
                 return ResponseProvider(
                     message=f"Purchase order {purchase_order_input} not found or not in POSTED status",
-                    code=404
+                    code=404,
                 ).bad_request()
             purchase_order_id = purchase_orders[0]["id"]
 
         # Process and validate lines
         lines = data.get("lines", [])
         if not lines:
-            return ResponseProvider(message="At least one vendor bill line is required", code=400).bad_request()
+            return ResponseProvider(
+                message="At least one vendor bill line is required", code=400
+            ).bad_request()
 
         # Calculate totals and validate line data
-        sub_total = Decimal('0.00')
-        tax_total = Decimal('0.00')
-        total_discount = Decimal('0.00')
-        total = Decimal('0.00')
+        sub_total = Decimal("0.00")
+        tax_total = Decimal("0.00")
+        total_discount = Decimal("0.00")
+        total = Decimal("0.00")
 
         validated_lines = []
         for line_data in lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
+            required_line_fields = [
+                "description",
+                "quantity",
+                "unit_price",
+                "discount",
+                "taxable_id",
+            ]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Vendor bill line field {field.replace('_', ' ').title()} is required",
-                        code=400).bad_request()
+                        code=400,
+                    ).bad_request()
 
             # Normalize and validate tax rate
             taxable_id = normalize_taxable_id(line_data.get("taxable_id"), registry)
-            tax_rate_value = Decimal('0')
+            tax_rate_value = Decimal("0")
             if taxable_id:
                 tax_rates = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id}
+                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
                 )
                 if not tax_rates:
-                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                    return ResponseProvider(
+                        message=f"Tax rate {taxable_id} not found", code=404
+                    ).bad_request()
                 tax_rate_value = get_tax_rate_value(tax_rates[0])
 
             # Calculate line amounts
@@ -201,18 +228,20 @@ def create_vendor_bill(request):
             total += line_total
 
             # Store validated line data
-            validated_lines.append({
-                "description": line_data["description"],
-                "quantity": float(qty),
-                "unit_price": float(unit_price),
-                "amount": float(line_subtotal),
-                "discount": float(discount),
-                "taxable_id": taxable_id,
-                "tax_amount": float(line_tax_amount),
-                "sub_total": float(line_taxable_amount),
-                "total": float(line_total),
-                "purchase_order_line_id": line_data.get("purchase_order_line")
-            })
+            validated_lines.append(
+                {
+                    "description": line_data["description"],
+                    "quantity": float(qty),
+                    "unit_price": float(unit_price),
+                    "amount": float(line_subtotal),
+                    "discount": float(discount),
+                    "taxable_id": taxable_id,
+                    "tax_amount": float(line_tax_amount),
+                    "sub_total": float(line_taxable_amount),
+                    "total": float(line_total),
+                    "purchase_order_line_id": line_data.get("purchase_order_line"),
+                }
+            )
 
         # Create vendor bill and lines within transaction
         with transaction.atomic():
@@ -235,28 +264,26 @@ def create_vendor_bill(request):
             }
 
             vendor_bill = registry.database(
-                model_name="VendorBill",
-                operation="create",
-                data=vendor_bill_data
+                model_name="VendorBill", operation="create", data=vendor_bill_data
             )
 
             # Create vendor bill lines
             for line_data in validated_lines:
                 line_data["vendor_bill_id"] = vendor_bill["id"]
                 registry.database(
-                    model_name="VendorBillLine",
-                    operation="create",
-                    data=line_data
+                    model_name="VendorBillLine", operation="create", data=line_data
                 )
 
             # Create journal entry if posted
             if normalized_status == "POSTED":
-                journal_entry = accounting_service.create_vendor_bill_journal_entry(vendor_bill["id"], user)
+                journal_entry = accounting_service.create_vendor_bill_journal_entry(
+                    vendor_bill["id"], user
+                )
                 registry.database(
                     model_name="VendorBill",
                     operation="update",
                     instance_id=vendor_bill["id"],
-                    data={"journal_entry_id": journal_entry["id"]}
+                    data={"journal_entry_id": journal_entry["id"]},
                 )
                 vendor_bill["journal_entry_id"] = journal_entry["id"]
 
@@ -265,24 +292,26 @@ def create_vendor_bill(request):
             if not taxable_id_value:
                 return {"id": "", "code": "exempt", "label": "Exempt (0%)"}
             tax_rates = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id_value}
+                model_name="TaxRate", operation="filter", data={"id": taxable_id_value}
             )
             if tax_rates:
                 tax_rate = tax_rates[0]
                 return {
                     "id": str(taxable_id_value),
                     "code": tax_rate.get("name", "exempt"),
-                    "label": f"{tax_rate.get('name', 'exempt').replace('_', ' ').title()} ({float(get_tax_rate_value(tax_rate) * 100):.0f}%)"
+                    "label": f"{tax_rate.get('name', 'exempt').replace('_', ' ').title()} ({float(get_tax_rate_value(tax_rate) * 100):.0f}%)",
                 }
-            return {"id": str(taxable_id_value), "code": "exempt", "label": "Exempt (0%)"}
+            return {
+                "id": str(taxable_id_value),
+                "code": "exempt",
+                "label": "Exempt (0%)",
+            }
 
         # Get lines for response
         vendor_bill_lines = registry.database(
             model_name="VendorBillLine",
             operation="filter",
-            data={"vendor_bill_id": vendor_bill["id"]}
+            data={"vendor_bill_id": vendor_bill["id"]},
         )
 
         vendor_bill["lines"] = [
@@ -298,7 +327,7 @@ def create_vendor_bill(request):
                 "sub_total": float(line["sub_total"]),
                 "total": float(line["total"]),
                 "purchase_order_line": str(line.get("purchase_order_line_id", "")),
-                "taxable": get_tax_display(line.get("taxable_id"))
+                "taxable": get_tax_display(line.get("taxable_id")),
             }
             for line in vendor_bill_lines
         ]
@@ -313,15 +342,15 @@ def create_vendor_bill(request):
                 "vendor_bill_id": vendor_bill["id"],
                 "status": normalized_status,
                 "total": float(total),
-                "line_count": len(validated_lines)
+                "line_count": len(validated_lines),
             },
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message=f"Vendor bill {'posted' if normalized_status == 'POSTED' else 'created as draft'} successfully",
             data=vendor_bill,
-            code=201
+            code=201,
         ).success()
 
     except Exception as e:
@@ -330,9 +359,12 @@ def create_vendor_bill(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while creating vendor bill", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while creating vendor bill", code=500
+        ).exception()
+
 
 @csrf_exempt
 def update_vendor_bill(request):
@@ -343,9 +375,11 @@ def update_vendor_bill(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -357,10 +391,12 @@ def update_vendor_bill(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
 
@@ -368,17 +404,20 @@ def update_vendor_bill(request):
         required_fields = ["id", "vendor", "date", "number", "due_date"]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
-                                        code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         # Get existing vendor bill
         vendor_bills = registry.database(
             model_name="VendorBill",
             operation="filter",
-            data={"id": data["id"], "corporate_id": corporate_id}
+            data={"id": data["id"], "corporate_id": corporate_id},
         )
         if not vendor_bills:
-            return ResponseProvider(message="Vendor bill not found", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor bill not found", code=404
+            ).bad_request()
 
         existing_vendor_bill = vendor_bills[0]
         vendor_bill_id = existing_vendor_bill["id"]
@@ -387,45 +426,62 @@ def update_vendor_bill(request):
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id": data["vendor"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["vendor"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not vendors:
-            return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor not found or inactive for this corporate", code=404
+            ).bad_request()
 
         # Normalize status
         normalized_status = str(data.get("status", "DRAFT")).upper()
         if normalized_status not in {"DRAFT", "POSTED"}:
-            return ResponseProvider(message="Invalid status. Must be 'DRAFT' or 'POSTED'", code=400).bad_request()
+            return ResponseProvider(
+                message="Invalid status. Must be 'DRAFT' or 'POSTED'", code=400
+            ).bad_request()
 
         # Process lines
         submitted_lines = data.get("lines", [])
         if not submitted_lines:
-            return ResponseProvider(message="At least one vendor bill line is required", code=400).bad_request()
+            return ResponseProvider(
+                message="At least one vendor bill line is required", code=400
+            ).bad_request()
 
         # Calculate totals
-        sub_total = Decimal('0.00')
-        tax_total = Decimal('0.00')
-        total_discount = Decimal('0.00')
-        total = Decimal('0.00')
+        sub_total = Decimal("0.00")
+        tax_total = Decimal("0.00")
+        total_discount = Decimal("0.00")
+        total = Decimal("0.00")
 
         for line_data in submitted_lines:
-            required_line_fields = ["description", "quantity", "unit_price", "discount", "taxable_id"]
+            required_line_fields = [
+                "description",
+                "quantity",
+                "unit_price",
+                "discount",
+                "taxable_id",
+            ]
             for field in required_line_fields:
                 if field not in line_data:
                     return ResponseProvider(
                         message=f"Vendor bill line field {field.replace('_', ' ').title()} is required",
-                        code=400).bad_request()
+                        code=400,
+                    ).bad_request()
 
             taxable_id = normalize_taxable_id(line_data.get("taxable_id"), registry)
-            tax_rate_value = Decimal('0')
+            tax_rate_value = Decimal("0")
             if taxable_id:
                 tax_rates = registry.database(
-                    model_name="TaxRate",
-                    operation="filter",
-                    data={"id": taxable_id}
+                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
                 )
                 if not tax_rates:
-                    return ResponseProvider(message=f"Tax rate {taxable_id} not found", code=404).bad_request()
+                    return ResponseProvider(
+                        message=f"Tax rate {taxable_id} not found", code=404
+                    ).bad_request()
                 tax_rate_value = get_tax_rate_value(tax_rates[0])
 
             qty = to_decimal(line_data["quantity"])
@@ -463,17 +519,19 @@ def update_vendor_bill(request):
                 model_name="VendorBill",
                 operation="update",
                 instance_id=vendor_bill_id,
-                data=vendor_bill_data
+                data=vendor_bill_data,
             )
 
             # Handle line updates
             existing_lines = registry.database(
                 model_name="VendorBillLine",
                 operation="filter",
-                data={"vendor_bill_id": vendor_bill_id}
+                data={"vendor_bill_id": vendor_bill_id},
             )
             existing_line_ids = {line["id"] for line in existing_lines}
-            submitted_line_ids = {line.get("id") for line in submitted_lines if line.get("id")}
+            submitted_line_ids = {
+                line.get("id") for line in submitted_lines if line.get("id")
+            }
 
             # Delete removed lines
             for line in existing_lines:
@@ -481,20 +539,22 @@ def update_vendor_bill(request):
                     registry.database(
                         model_name="VendorBillLine",
                         operation="delete",
-                        instance_id=line["id"]
+                        instance_id=line["id"],
                     )
 
             # Create or update lines
             for line_data in submitted_lines:
                 taxable_id = normalize_taxable_id(line_data.get("taxable_id"), registry)
-                tax_rate_value = Decimal('0')
+                tax_rate_value = Decimal("0")
                 if taxable_id:
                     tax_rates = registry.database(
                         model_name="TaxRate",
                         operation="filter",
-                        data={"id": taxable_id}
+                        data={"id": taxable_id},
                     )
-                    tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
+                    tax_rate_value = (
+                        get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal("0")
+                    )
 
                 qty = to_decimal(line_data["quantity"])
                 unit_price = to_decimal(line_data["unit_price"])
@@ -524,13 +584,13 @@ def update_vendor_bill(request):
                         model_name="VendorBillLine",
                         operation="update",
                         instance_id=line_data["id"],
-                        data=line_payload
+                        data=line_payload,
                     )
                 else:
                     registry.database(
                         model_name="VendorBillLine",
                         operation="create",
-                        data=line_payload
+                        data=line_payload,
                     )
 
             # Handle journal entry updates
@@ -540,53 +600,59 @@ def update_vendor_bill(request):
                     old_je_lines = registry.database(
                         model_name="JournalEntryLine",
                         operation="filter",
-                        data={"journal_entry_id": existing_vendor_bill["journal_entry_id"]}
+                        data={
+                            "journal_entry_id": existing_vendor_bill["journal_entry_id"]
+                        },
                     )
                     for line in old_je_lines:
                         registry.database(
                             model_name="JournalEntryLine",
                             operation="delete",
-                            instance_id=line["id"]
+                            instance_id=line["id"],
                         )
                     registry.database(
                         model_name="JournalEntry",
                         operation="delete",
-                        instance_id=existing_vendor_bill["journal_entry_id"]
+                        instance_id=existing_vendor_bill["journal_entry_id"],
                     )
 
                 # Create new journal entry
-                journal_entry = accounting_service.create_vendor_bill_journal_entry(vendor_bill_id, user)
+                journal_entry = accounting_service.create_vendor_bill_journal_entry(
+                    vendor_bill_id, user
+                )
                 registry.database(
                     model_name="VendorBill",
                     operation="update",
                     instance_id=vendor_bill_id,
-                    data={"journal_entry_id": journal_entry["id"]}
+                    data={"journal_entry_id": journal_entry["id"]},
                 )
                 vendor_bill["journal_entry_id"] = journal_entry["id"]
 
-            elif normalized_status == "DRAFT" and existing_vendor_bill.get("journal_entry_id"):
+            elif normalized_status == "DRAFT" and existing_vendor_bill.get(
+                "journal_entry_id"
+            ):
                 # If changing from POSTED to DRAFT, remove journal entry
                 old_je_lines = registry.database(
                     model_name="JournalEntryLine",
                     operation="filter",
-                    data={"journal_entry_id": existing_vendor_bill["journal_entry_id"]}
+                    data={"journal_entry_id": existing_vendor_bill["journal_entry_id"]},
                 )
                 for line in old_je_lines:
                     registry.database(
                         model_name="JournalEntryLine",
                         operation="delete",
-                        instance_id=line["id"]
+                        instance_id=line["id"],
                     )
                 registry.database(
                     model_name="JournalEntry",
                     operation="delete",
-                    instance_id=existing_vendor_bill["journal_entry_id"]
+                    instance_id=existing_vendor_bill["journal_entry_id"],
                 )
                 registry.database(
                     model_name="VendorBill",
                     operation="update",
                     instance_id=vendor_bill_id,
-                    data={"journal_entry_id": None}
+                    data={"journal_entry_id": None},
                 )
 
         # Log success
@@ -599,9 +665,9 @@ def update_vendor_bill(request):
                 "vendor_bill_id": vendor_bill_id,
                 "status": normalized_status,
                 "total": float(total),
-                "line_count": len(submitted_lines)
+                "line_count": len(submitted_lines),
             },
-            request=request
+            request=request,
         )
 
         # Return updated vendor bill with lines
@@ -613,17 +679,17 @@ def update_vendor_bill(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while updating vendor bill", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while updating vendor bill", code=500
+        ).exception()
 
 
 def get_vendor_bill_response(vendor_bill_id, registry):
     """Helper function to format vendor bill response with lines"""
     vendor_bills = registry.database(
-        model_name="VendorBill",
-        operation="filter",
-        data={"id": vendor_bill_id}
+        model_name="VendorBill", operation="filter", data={"id": vendor_bill_id}
     )
 
     if not vendor_bills:
@@ -635,23 +701,21 @@ def get_vendor_bill_response(vendor_bill_id, registry):
         if not taxable_id_value:
             return {"id": "", "code": "exempt", "label": "Exempt (0%)"}
         tax_rates = registry.database(
-            model_name="TaxRate",
-            operation="filter",
-            data={"id": taxable_id_value}
+            model_name="TaxRate", operation="filter", data={"id": taxable_id_value}
         )
         if tax_rates:
             tax_rate = tax_rates[0]
             return {
                 "id": str(taxable_id_value),
                 "code": tax_rate.get("name", "exempt"),
-                "label": f"{tax_rate.get('name', 'exempt').replace('_', ' ').title()} ({float(get_tax_rate_value(tax_rate) * 100):.0f}%)"
+                "label": f"{tax_rate.get('name', 'exempt').replace('_', ' ').title()} ({float(get_tax_rate_value(tax_rate) * 100):.0f}%)",
             }
         return {"id": str(taxable_id_value), "code": "exempt", "label": "Exempt (0%)"}
 
     vendor_bill_lines = registry.database(
         model_name="VendorBillLine",
         operation="filter",
-        data={"vendor_bill_id": vendor_bill_id}
+        data={"vendor_bill_id": vendor_bill_id},
     )
 
     vendor_bill["lines"] = [
@@ -667,15 +731,13 @@ def get_vendor_bill_response(vendor_bill_id, registry):
             "sub_total": float(line["sub_total"]),
             "total": float(line["total"]),
             "purchase_order_line": str(line.get("purchase_order_line_id", "")),
-            "taxable": get_tax_display(line.get("taxable_id"))
+            "taxable": get_tax_display(line.get("taxable_id")),
         }
         for line in vendor_bill_lines
     ]
 
     return ResponseProvider(
-        message="Vendor bill retrieved successfully",
-        data=vendor_bill,
-        code=200
+        message="Vendor bill retrieved successfully", data=vendor_bill, code=200
     ).success()
 
 
@@ -685,9 +747,11 @@ def list_vendor_bills(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -697,85 +761,102 @@ def list_vendor_bills(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         vendor_bills = registry.database(
             model_name="VendorBill",
             operation="filter",
-            data={"corporate_id": corporate_id}
+            data={"corporate_id": corporate_id},
         )
 
         def get_tax_display(taxable_id_value):
             if not taxable_id_value:
                 return {"id": "", "code": "exempt", "label": "Exempt (0%)"}
             tax_rates = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id_value}
+                model_name="TaxRate", operation="filter", data={"id": taxable_id_value}
             )
             if tax_rates:
                 tax_rate = tax_rates[0]
                 return {
                     "id": str(taxable_id_value),
                     "code": tax_rate.get("name", "exempt"),
-                    "label": f"{tax_rate.get('name', 'exempt').replace('_', ' ').title()} ({float(get_tax_rate_value(tax_rate) * 100):.0f}%)"
+                    "label": f"{tax_rate.get('name', 'exempt').replace('_', ' ').title()} ({float(get_tax_rate_value(tax_rate) * 100):.0f}%)",
                 }
-            return {"id": str(taxable_id_value), "code": "exempt", "label": "Exempt (0%)"}
+            return {
+                "id": str(taxable_id_value),
+                "code": "exempt",
+                "label": "Exempt (0%)",
+            }
 
         serialized_vendor_bills = []
         for vb in vendor_bills:
             lines = registry.database(
                 model_name="VendorBillLine",
                 operation="filter",
-                data={"vendor_bill_id": vb["id"]}
+                data={"vendor_bill_id": vb["id"]},
             )
 
-            serialized_vendor_bills.append({
-                "id": str(vb["id"]),
-                "number": vb["number"],
-                "vendor": str(vb["vendor_id"]),
-                "date": vb["date"],
-                "due_date": vb["due_date"],
-                "status": vb["status"],
-                "purchase_order": str(vb.get("purchase_order_id", "")),
-                "comments": vb.get("comments", ""),
-                "terms": vb.get("terms", ""),
-                "sub_total": float(vb.get("sub_total", 0)),
-                "tax_total": float(vb.get("tax_total", 0)),
-                "total_discount": float(vb.get("total_discount", 0)),
-                "total": float(vb.get("total", 0)),
-                "has_journal_entry": bool(vb.get("journal_entry_id")),
-                "lines": [
-                    {
-                        "id": str(line["id"]),
-                        "description": line["description"],
-                        "quantity": float(line["quantity"]),
-                        "unit_price": float(line["unit_price"]),
-                        "amount": float(line["amount"]),
-                        "discount": float(line["discount"]),
-                        "taxable_id": str(line.get("taxable_id", "")),
-                        "tax_amount": float(line["tax_amount"]),
-                        "sub_total": float(line["sub_total"]),
-                        "total": float(line["total"]),
-                        "purchase_order_line": str(line.get("purchase_order_line_id", "")),
-                        "taxable": get_tax_display(line.get("taxable_id"))
-                    }
-                    for line in lines
-                ]
-            })
+            serialized_vendor_bills.append(
+                {
+                    "id": str(vb["id"]),
+                    "number": vb["number"],
+                    "vendor": str(vb["vendor_id"]),
+                    "date": vb["date"],
+                    "due_date": vb["due_date"],
+                    "status": vb["status"],
+                    "purchase_order": str(vb.get("purchase_order_id", "")),
+                    "comments": vb.get("comments", ""),
+                    "terms": vb.get("terms", ""),
+                    "sub_total": float(vb.get("sub_total", 0)),
+                    "tax_total": float(vb.get("tax_total", 0)),
+                    "total_discount": float(vb.get("total_discount", 0)),
+                    "total": float(vb.get("total", 0)),
+                    "has_journal_entry": bool(vb.get("journal_entry_id")),
+                    "lines": [
+                        {
+                            "id": str(line["id"]),
+                            "description": line["description"],
+                            "quantity": float(line["quantity"]),
+                            "unit_price": float(line["unit_price"]),
+                            "amount": float(line["amount"]),
+                            "discount": float(line["discount"]),
+                            "taxable_id": str(line.get("taxable_id", "")),
+                            "tax_amount": float(line["tax_amount"]),
+                            "sub_total": float(line["sub_total"]),
+                            "total": float(line["total"]),
+                            "purchase_order_line": str(
+                                line.get("purchase_order_line_id", "")
+                            ),
+                            "taxable": get_tax_display(line.get("taxable_id")),
+                        }
+                        for line in lines
+                    ],
+                }
+            )
 
         statuses = [vb["status"] for vb in vendor_bills]
         status_counts = dict(Counter(statuses))
         total_count = len(vendor_bills)
 
-        all_statuses = {"DRAFT": 0, "POSTED": 0, "PAID": 0, "PARTIALLY_PAID": 0, "OVERDUE": 0, "CANCELLED": 0}
+        all_statuses = {
+            "DRAFT": 0,
+            "POSTED": 0,
+            "PAID": 0,
+            "PARTIALLY_PAID": 0,
+            "OVERDUE": 0,
+            "CANCELLED": 0,
+        }
         all_statuses.update(status_counts)
 
         TransactionLogBase.log(
@@ -784,17 +865,17 @@ def list_vendor_bills(request):
             message=f"Retrieved {total_count} vendor bills for corporate {corporate_id}",
             state_name="Success",
             extra={"status_counts": all_statuses, "corporate_id": corporate_id},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             data={
                 "vendor_bills": serialized_vendor_bills,
                 "total": total_count,
-                "status_counts": all_statuses
+                "status_counts": all_statuses,
             },
             message="Vendor bills retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -803,9 +884,12 @@ def list_vendor_bills(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving vendor bills", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving vendor bills", code=500
+        ).exception()
+
 
 @csrf_exempt
 def get_vendor_bill(request):
@@ -813,9 +897,11 @@ def get_vendor_bill(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -825,26 +911,35 @@ def get_vendor_bill(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         vendor_bill_id = data.get("id")
         if not vendor_bill_id:
-            return ResponseProvider(message="Vendor bill ID is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Vendor bill ID is required", code=400
+            ).bad_request()
 
         vendor_bills = registry.database(
             model_name="VendorBill",
             operation="filter",
-            data={"id": vendor_bill_id, "corporate_id": corporate_id}
+            data={"id": vendor_bill_id, "corporate_id": corporate_id},
         )
         if not vendor_bills:
-            return ResponseProvider(message="Vendor bill not found or not associated with this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor bill not found or not associated with this corporate",
+                code=404,
+            ).bad_request()
 
         TransactionLogBase.log(
             transaction_type="VENDOR_BILL_GET_SUCCESS",
@@ -852,7 +947,7 @@ def get_vendor_bill(request):
             message=f"Retrieved vendor bill {vendor_bill_id} for corporate {corporate_id}",
             state_name="Success",
             extra={"vendor_bill_id": vendor_bill_id, "corporate_id": corporate_id},
-            request=request
+            request=request,
         )
 
         return get_vendor_bill_response(vendor_bill_id, registry)
@@ -863,9 +958,11 @@ def get_vendor_bill(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving vendor bill", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving vendor bill", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -878,9 +975,11 @@ def delete_vendor_bill(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -890,26 +989,35 @@ def delete_vendor_bill(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         vendor_bill_id = data.get("id")
         if not vendor_bill_id:
-            return ResponseProvider(message="Vendor bill ID is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Vendor bill ID is required", code=400
+            ).bad_request()
 
         vendor_bills = registry.database(
             model_name="VendorBill",
             operation="filter",
-            data={"id": vendor_bill_id, "corporate_id": corporate_id}
+            data={"id": vendor_bill_id, "corporate_id": corporate_id},
         )
         if not vendor_bills:
-            return ResponseProvider(message="Vendor bill not found or not associated with this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor bill not found or not associated with this corporate",
+                code=404,
+            ).bad_request()
 
         vendor_bill = vendor_bills[0]
         current_status = vendor_bill["status"]
@@ -917,7 +1025,7 @@ def delete_vendor_bill(request):
         if current_status in {"PAID", "PARTIALLY_PAID", "OVERDUE", "CANCELLED"}:
             return ResponseProvider(
                 message=f"Cannot delete vendor bill in {current_status} status. Consider cancelling instead.",
-                code=400
+                code=400,
             ).bad_request()
 
         with transaction.atomic():
@@ -926,38 +1034,36 @@ def delete_vendor_bill(request):
                 je_lines = registry.database(
                     model_name="JournalEntryLine",
                     operation="filter",
-                    data={"journal_entry_id": vendor_bill["journal_entry_id"]}
+                    data={"journal_entry_id": vendor_bill["journal_entry_id"]},
                 )
                 for line in je_lines:
                     registry.database(
                         model_name="JournalEntryLine",
                         operation="delete",
-                        instance_id=line["id"]
+                        instance_id=line["id"],
                     )
                 registry.database(
                     model_name="JournalEntry",
                     operation="delete",
-                    instance_id=vendor_bill["journal_entry_id"]
+                    instance_id=vendor_bill["journal_entry_id"],
                 )
 
             # Delete vendor bill lines
             vb_lines = registry.database(
                 model_name="VendorBillLine",
                 operation="filter",
-                data={"vendor_bill_id": vendor_bill_id}
+                data={"vendor_bill_id": vendor_bill_id},
             )
             for line in vb_lines:
                 registry.database(
                     model_name="VendorBillLine",
                     operation="delete",
-                    instance_id=line["id"]
+                    instance_id=line["id"],
                 )
 
             # Delete the vendor bill
             registry.database(
-                model_name="VendorBill",
-                operation="delete",
-                instance_id=vendor_bill_id
+                model_name="VendorBill", operation="delete", instance_id=vendor_bill_id
             )
 
         TransactionLogBase.log(
@@ -968,14 +1074,13 @@ def delete_vendor_bill(request):
             extra={
                 "vendor_bill_id": vendor_bill_id,
                 "previous_status": current_status,
-                "corporate_id": corporate_id
+                "corporate_id": corporate_id,
             },
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
-            message="Vendor bill deleted successfully",
-            code=200
+            message="Vendor bill deleted successfully", code=200
         ).success()
 
     except Exception as e:
@@ -984,9 +1089,12 @@ def delete_vendor_bill(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while deleting vendor bill", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while deleting vendor bill", code=500
+        ).exception()
+
 
 @csrf_exempt
 def convert_purchase_order_to_vendor_bill(request):
@@ -1006,9 +1114,11 @@ def convert_purchase_order_to_vendor_bill(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -1019,52 +1129,82 @@ def convert_purchase_order_to_vendor_bill(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
-        required_fields = ["purchase_order_id", "vendor_id", "date", "number", "due_date", "created_by"]
+        required_fields = [
+            "purchase_order_id",
+            "vendor_id",
+            "date",
+            "number",
+            "due_date",
+            "created_by",
+        ]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         purchase_orders = registry.database(
             model_name="PurchaseOrder",
             operation="filter",
-            data={"id": data["purchase_order_id"], "corporate_id": corporate_id}
+            data={"id": data["purchase_order_id"], "corporate_id": corporate_id},
         )
         if not purchase_orders:
-            return ResponseProvider(message="Purchase order not found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Purchase order not found for this corporate", code=404
+            ).bad_request()
         purchase_order = purchase_orders[0]
 
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id": data["vendor_id"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["vendor_id"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not vendors:
-            return ResponseProvider(message="Vendor not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor not found or inactive for this corporate", code=404
+            ).bad_request()
 
         created_by_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"id": data["created_by"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["created_by"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not created_by_users:
-            return ResponseProvider(message="Created by user not found or inactive for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Created by user not found or inactive for this corporate",
+                code=404,
+            ).bad_request()
 
         purchase_order_lines = registry.database(
             model_name="PurchaseOrderLine",
             operation="filter",
-            data={"purchase_order_id": purchase_order["id"]}
+            data={"purchase_order_id": purchase_order["id"]},
         )
         if not purchase_order_lines:
-            return ResponseProvider(message="No lines found for this purchase order", code=400).bad_request()
+            return ResponseProvider(
+                message="No lines found for this purchase order", code=400
+            ).bad_request()
 
         with transaction.atomic():
             vendor_bill_data = {
@@ -1084,21 +1224,21 @@ def convert_purchase_order_to_vendor_bill(request):
                 "total": float(purchase_order.get("total", 0.00)),
             }
             vendor_bill = registry.database(
-                model_name="VendorBill",
-                operation="create",
-                data=vendor_bill_data
+                model_name="VendorBill", operation="create", data=vendor_bill_data
             )
 
             for line in purchase_order_lines:
                 taxable_id = normalize_taxable_id(line.get("taxable_id"))
-                tax_rate_value = Decimal('0')
+                tax_rate_value = Decimal("0")
                 if taxable_id:
                     tax_rates = registry.database(
                         model_name="TaxRate",
                         operation="filter",
-                        data={"id": taxable_id}
+                        data={"id": taxable_id},
                     )
-                    tax_rate_value = get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal('0')
+                    tax_rate_value = (
+                        get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal("0")
+                    )
 
                 qty = to_decimal(line["quantity"])
                 unit_price = to_decimal(line["unit_price"])
@@ -1122,9 +1262,7 @@ def convert_purchase_order_to_vendor_bill(request):
                     "total": float(line_total),
                 }
                 registry.database(
-                    model_name="VendorBillLine",
-                    operation="create",
-                    data=line_data
+                    model_name="VendorBillLine", operation="create", data=line_data
                 )
 
             # If we want to post it immediately, but the code sets "DRAFT", so no journal yet
@@ -1134,24 +1272,26 @@ def convert_purchase_order_to_vendor_bill(request):
             user=user,
             message=f"Purchase order {purchase_order['number']} converted to vendor bill {vendor_bill['number']} for corporate {corporate_id}",
             state_name="Completed",
-            extra={"purchase_order_id": purchase_order["id"], "vendor_bill_id": vendor_bill["id"], "line_count": len(purchase_order_lines)},
-            request=request
+            extra={
+                "purchase_order_id": purchase_order["id"],
+                "vendor_bill_id": vendor_bill["id"],
+                "line_count": len(purchase_order_lines),
+            },
+            request=request,
         )
 
         def tax_display(taxable_id_value):
             if not taxable_id_value:
                 return "Exempt (0%)"
             tr = registry.database(
-                model_name="TaxRate",
-                operation="filter",
-                data={"id": taxable_id_value}
+                model_name="TaxRate", operation="filter", data={"id": taxable_id_value}
             )
             return tr[0].get("name", "Exempt (0%)") if tr else "Exempt (0%)"
 
         vendor_bill_lines = registry.database(
             model_name="VendorBillLine",
             operation="filter",
-            data={"vendor_bill_id": vendor_bill["id"]}
+            data={"vendor_bill_id": vendor_bill["id"]},
         )
         vendor_bill["lines"] = [
             {
@@ -1166,23 +1306,21 @@ def convert_purchase_order_to_vendor_bill(request):
                 "sub_total": float(line.get("sub_total", 0)),
                 "total": float(line.get("total", 0)),
                 "purchase_order_line": str(line.get("purchase_order_line_id", "")),
-                "taxable": {
-                    "id": str(line.get("taxable_id", "")),
-                    "code": tax_display(line.get("taxable_id")),
-                    "label": tax_display(line.get("taxable_id"))
-                } if line.get("taxable_id") else {
-                    "id": "exempt",
-                    "code": "exempt",
-                    "label": "Exempt (0%)"
-                }
+                "taxable": (
+                    {
+                        "id": str(line.get("taxable_id", "")),
+                        "code": tax_display(line.get("taxable_id")),
+                        "label": tax_display(line.get("taxable_id")),
+                    }
+                    if line.get("taxable_id")
+                    else {"id": "exempt", "code": "exempt", "label": "Exempt (0%)"}
+                ),
             }
             for line in vendor_bill_lines
         ]
 
         return ResponseProvider(
-            message="Vendor bill created successfully",
-            data=vendor_bill,
-            code=201
+            message="Vendor bill created successfully", data=vendor_bill, code=201
         ).success()
 
     except Exception as e:
@@ -1191,9 +1329,13 @@ def convert_purchase_order_to_vendor_bill(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while converting purchase order to vendor bill", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while converting purchase order to vendor bill",
+            code=500,
+        ).exception()
+
 
 @csrf_exempt
 def list_po(request):
@@ -1209,9 +1351,11 @@ def list_po(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -1221,26 +1365,30 @@ def list_po(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         purchase_orders = registry.database(
             model_name="PurchaseOrder",
             operation="filter",
-            data={"corporate_id": corporate_id}
+            data={"corporate_id": corporate_id},
         )
 
         serialized_purchase_orders = [
             {
                 "id": str(po["id"]),
                 "number": po.get("number", ""),
-                "po_number": po.get("po_number", po.get("number", ""))
+                "po_number": po.get("po_number", po.get("number", "")),
             }
             for po in purchase_orders
         ]
@@ -1248,7 +1396,7 @@ def list_po(request):
         return ResponseProvider(
             data={"purchase_orders": serialized_purchase_orders},
             message="Purchase orders retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:

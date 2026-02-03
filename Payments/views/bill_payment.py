@@ -1,13 +1,15 @@
 # bill_payments.py (full corrected code)
 from decimal import Decimal, InvalidOperation
-from django.views.decorators.csrf import csrf_exempt
+
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
+
 from Payments.models import VendorPayment, VendorPaymentLine
 from quidpath_backend.core.utils.AccountingService import AccountingService
-from quidpath_backend.core.utils.Logbase import logger, TransactionLogBase
 from quidpath_backend.core.utils.json_response import ResponseProvider
-from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.Logbase import TransactionLogBase, logger
 from quidpath_backend.core.utils.registry import ServiceRegistry
+from quidpath_backend.core.utils.request_parser import get_clean_data
 
 
 def validate_decimal_precision(value, field_name, max_decimal_places=2):
@@ -16,7 +18,9 @@ def validate_decimal_precision(value, field_name, max_decimal_places=2):
         decimal_val = Decimal(str(value))
         # Check if it has more than max_decimal_places
         if decimal_val.as_tuple().exponent < -max_decimal_places:
-            raise ValueError(f"{field_name} cannot have more than {max_decimal_places} decimal places")
+            raise ValueError(
+                f"{field_name} cannot have more than {max_decimal_places} decimal places"
+            )
         return decimal_val
     except (InvalidOperation, ValueError) as e:
         raise ValueError(f"Invalid {field_name}: {str(e)}")
@@ -40,7 +44,9 @@ def validate_payment_allocations(allocations, available_amount, bills_dict):
         try:
             amount_applied = Decimal(str(alloc.get("amount_applied", 0)))
             if amount_applied <= 0:
-                errors.append(f"Allocation {i + 1}: amount_applied must be greater than 0")
+                errors.append(
+                    f"Allocation {i + 1}: amount_applied must be greater than 0"
+                )
                 continue
             total_allocated += amount_applied
         except (InvalidOperation, ValueError):
@@ -49,7 +55,8 @@ def validate_payment_allocations(allocations, available_amount, bills_dict):
 
     if total_allocated > available_amount:
         errors.append(
-            f"Total allocated amount ({total_allocated}) exceeds available payment amount ({available_amount})")
+            f"Total allocated amount ({total_allocated}) exceeds available payment amount ({available_amount})"
+        )
 
     return errors
 
@@ -68,9 +75,11 @@ def list_vendors(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -80,19 +89,23 @@ def list_vendors(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"corporate_id": corporate_id, "is_active": True}
+            data={"corporate_id": corporate_id, "is_active": True},
         )
 
         serialized_vendors = [
@@ -109,7 +122,7 @@ def list_vendors(request):
                 "city": vendor.get("city", ""),
                 "state": vendor.get("state", ""),
                 "zip_code": vendor.get("zip_code", ""),
-                "country": vendor.get("country", "")
+                "country": vendor.get("country", ""),
             }
             for vendor in vendors
         ]
@@ -120,13 +133,13 @@ def list_vendors(request):
             message=f"Retrieved {len(vendors)} vendors for corporate {corporate_id}",
             state_name="Success",
             extra={"vendor_count": len(vendors)},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             data={"vendors": serialized_vendors, "total": len(vendors)},
             message="Vendors retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -135,14 +148,18 @@ def list_vendors(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving vendors", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving vendors", code=500
+        ).exception()
 
 
-from decimal import Decimal
 from datetime import date, datetime
+from decimal import Decimal
+
 from django.views.decorators.csrf import csrf_exempt
+
 
 @csrf_exempt
 def list_unpaid_bills(request):
@@ -168,18 +185,20 @@ def list_unpaid_bills(request):
             user=user,
             message="User not authenticated",
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         TransactionLogBase.log(
             transaction_type="UNPAID_BILLS_LIST_FAILED",
             user=user,
             message="User ID not found",
             state_name="Failed",
-            request=request
+            request=request,
         )
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -191,9 +210,11 @@ def list_unpaid_bills(request):
             user=user,
             message="Vendor ID and Corporate ID are required",
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="Vendor ID and Corporate ID are required", code=400).bad_request()
+        return ResponseProvider(
+            message="Vendor ID and Corporate ID are required", code=400
+        ).bad_request()
 
     try:
         registry = ServiceRegistry()
@@ -202,7 +223,11 @@ def list_unpaid_bills(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "corporate_id": corporate_id, "is_active": True}
+            data={
+                "customuser_ptr_id": user_id,
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         if not corporate_users:
             TransactionLogBase.log(
@@ -210,15 +235,17 @@ def list_unpaid_bills(request):
                 user=user,
                 message="User has no corporate association",
                 state_name="Failed",
-                request=request
+                request=request,
             )
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         # Validate vendor
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id": vendor_id, "corporate_id": corporate_id, "is_active": True}
+            data={"id": vendor_id, "corporate_id": corporate_id, "is_active": True},
         )
         if not vendors:
             TransactionLogBase.log(
@@ -226,15 +253,21 @@ def list_unpaid_bills(request):
                 user=user,
                 message="Vendor not found or inactive",
                 state_name="Failed",
-                request=request
+                request=request,
             )
-            return ResponseProvider(message="Vendor not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor not found or inactive", code=404
+            ).bad_request()
 
         # Fetch bills
         bills = registry.database(
             model_name="VendorBill",
             operation="filter",
-            data={"vendor_id": vendor_id, "corporate_id": corporate_id, "status__in": ["POSTED", "PARTIALLY_PAID"]}
+            data={
+                "vendor_id": vendor_id,
+                "corporate_id": corporate_id,
+                "status__in": ["POSTED", "PARTIALLY_PAID"],
+            },
         )
 
         serialized_bills = []
@@ -245,7 +278,7 @@ def list_unpaid_bills(request):
             payments = registry.database(
                 model_name="VendorPaymentLine",
                 operation="filter",
-                data={"bill_id": bill["id"]}
+                data={"bill_id": bill["id"]},
             )
 
             bill_total = Decimal(str(bill.get("total", 0))) or Decimal("0")
@@ -263,7 +296,11 @@ def list_unpaid_bills(request):
                 if isinstance(due_date_value, str):
                     due_date = date.fromisoformat(due_date_value)
                 elif isinstance(due_date_value, (date, datetime)):
-                    due_date = due_date_value.date() if isinstance(due_date_value, datetime) else due_date_value
+                    due_date = (
+                        due_date_value.date()
+                        if isinstance(due_date_value, datetime)
+                        else due_date_value
+                    )
                 else:
                     due_date = None
 
@@ -279,21 +316,23 @@ def list_unpaid_bills(request):
                     model_name="VendorBill",
                     operation="update",
                     instance_id=bill["id"],
-                    data={"status": new_status}
+                    data={"status": new_status},
                 )
 
             # Only include bills still unpaid
             if outstanding_amount > 0:
-                serialized_bills.append({
-                    "id": str(bill["id"]),
-                    "number": bill["number"],
-                    "date": bill["date"],
-                    "due_date": bill["due_date"],
-                    "total": float(bill_total),
-                    "outstanding_amount": float(outstanding_amount),
-                    "status": new_status,
-                    "currency": bill.get("currency", "USD")
-                })
+                serialized_bills.append(
+                    {
+                        "id": str(bill["id"]),
+                        "number": bill["number"],
+                        "date": bill["date"],
+                        "due_date": bill["due_date"],
+                        "total": float(bill_total),
+                        "outstanding_amount": float(outstanding_amount),
+                        "status": new_status,
+                        "currency": bill.get("currency", "USD"),
+                    }
+                )
 
         # Sort bills by due_date ascending
         serialized_bills = sorted(serialized_bills, key=lambda x: x["due_date"] or "")
@@ -304,13 +343,13 @@ def list_unpaid_bills(request):
             message=f"Retrieved {len(serialized_bills)} unpaid bills for vendor {vendor_id}",
             state_name="Success",
             extra={"vendor_id": vendor_id, "bill_count": len(serialized_bills)},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             data={"bills": serialized_bills, "total": len(serialized_bills)},
             message="Unpaid bills retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -319,10 +358,11 @@ def list_unpaid_bills(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving unpaid bills", code=500).exception()
-
+        return ResponseProvider(
+            message="An error occurred while retrieving unpaid bills", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -363,9 +403,11 @@ def record_vendor_payment(request):
             message=f"Invalid request data: {str(e)}",
             state_name="Failed",
             request=request,
-            extra={"request_body": str(request.body)}
+            extra={"request_body": str(request.body)},
         )
-        return ResponseProvider(message=f"Invalid request data: {str(e)}", code=400).bad_request()
+        return ResponseProvider(
+            message=f"Invalid request data: {str(e)}", code=400
+        ).bad_request()
 
     user = metadata.get("user")
     if not user:
@@ -375,11 +417,13 @@ def record_vendor_payment(request):
             user=None,
             message="User not authenticated",
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     logger.debug("User ID: %s", user_id)
     if not user_id:
         logger.error("User ID not found")
@@ -388,7 +432,7 @@ def record_vendor_payment(request):
             user=user,
             message="User ID not found",
             state_name="Failed",
-            request=request
+            request=request,
         )
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -405,14 +449,20 @@ def record_vendor_payment(request):
                 user=user,
                 message="Corporate ID is required",
                 state_name="Failed",
-                request=request
+                request=request,
             )
-            return ResponseProvider(message="Corporate ID is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID is required", code=400
+            ).bad_request()
 
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "corporate_id": corporate_id, "is_active": True}
+            data={
+                "customuser_ptr_id": user_id,
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         logger.debug("Corporate users: %s", corporate_users)
         if not corporate_users:
@@ -422,11 +472,19 @@ def record_vendor_payment(request):
                 user=user,
                 message="User has no corporate association",
                 state_name="Failed",
-                request=request
+                request=request,
             )
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
-        required_fields = ["vendor_id", "amount_disbursed", "payment_date", "payment_method", "account_id"]
+        required_fields = [
+            "vendor_id",
+            "amount_disbursed",
+            "payment_date",
+            "payment_method",
+            "account_id",
+        ]
         for field in required_fields:
             if field not in data:
                 logger.error("Missing required field: %s", field)
@@ -435,16 +493,25 @@ def record_vendor_payment(request):
                     user=user,
                     message=f"{field.replace('_', ' ').title()} is required",
                     state_name="Failed",
-                    request=request
+                    request=request,
                 )
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required",
-                                        code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
-        logger.debug("Fetching vendors for vendor_id: %s, corporate_id: %s", data["vendor_id"], corporate_id)
+        logger.debug(
+            "Fetching vendors for vendor_id: %s, corporate_id: %s",
+            data["vendor_id"],
+            corporate_id,
+        )
         vendors = registry.database(
             model_name="Vendor",
             operation="filter",
-            data={"id": data["vendor_id"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["vendor_id"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         logger.debug("Vendors: %s", vendors)
         if not vendors:
@@ -454,15 +521,25 @@ def record_vendor_payment(request):
                 user=user,
                 message="Vendor not found or inactive",
                 state_name="Failed",
-                request=request
+                request=request,
             )
-            return ResponseProvider(message="Vendor not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Vendor not found or inactive", code=404
+            ).bad_request()
 
-        logger.debug("Fetching accounts for account_id: %s, corporate_id: %s", data["account_id"], corporate_id)
+        logger.debug(
+            "Fetching accounts for account_id: %s, corporate_id: %s",
+            data["account_id"],
+            corporate_id,
+        )
         accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
-            data={"id": data["account_id"], "corporate_id": corporate_id, "is_active": True}
+            data={
+                "id": data["account_id"],
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
         logger.debug("Accounts: %s", accounts)
         if not accounts:
@@ -472,27 +549,29 @@ def record_vendor_payment(request):
                 user=user,
                 message="Bank account not found or inactive",
                 state_name="Failed",
-                request=request
+                request=request,
             )
-            return ResponseProvider(message="Bank account not found or inactive", code=404).bad_request()
+            return ResponseProvider(
+                message="Bank account not found or inactive", code=404
+            ).bad_request()
 
         bank_account = accounts[0]
 
         # Get or create ledger account for this bank account
         ledger_account_id = bank_account.get("ledger_account_id")
         if not ledger_account_id:
-            logger.debug("Creating ledger account for bank_account: %s", bank_account["id"])
+            logger.debug(
+                "Creating ledger account for bank_account: %s", bank_account["id"]
+            )
             # Get ASSET account type
             type_data = registry.database(
-                model_name="AccountType",
-                operation="filter",
-                data={"name": "ASSET"}
+                model_name="AccountType", operation="filter", data={"name": "ASSET"}
             )
             if not type_data:
                 new_type = registry.database(
                     model_name="AccountType",
                     operation="create",
-                    data={"name": "ASSET", "description": "Asset accounts"}
+                    data={"name": "ASSET", "description": "Asset accounts"},
                 )
                 type_id = new_type["id"]
             else:
@@ -502,7 +581,7 @@ def record_vendor_payment(request):
             asset_accounts = registry.database(
                 model_name="Account",
                 operation="filter",
-                data={"corporate_id": corporate_id, "account_type_id": type_id}
+                data={"corporate_id": corporate_id, "account_type_id": type_id},
             )
             codes = []
             for acc in asset_accounts:
@@ -519,12 +598,10 @@ def record_vendor_payment(request):
                 "name": f"{bank_account['bank_name']} - {bank_account['account_name']}",
                 "account_type_id": type_id,
                 "is_active": True,
-                "description": f"Ledger account for bank account {bank_account['account_number']}"
+                "description": f"Ledger account for bank account {bank_account['account_number']}",
             }
             new_account = registry.database(
-                model_name="Account",
-                operation="create",
-                data=new_account_data
+                model_name="Account", operation="create", data=new_account_data
             )
             ledger_account_id = new_account["id"]
 
@@ -533,12 +610,14 @@ def record_vendor_payment(request):
                 model_name="BankAccount",
                 operation="update",
                 instance_id=bank_account["id"],
-                data={"ledger_account_id": ledger_account_id}
+                data={"ledger_account_id": ledger_account_id},
             )
             logger.debug("Created and linked ledger account: %s", ledger_account_id)
 
         try:
-            amount_disbursed = validate_decimal_precision(data["amount_disbursed"], "Amount disbursed")
+            amount_disbursed = validate_decimal_precision(
+                data["amount_disbursed"], "Amount disbursed"
+            )
         except ValueError as e:
             logger.error("Decimal validation error: %s", str(e))
             TransactionLogBase.log(
@@ -546,22 +625,28 @@ def record_vendor_payment(request):
                 user=user,
                 message=str(e),
                 state_name="Failed",
-                request=request
+                request=request,
             )
             return ResponseProvider(message=str(e), code=400).bad_request()
         if amount_disbursed <= 0:
-            logger.error("Amount disbursed must be greater than 0: %s", amount_disbursed)
+            logger.error(
+                "Amount disbursed must be greater than 0: %s", amount_disbursed
+            )
             TransactionLogBase.log(
                 transaction_type="VENDOR_PAYMENT_RECORD_FAILED",
                 user=user,
                 message="Amount disbursed must be greater than 0",
                 state_name="Failed",
-                request=request
+                request=request,
             )
-            return ResponseProvider(message="Amount disbursed must be greater than 0", code=400).bad_request()
+            return ResponseProvider(
+                message="Amount disbursed must be greater than 0", code=400
+            ).bad_request()
 
         try:
-            bank_charges = validate_decimal_precision(data.get("bank_charges", 0), "Bank charges")
+            bank_charges = validate_decimal_precision(
+                data.get("bank_charges", 0), "Bank charges"
+            )
         except ValueError as e:
             logger.error("Bank charges validation error: %s", str(e))
             TransactionLogBase.log(
@@ -569,7 +654,7 @@ def record_vendor_payment(request):
                 user=user,
                 message=str(e),
                 state_name="Failed",
-                request=request
+                request=request,
             )
             return ResponseProvider(message=str(e), code=400).bad_request()
         if bank_charges < 0:
@@ -579,43 +664,65 @@ def record_vendor_payment(request):
                 user=user,
                 message="Bank charges cannot be negative",
                 state_name="Failed",
-                request=request
+                request=request,
             )
-            return ResponseProvider(message="Bank charges cannot be negative", code=400).bad_request()
+            return ResponseProvider(
+                message="Bank charges cannot be negative", code=400
+            ).bad_request()
 
         payment_method = data["payment_method"]
         valid_methods = ["cash", "card", "bank_transfer", "paypal", "mpesa", "cheque"]
         if payment_method not in valid_methods:
-            logger.error("Invalid payment method: %s, valid methods: %s", payment_method, valid_methods)
+            logger.error(
+                "Invalid payment method: %s, valid methods: %s",
+                payment_method,
+                valid_methods,
+            )
             TransactionLogBase.log(
                 transaction_type="VENDOR_PAYMENT_RECORD_FAILED",
                 user=user,
                 message=f"Invalid payment method. Must be one of: {', '.join(valid_methods)}",
                 state_name="Failed",
-                request=request
+                request=request,
             )
-            return ResponseProvider(message=f"Invalid payment method. Must be one of: {', '.join(valid_methods)}",
-                                    code=400).bad_request()
+            return ResponseProvider(
+                message=f"Invalid payment method. Must be one of: {', '.join(valid_methods)}",
+                code=400,
+            ).bad_request()
 
         bill_number = data.get("bill_number")
         if bill_number:
-            logger.debug("Validating bill_number: %s for vendor_id: %s", bill_number, data["vendor_id"])
+            logger.debug(
+                "Validating bill_number: %s for vendor_id: %s",
+                bill_number,
+                data["vendor_id"],
+            )
             bills_by_number = registry.database(
                 model_name="VendorBill",
                 operation="filter",
-                data={"number": bill_number, "vendor_id": data["vendor_id"], "corporate_id": corporate_id}
+                data={
+                    "number": bill_number,
+                    "vendor_id": data["vendor_id"],
+                    "corporate_id": corporate_id,
+                },
             )
             if not bills_by_number:
-                logger.error("Bill number %s not found for vendor %s", bill_number, data["vendor_id"])
+                logger.error(
+                    "Bill number %s not found for vendor %s",
+                    bill_number,
+                    data["vendor_id"],
+                )
                 TransactionLogBase.log(
                     transaction_type="VENDOR_PAYMENT_RECORD_FAILED",
                     user=user,
                     message=f"Bill number {bill_number} not found for this vendor",
                     state_name="Failed",
-                    request=request
+                    request=request,
                 )
-                return ResponseProvider(message=f"Bill number {bill_number} not found for this vendor",
-                                        code=404).bad_request()
+                return ResponseProvider(
+                    message=f"Bill number {bill_number} not found for this vendor",
+                    code=404,
+                ).bad_request()
 
         with transaction.atomic():
             payment_data = {
@@ -632,22 +739,27 @@ def record_vendor_payment(request):
                 "amount_used": "0",
                 "amount_refunded": "0",
                 "amount_excess": "0",
-                "created_by_id": user_id
+                "created_by_id": user_id,
             }
             logger.debug("Creating vendor payment with data: %s", payment_data)
             payment = registry.database(
-                model_name="VendorPayment",
-                operation="create",
-                data=payment_data
+                model_name="VendorPayment", operation="create", data=payment_data
             )
             logger.debug("Vendor payment created: %s", payment)
 
-            logger.debug("Fetching bills for vendor_id: %s, corporate_id: %s", data["vendor_id"], corporate_id)
+            logger.debug(
+                "Fetching bills for vendor_id: %s, corporate_id: %s",
+                data["vendor_id"],
+                corporate_id,
+            )
             bills = registry.database(
                 model_name="VendorBill",
                 operation="filter",
-                data={"vendor_id": data["vendor_id"], "corporate_id": corporate_id,
-                      "status__in": ["POSTED", "PARTIALLY_PAID"]}
+                data={
+                    "vendor_id": data["vendor_id"],
+                    "corporate_id": corporate_id,
+                    "status__in": ["POSTED", "PARTIALLY_PAID"],
+                },
             )
             logger.debug("Bills: %s", bills)
 
@@ -658,20 +770,23 @@ def record_vendor_payment(request):
                     po = registry.database(
                         model_name="PurchaseOrder",
                         operation="filter",
-                        data={"id": bill["purchase_order_id"], "status": "POSTED"}
+                        data={"id": bill["purchase_order_id"], "status": "POSTED"},
                     )
                     if not po:
-                        logger.error("Bill %s linked to invalid or non-POSTED purchase order", bill["number"])
+                        logger.error(
+                            "Bill %s linked to invalid or non-POSTED purchase order",
+                            bill["number"],
+                        )
                         TransactionLogBase.log(
                             transaction_type="VENDOR_PAYMENT_RECORD_FAILED",
                             user=user,
                             message=f"Bill {bill['number']} is linked to an invalid or non-POSTED purchase order",
                             state_name="Failed",
-                            request=request
+                            request=request,
                         )
                         return ResponseProvider(
                             message=f"Bill {bill['number']} is linked to an invalid or non-POSTED purchase order",
-                            code=400
+                            code=400,
                         ).bad_request()
 
             allocations = data.get("allocations", [])
@@ -685,9 +800,7 @@ def record_vendor_payment(request):
             if allocations:
                 bills_dict = {str(bill["id"]): bill for bill in bills}
                 validation_errors = validate_payment_allocations(
-                    allocations,
-                    amount_remaining,
-                    bills_dict
+                    allocations, amount_remaining, bills_dict
                 )
                 if validation_errors:
                     error_msg = "; ".join(validation_errors)
@@ -697,10 +810,11 @@ def record_vendor_payment(request):
                         user=user,
                         message=f"Allocation validation failed: {error_msg}",
                         state_name="Failed",
-                        request=request
+                        request=request,
                     )
-                    return ResponseProvider(message=f"Allocation validation failed: {error_msg}",
-                                            code=400).bad_request()
+                    return ResponseProvider(
+                        message=f"Allocation validation failed: {error_msg}", code=400
+                    ).bad_request()
 
             # Pre-validate allocations
             if allocations:
@@ -722,28 +836,43 @@ def record_vendor_payment(request):
                     try:
                         amount_applied = Decimal(str(alloc.get("amount_applied", 0)))
                     except Exception as e:
-                        logger.error("Invalid amount_applied format for bill %s: %s", bill_id, str(e))
+                        logger.error(
+                            "Invalid amount_applied format for bill %s: %s",
+                            bill_id,
+                            str(e),
+                        )
                         continue
                     if amount_applied <= 0:
-                        logger.debug("Skipping allocation with non-positive amount: %s", alloc)
+                        logger.debug(
+                            "Skipping allocation with non-positive amount: %s", alloc
+                        )
                         continue
 
                     bill = valid_bills[str(bill_id)]
                     payments = registry.database(
                         model_name="VendorPaymentLine",
                         operation="filter",
-                        data={"bill_id": bill_id}
+                        data={"bill_id": bill_id},
                     )
-                    total_paid = sum(Decimal(str(p["amount_applied"])) for p in payments)
+                    total_paid = sum(
+                        Decimal(str(p["amount_applied"])) for p in payments
+                    )
                     outstanding = Decimal(str(bill["total"])) - total_paid
 
                     if amount_applied > outstanding:
-                        logger.warning("Amount applied %s exceeds outstanding %s for bill %s, skipping", amount_applied,
-                                       outstanding, bill["number"])
+                        logger.warning(
+                            "Amount applied %s exceeds outstanding %s for bill %s, skipping",
+                            amount_applied,
+                            outstanding,
+                            bill["number"],
+                        )
                         continue
                     if amount_applied > amount_remaining:
-                        logger.warning("Amount applied %s exceeds remaining payment %s, skipping", amount_applied,
-                                       amount_remaining)
+                        logger.warning(
+                            "Amount applied %s exceeds remaining payment %s, skipping",
+                            amount_applied,
+                            amount_remaining,
+                        )
                         continue
 
                     line_data = {
@@ -752,7 +881,7 @@ def record_vendor_payment(request):
                         "bill_date": bill["date"],
                         "bill_amount": str(bill["total"]),
                         "amount_due": str(outstanding),
-                        "amount_applied": str(amount_applied)
+                        "amount_applied": str(amount_applied),
                     }
                     payment_lines.append(line_data)
                     amount_used += amount_applied
@@ -762,7 +891,10 @@ def record_vendor_payment(request):
 
             # FIXED: Automatic allocation excludes manually processed bills
             if amount_remaining > 0:
-                logger.debug("Processing automatic allocation with remaining amount: %s", amount_remaining)
+                logger.debug(
+                    "Processing automatic allocation with remaining amount: %s",
+                    amount_remaining,
+                )
                 for bill in sorted(bills, key=lambda x: x["due_date"]):  # Oldest first
                     if amount_remaining <= 0:
                         break
@@ -775,9 +907,11 @@ def record_vendor_payment(request):
                     payments = registry.database(
                         model_name="VendorPaymentLine",
                         operation="filter",
-                        data={"bill_id": bill["id"]}
+                        data={"bill_id": bill["id"]},
                     )
-                    total_paid = sum(Decimal(str(p["amount_applied"])) for p in payments)
+                    total_paid = sum(
+                        Decimal(str(p["amount_applied"])) for p in payments
+                    )
                     outstanding = Decimal(str(bill["total"])) - total_paid
 
                     if outstanding <= 0:
@@ -791,7 +925,7 @@ def record_vendor_payment(request):
                         "bill_date": bill["date"],
                         "bill_amount": str(bill["total"]),
                         "amount_due": str(outstanding),
-                        "amount_applied": str(amount_to_apply)
+                        "amount_applied": str(amount_to_apply),
                     }
                     payment_lines.append(line_data)
                     amount_used += amount_to_apply
@@ -802,9 +936,7 @@ def record_vendor_payment(request):
             for line_data in payment_lines:
                 logger.debug("Creating payment line: %s", line_data)
                 registry.database(
-                    model_name="VendorPaymentLine",
-                    operation="create",
-                    data=line_data
+                    model_name="VendorPaymentLine", operation="create", data=line_data
                 )
 
             # Update bill statuses after all payment lines are created
@@ -827,7 +959,7 @@ def record_vendor_payment(request):
                 payments = registry.database(
                     model_name="VendorPaymentLine",
                     operation="filter",
-                    data={"bill_id": bill_id}
+                    data={"bill_id": bill_id},
                 )
                 total_paid = sum(Decimal(str(p["amount_applied"])) for p in payments)
                 bill_total = Decimal(str(bill["total"]))
@@ -840,27 +972,32 @@ def record_vendor_payment(request):
                 else:
                     new_status = "CANCELLED"  # This shouldn't happen, but just in case
 
-                logger.debug("Updating bill %s to status: %s (total_paid: %s, bill_total: %s)",
-                             bill_id, new_status, total_paid, bill_total)
+                logger.debug(
+                    "Updating bill %s to status: %s (total_paid: %s, bill_total: %s)",
+                    bill_id,
+                    new_status,
+                    total_paid,
+                    bill_total,
+                )
 
                 registry.database(
                     model_name="VendorBill",
                     operation="update",
                     instance_id=bill_id,
-                    data={"status": new_status}
+                    data={"status": new_status},
                 )
 
             amount_excess = amount_remaining if amount_remaining > 0 else Decimal("0")
             payment_update_data = {
                 "amount_used": str(amount_used),
-                "amount_excess": str(amount_excess)
+                "amount_excess": str(amount_excess),
             }
             logger.debug("Updating payment with: %s", payment_update_data)
             registry.database(
                 model_name="VendorPayment",
                 operation="update",
                 instance_id=payment["id"],
-                data=payment_update_data
+                data=payment_update_data,
             )
             payment.update(payment_update_data)
 
@@ -874,30 +1011,37 @@ def record_vendor_payment(request):
                     model_name="VendorPayment",
                     operation="update",
                     instance_id=payment["id"],
-                    data={"journal_entry_id": journal_entry["id"], "is_posted": True}
+                    data={"journal_entry_id": journal_entry["id"], "is_posted": True},
                 )
                 payment["journal_entry_id"] = journal_entry["id"]
                 payment["is_posted"] = True
-                logger.info("Journal entry created successfully: %s", journal_entry["id"])
+                logger.info(
+                    "Journal entry created successfully: %s", journal_entry["id"]
+                )
 
             except Exception as journal_error:
-                logger.error("Failed to create journal entry for payment %s: %s",
-                             payment["id"], str(journal_error))
+                logger.error(
+                    "Failed to create journal entry for payment %s: %s",
+                    payment["id"],
+                    str(journal_error),
+                )
                 TransactionLogBase.log(
                     transaction_type="VENDOR_PAYMENT_JOURNAL_FAILED",
                     user=user,
                     message=f"Journal entry creation failed: {str(journal_error)}",
                     state_name="Failed",
                     request=request,
-                    extra={"payment_id": payment["id"]}
+                    extra={"payment_id": payment["id"]},
                 )
                 # Re-raise to trigger transaction rollback
-                raise Exception(f"Payment processing failed during journal entry creation: {str(journal_error)}")
+                raise Exception(
+                    f"Payment processing failed during journal entry creation: {str(journal_error)}"
+                )
 
             payment["lines"] = registry.database(
                 model_name="VendorPaymentLine",
                 operation="filter",
-                data={"payment_id": payment["id"]}
+                data={"payment_id": payment["id"]},
             )
             logger.debug("Payment lines: %s", payment["lines"])
 
@@ -906,15 +1050,19 @@ def record_vendor_payment(request):
                 user=user,
                 message=f"Vendor payment {payment.get('payment_number', payment['id'])} recorded for vendor {data['vendor_id']}",
                 state_name="Completed",
-                extra={"payment_id": payment["id"], "line_count": len(payment_lines), "amount_used": str(amount_used)},
-                request=request
+                extra={
+                    "payment_id": payment["id"],
+                    "line_count": len(payment_lines),
+                    "amount_used": str(amount_used),
+                },
+                request=request,
             )
             logger.debug("Vendor payment recorded successfully: %s", payment)
 
             return ResponseProvider(
                 message="Vendor payment recorded and distributed successfully",
                 data=payment,
-                code=201
+                code=201,
             ).success()
 
     except Exception as e:
@@ -925,7 +1073,9 @@ def record_vendor_payment(request):
             message=str(e),
             state_name="Failed",
             request=request,
-            extra={"request_data": data if 'data' in locals() else None}
+            extra={"request_data": data if "data" in locals() else None},
         )
-        return ResponseProvider(message=f"An error occurred while recording vendor payment: {str(e)}",
-                                code=500).exception()
+        return ResponseProvider(
+            message=f"An error occurred while recording vendor payment: {str(e)}",
+            code=500,
+        ).exception()

@@ -2,13 +2,14 @@
 # authentication/views/user.py
 import json
 
-from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.request_parser import get_clean_data
+
 
 @login_required
 def user_profile(request):
@@ -16,11 +17,14 @@ def user_profile(request):
     Get logged-in user profile
     """
     user = request.user
-    return JsonResponse({
-        "username": user.username,
-        "email": user.email,
-        "last_login": user.last_login,
-    })
+    return JsonResponse(
+        {
+            "username": user.username,
+            "email": user.email,
+            "last_login": user.last_login,
+        }
+    )
+
 
 @csrf_exempt
 def refresh_token(request):

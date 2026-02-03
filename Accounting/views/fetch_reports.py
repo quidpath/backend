@@ -1,12 +1,15 @@
 # reports.py
-from decimal import Decimal
-from django.views.decorators.csrf import csrf_exempt
-from collections import defaultdict
 import datetime
+from collections import defaultdict
+from decimal import Decimal
+
+from django.views.decorators.csrf import csrf_exempt
+
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
+
 
 @csrf_exempt
 def get_balance_sheet(request):
@@ -25,9 +28,11 @@ def get_balance_sheet(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -37,14 +42,18 @@ def get_balance_sheet(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse as_of_date
         as_of_date_raw = data.get("as_of_date")
@@ -61,7 +70,7 @@ def get_balance_sheet(request):
         journal_entries = registry.database(
             model_name="JournalEntry",
             operation="filter",
-            data={"corporate_id": corporate_id, "is_posted": True}
+            data={"corporate_id": corporate_id, "is_posted": True},
         )
 
         # Filter relevant journal entries
@@ -85,35 +94,31 @@ def get_balance_sheet(request):
 
         # Get journal entry lines
         all_lines = registry.database(
-            model_name="JournalEntryLine",
-            operation="filter",
-            data={}
+            model_name="JournalEntryLine", operation="filter", data={}
         )
         lines = [line for line in all_lines if line["journal_entry_id"] in je_ids]
 
         balances = defaultdict(Decimal)
         for line in lines:
-            balances[line["account_id"]] += Decimal(line["debit"]) - Decimal(line["credit"])
+            balances[line["account_id"]] += Decimal(line["debit"]) - Decimal(
+                line["credit"]
+            )
 
         # Fetch account types and subtypes
         account_types = registry.database(
-            model_name="AccountType",
-            operation="filter",
-            data={}
+            model_name="AccountType", operation="filter", data={}
         )
         type_map = {at["id"]: at["name"].upper() for at in account_types}
 
         sub_types = registry.database(
-            model_name="AccountSubType",
-            operation="filter",
-            data={}
+            model_name="AccountSubType", operation="filter", data={}
         )
         sub_type_map = {st["id"]: st["name"] for st in sub_types}
 
         accounts = registry.database(
             model_name="Account",
             operation="filter",
-            data={"corporate_id": corporate_id, "is_active": True}
+            data={"corporate_id": corporate_id, "is_active": True},
         )
 
         asset_sub = defaultdict(Decimal)
@@ -192,7 +197,9 @@ def get_income_statement(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
     user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
@@ -208,11 +215,15 @@ def get_income_statement(request):
             data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0].get("corporate_id")
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse dates
         today = datetime.date.today()
@@ -220,12 +231,20 @@ def get_income_statement(request):
         end_date_str = data.get("end_date")
 
         start_date = (
-            today.replace(day=1) if not start_date_str else datetime.date.fromisoformat(str(start_date_str))
+            today.replace(day=1)
+            if not start_date_str
+            else datetime.date.fromisoformat(str(start_date_str))
         )
-        end_date = today if not end_date_str else datetime.date.fromisoformat(str(end_date_str))
+        end_date = (
+            today
+            if not end_date_str
+            else datetime.date.fromisoformat(str(end_date_str))
+        )
 
         if start_date > end_date:
-            return ResponseProvider(message="Start date must be before end date", code=400).bad_request()
+            return ResponseProvider(
+                message="Start date must be before end date", code=400
+            ).bad_request()
 
         # Journal entries
         journal_entries = registry.database(
@@ -242,17 +261,29 @@ def get_income_statement(request):
                 relevant_je.append(je)
 
         je_ids = {je["id"] for je in relevant_je}
-        lines_period = [line for line in registry.database(model_name="JournalEntryLine", operation="filter", data={}) if line["journal_entry_id"] in je_ids]
+        lines_period = [
+            line
+            for line in registry.database(
+                model_name="JournalEntryLine", operation="filter", data={}
+            )
+            if line["journal_entry_id"] in je_ids
+        ]
 
         balances_period = defaultdict(Decimal)
         for line in lines_period:
-            balances_period[line["account_id"]] += Decimal(str(line["debit"])) - Decimal(str(line["credit"]))
+            balances_period[line["account_id"]] += Decimal(
+                str(line["debit"])
+            ) - Decimal(str(line["credit"]))
 
         # Metadata
-        account_types = registry.database(model_name="AccountType", operation="filter", data={})
+        account_types = registry.database(
+            model_name="AccountType", operation="filter", data={}
+        )
         type_map = {at["id"]: at["name"].upper() for at in account_types}
 
-        sub_types = registry.database(model_name="AccountSubType", operation="filter", data={})
+        sub_types = registry.database(
+            model_name="AccountSubType", operation="filter", data={}
+        )
         sub_type_map = {st["id"]: st["name"] for st in sub_types}
 
         accounts = registry.database(
@@ -318,10 +349,12 @@ def get_income_statement(request):
             message="An error occurred while retrieving income statement", code=500
         ).exception()
 
+
 @csrf_exempt
 def get_profit_and_loss(request):
     # Profit and Loss is synonymous with Income Statement
     return get_income_statement(request)
+
 
 def _safe_parse_date(value):
     """Convert DB date field into a datetime.date or None."""
@@ -345,7 +378,9 @@ def get_cash_flow_statement(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
     user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
@@ -361,11 +396,15 @@ def get_cash_flow_statement(request):
             data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0].get("corporate_id")
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Parse dates
         today = datetime.date.today()
@@ -373,12 +412,20 @@ def get_cash_flow_statement(request):
         end_date_str = data.get("end_date")
 
         start_date = (
-            today.replace(day=1) if not start_date_str else datetime.date.fromisoformat(str(start_date_str))
+            today.replace(day=1)
+            if not start_date_str
+            else datetime.date.fromisoformat(str(start_date_str))
         )
-        end_date = today if not end_date_str else datetime.date.fromisoformat(str(end_date_str))
+        end_date = (
+            today
+            if not end_date_str
+            else datetime.date.fromisoformat(str(end_date_str))
+        )
 
         if start_date > end_date:
-            return ResponseProvider(message="Start date must be before end date", code=400).bad_request()
+            return ResponseProvider(
+                message="Start date must be before end date", code=400
+            ).bad_request()
 
         start_minus_one = start_date - datetime.timedelta(days=1)
 
@@ -397,11 +444,19 @@ def get_cash_flow_statement(request):
                 relevant_je_start.append(je)
 
         je_ids_start = {je["id"] for je in relevant_je_start}
-        lines_start = [line for line in registry.database(model_name="JournalEntryLine", operation="filter", data={}) if line["journal_entry_id"] in je_ids_start]
+        lines_start = [
+            line
+            for line in registry.database(
+                model_name="JournalEntryLine", operation="filter", data={}
+            )
+            if line["journal_entry_id"] in je_ids_start
+        ]
 
         balances_start = defaultdict(Decimal)
         for line in lines_start:
-            balances_start[line["account_id"]] += Decimal(str(line["debit"])) - Decimal(str(line["credit"]))
+            balances_start[line["account_id"]] += Decimal(str(line["debit"])) - Decimal(
+                str(line["credit"])
+            )
 
         # ----- Balances at end -----
         relevant_je_end = []
@@ -411,17 +466,29 @@ def get_cash_flow_statement(request):
                 relevant_je_end.append(je)
 
         je_ids_end = {je["id"] for je in relevant_je_end}
-        lines_end = [line for line in registry.database(model_name="JournalEntryLine", operation="filter", data={}) if line["journal_entry_id"] in je_ids_end]
+        lines_end = [
+            line
+            for line in registry.database(
+                model_name="JournalEntryLine", operation="filter", data={}
+            )
+            if line["journal_entry_id"] in je_ids_end
+        ]
 
         balances_end = defaultdict(Decimal)
         for line in lines_end:
-            balances_end[line["account_id"]] += Decimal(str(line["debit"])) - Decimal(str(line["credit"]))
+            balances_end[line["account_id"]] += Decimal(str(line["debit"])) - Decimal(
+                str(line["credit"])
+            )
 
         # Metadata
-        account_types = registry.database(model_name="AccountType", operation="filter", data={})
+        account_types = registry.database(
+            model_name="AccountType", operation="filter", data={}
+        )
         type_map = {at["id"]: at["name"].upper() for at in account_types}
 
-        sub_types = registry.database(model_name="AccountSubType", operation="filter", data={})
+        sub_types = registry.database(
+            model_name="AccountSubType", operation="filter", data={}
+        )
         sub_type_map = {st["id"]: st["name"] for st in sub_types}
 
         accounts = registry.database(
@@ -431,7 +498,11 @@ def get_cash_flow_statement(request):
         )
 
         # Subtotals at start
-        asset_sub_start, liab_sub_start, equity_sub_start = defaultdict(Decimal), defaultdict(Decimal), defaultdict(Decimal)
+        asset_sub_start, liab_sub_start, equity_sub_start = (
+            defaultdict(Decimal),
+            defaultdict(Decimal),
+            defaultdict(Decimal),
+        )
         for acc in accounts:
             bal = balances_start.get(acc["id"], Decimal("0.00"))
             type_upper = type_map.get(acc["account_type_id"], "")
@@ -444,7 +515,11 @@ def get_cash_flow_statement(request):
                 equity_sub_start[sub_name] += -bal
 
         # Subtotals at end
-        asset_sub_end, liab_sub_end, equity_sub_end = defaultdict(Decimal), defaultdict(Decimal), defaultdict(Decimal)
+        asset_sub_end, liab_sub_end, equity_sub_end = (
+            defaultdict(Decimal),
+            defaultdict(Decimal),
+            defaultdict(Decimal),
+        )
         for acc in accounts:
             bal = balances_end.get(acc["id"], Decimal("0.00"))
             type_upper = type_map.get(acc["account_type_id"], "")
@@ -464,11 +539,19 @@ def get_cash_flow_statement(request):
                 relevant_je_period.append(je)
 
         je_ids_period = {je["id"] for je in relevant_je_period}
-        lines_period = [line for line in registry.database(model_name="JournalEntryLine", operation="filter", data={}) if line["journal_entry_id"] in je_ids_period]
+        lines_period = [
+            line
+            for line in registry.database(
+                model_name="JournalEntryLine", operation="filter", data={}
+            )
+            if line["journal_entry_id"] in je_ids_period
+        ]
 
         balances_period = defaultdict(Decimal)
         for line in lines_period:
-            balances_period[line["account_id"]] += Decimal(str(line["debit"])) - Decimal(str(line["credit"]))
+            balances_period[line["account_id"]] += Decimal(
+                str(line["debit"])
+            ) - Decimal(str(line["credit"]))
 
         revenue_period = Decimal("0.00")
         expense_period = Decimal("0.00")
@@ -491,12 +574,36 @@ def get_cash_flow_statement(request):
         equity_sub_types = ["Owner's Capital"]
 
         # Changes
-        change_cash = sum(asset_sub_end.get(st, Decimal("0.00")) - asset_sub_start.get(st, Decimal("0.00")) for st in cash_sub_types)
-        change_current_assets = sum(asset_sub_end.get(st, Decimal("0.00")) - asset_sub_start.get(st, Decimal("0.00")) for st in current_asset_sub_types)
-        change_fixed_assets = sum(asset_sub_end.get(st, Decimal("0.00")) - asset_sub_start.get(st, Decimal("0.00")) for st in fixed_asset_sub_types)
-        change_current_liab = sum(liab_sub_end.get(st, Decimal("0.00")) - liab_sub_start.get(st, Decimal("0.00")) for st in current_liab_sub_types)
-        change_long_term_liab = sum(liab_sub_end.get(st, Decimal("0.00")) - liab_sub_start.get(st, Decimal("0.00")) for st in long_term_liab_sub_types)
-        change_equity = sum(equity_sub_end.get(st, Decimal("0.00")) - equity_sub_start.get(st, Decimal("0.00")) for st in equity_sub_types)
+        change_cash = sum(
+            asset_sub_end.get(st, Decimal("0.00"))
+            - asset_sub_start.get(st, Decimal("0.00"))
+            for st in cash_sub_types
+        )
+        change_current_assets = sum(
+            asset_sub_end.get(st, Decimal("0.00"))
+            - asset_sub_start.get(st, Decimal("0.00"))
+            for st in current_asset_sub_types
+        )
+        change_fixed_assets = sum(
+            asset_sub_end.get(st, Decimal("0.00"))
+            - asset_sub_start.get(st, Decimal("0.00"))
+            for st in fixed_asset_sub_types
+        )
+        change_current_liab = sum(
+            liab_sub_end.get(st, Decimal("0.00"))
+            - liab_sub_start.get(st, Decimal("0.00"))
+            for st in current_liab_sub_types
+        )
+        change_long_term_liab = sum(
+            liab_sub_end.get(st, Decimal("0.00"))
+            - liab_sub_start.get(st, Decimal("0.00"))
+            for st in long_term_liab_sub_types
+        )
+        change_equity = sum(
+            equity_sub_end.get(st, Decimal("0.00"))
+            - equity_sub_start.get(st, Decimal("0.00"))
+            for st in equity_sub_types
+        )
 
         # Cash flows (Indirect method)
         operating = net_income - change_current_assets + change_current_liab
@@ -523,7 +630,9 @@ def get_cash_flow_statement(request):
             request=request,
         )
 
-        return ResponseProvider(data=cf_data, message="Cash flow statement retrieved successfully", code=200).success()
+        return ResponseProvider(
+            data=cf_data, message="Cash flow statement retrieved successfully", code=200
+        ).success()
 
     except Exception as e:
         TransactionLogBase.log(
@@ -533,4 +642,6 @@ def get_cash_flow_statement(request):
             state_name="Failed",
             request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving cash flow statement", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving cash flow statement", code=500
+        ).exception()

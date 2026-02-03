@@ -1,12 +1,14 @@
 # journals.py
 import uuid
 from decimal import Decimal
-from django.views.decorators.csrf import csrf_exempt
+
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
+
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
-from quidpath_backend.core.utils.Logbase import TransactionLogBase
 
 
 @csrf_exempt
@@ -34,9 +36,11 @@ def create_journal_entry(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -47,50 +51,74 @@ def create_journal_entry(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Validate required fields
         required_fields = ["date", "reference", "lines"]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         # Validate lines
         if not isinstance(data["lines"], list) or not data["lines"]:
-            return ResponseProvider(message="At least one line item is required", code=400).bad_request()
+            return ResponseProvider(
+                message="At least one line item is required", code=400
+            ).bad_request()
 
         # Validate each line and account existence
         total_debit = Decimal(0)
         total_credit = Decimal(0)
         for line in data["lines"]:
             if "account_id" not in line:
-                return ResponseProvider(message="Account ID is required for each line", code=400).bad_request()
+                return ResponseProvider(
+                    message="Account ID is required for each line", code=400
+                ).bad_request()
             accounts = registry.database(
                 model_name="Account",
                 operation="filter",
-                data={"id": line["account_id"], "corporate_id": corporate_id, "is_active": True}
+                data={
+                    "id": line["account_id"],
+                    "corporate_id": corporate_id,
+                    "is_active": True,
+                },
             )
             if not accounts:
-                return ResponseProvider(message=f"Account {line['account_id']} not found or inactive", code=404).bad_request()
+                return ResponseProvider(
+                    message=f"Account {line['account_id']} not found or inactive",
+                    code=404,
+                ).bad_request()
             debit = Decimal(str(line.get("debit", 0.00)))
             credit = Decimal(str(line.get("credit", 0.00)))
             if debit < 0 or credit < 0:
-                return ResponseProvider(message="Debit and credit amounts cannot be negative", code=400).bad_request()
+                return ResponseProvider(
+                    message="Debit and credit amounts cannot be negative", code=400
+                ).bad_request()
             if debit > 0 and credit > 0:
-                return ResponseProvider(message="Line cannot have both debit and credit", code=400).bad_request()
+                return ResponseProvider(
+                    message="Line cannot have both debit and credit", code=400
+                ).bad_request()
             total_debit += debit
             total_credit += credit
 
         # Validate balanced entry
         if total_debit != total_credit:
-            return ResponseProvider(message="Journal entry is unbalanced: total debit must equal total credit", code=400).bad_request()
+            return ResponseProvider(
+                message="Journal entry is unbalanced: total debit must equal total credit",
+                code=400,
+            ).bad_request()
 
         # Create journal entry and lines within a transaction
         with transaction.atomic():
@@ -99,12 +127,10 @@ def create_journal_entry(request):
                 "date": data["date"],
                 "reference": data["reference"],
                 "description": data.get("description", ""),
-                "is_posted": False
+                "is_posted": False,
             }
             journal_entry = registry.database(
-                model_name="JournalEntry",
-                operation="create",
-                data=journal_entry_data
+                model_name="JournalEntry", operation="create", data=journal_entry_data
             )
 
             # Create journal entry lines
@@ -114,12 +140,10 @@ def create_journal_entry(request):
                     "account_id": line["account_id"],
                     "debit": str(line.get("debit", 0.00)),
                     "credit": str(line.get("credit", 0.00)),
-                    "description": line.get("description", "")
+                    "description": line.get("description", ""),
                 }
                 registry.database(
-                    model_name="JournalEntryLine",
-                    operation="create",
-                    data=line_data
+                    model_name="JournalEntryLine", operation="create", data=line_data
                 )
 
         # Log transaction
@@ -128,8 +152,12 @@ def create_journal_entry(request):
             user=user,
             message=f"Journal entry {journal_entry['reference']} created for corporate {corporate_id}",
             state_name="Completed",
-            extra={"journal_entry_id": journal_entry["id"], "total_debit": str(total_debit), "total_credit": str(total_credit)},
-            request=request
+            extra={
+                "journal_entry_id": journal_entry["id"],
+                "total_debit": str(total_debit),
+                "total_credit": str(total_credit),
+            },
+            request=request,
         )
 
         # Serialize response
@@ -145,20 +173,20 @@ def create_journal_entry(request):
                     "account_id": str(line["account_id"]),
                     "debit": str(line["debit"]),
                     "credit": str(line["credit"]),
-                    "description": line.get("description", "")
+                    "description": line.get("description", ""),
                 }
                 for line in registry.database(
                     model_name="JournalEntryLine",
                     operation="filter",
-                    data={"journal_entry_id": journal_entry["id"]}
+                    data={"journal_entry_id": journal_entry["id"]},
                 )
-            ]
+            ],
         }
 
         return ResponseProvider(
             message="Journal entry created successfully",
             data=serialized_journal_entry,
-            code=201
+            code=201,
         ).success()
 
     except Exception as e:
@@ -167,9 +195,11 @@ def create_journal_entry(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while creating journal entry", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while creating journal entry", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -186,9 +216,11 @@ def list_journal_entries(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -199,20 +231,24 @@ def list_journal_entries(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Fetch journal entries
         journal_entries = registry.database(
             model_name="JournalEntry",
             operation="filter",
-            data={"corporate_id": corporate_id}
+            data={"corporate_id": corporate_id},
         )
 
         # Serialize journal entries with lines
@@ -221,7 +257,7 @@ def list_journal_entries(request):
             lines = registry.database(
                 model_name="JournalEntryLine",
                 operation="filter",
-                data={"journal_entry_id": entry["id"]}
+                data={"journal_entry_id": entry["id"]},
             )
             serialized_entry = {
                 "id": str(entry["id"]),
@@ -235,10 +271,10 @@ def list_journal_entries(request):
                         "account_id": str(line["account_id"]),
                         "debit": str(line["debit"]),
                         "credit": str(line["credit"]),
-                        "description": line.get("description", "")
+                        "description": line.get("description", ""),
                     }
                     for line in lines
-                ]
+                ],
             }
             serialized_entries.append(serialized_entry)
 
@@ -250,16 +286,13 @@ def list_journal_entries(request):
             message=f"Retrieved {total} journal entries for corporate {corporate_id}",
             state_name="Success",
             extra={"total": total},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
-            data={
-                "journal_entries": serialized_entries,
-                "total": total
-            },
+            data={"journal_entries": serialized_entries, "total": total},
             message="Journal entries retrieved successfully",
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -268,9 +301,11 @@ def list_journal_entries(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving journal entries", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving journal entries", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -292,15 +327,21 @@ def get_journal_entry(request):
         data, metadata = get_clean_data(request)
         user = metadata.get("user")
         if not user:
-            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+            return ResponseProvider(
+                message="User not authenticated", code=401
+            ).unauthorized()
 
-        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        user_id = (
+            user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+        )
         if not user_id:
             return ResponseProvider(message="User ID not found", code=400).bad_request()
 
         journal_entry_id = data.get("id")
         if not journal_entry_id:
-            return ResponseProvider(message="Journal entry ID is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Journal entry ID is required", code=400
+            ).bad_request()
 
         registry = ServiceRegistry()
 
@@ -308,23 +349,29 @@ def get_journal_entry(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Fetch journal entry
         journal_entries = registry.database(
             model_name="JournalEntry",
             operation="filter",
-            data={"id": journal_entry_id, "corporate_id": corporate_id}
+            data={"id": journal_entry_id, "corporate_id": corporate_id},
         )
         if not journal_entries:
-            return ResponseProvider(message="Journal entry not found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Journal entry not found for this corporate", code=404
+            ).bad_request()
 
         journal_entry = journal_entries[0]
 
@@ -332,7 +379,7 @@ def get_journal_entry(request):
         lines = registry.database(
             model_name="JournalEntryLine",
             operation="filter",
-            data={"journal_entry_id": journal_entry["id"]}
+            data={"journal_entry_id": journal_entry["id"]},
         )
 
         serialized_journal_entry = {
@@ -347,10 +394,10 @@ def get_journal_entry(request):
                     "account_id": str(line["account_id"]),
                     "debit": str(line["debit"]),
                     "credit": str(line["credit"]),
-                    "description": line.get("description", "")
+                    "description": line.get("description", ""),
                 }
                 for line in lines
-            ]
+            ],
         }
 
         TransactionLogBase.log(
@@ -359,24 +406,26 @@ def get_journal_entry(request):
             message=f"Journal entry {journal_entry['reference']} retrieved for corporate {corporate_id}",
             state_name="Success",
             extra={"journal_entry_id": journal_entry["id"]},
-            request=request
+            request=request,
         )
 
         return ResponseProvider(
             message="Journal entry retrieved successfully",
             data=serialized_journal_entry,
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
         TransactionLogBase.log(
             transaction_type="JOURNAL_ENTRY_GET_FAILED",
-            user=user if 'user' in locals() else None,
+            user=user if "user" in locals() else None,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while retrieving journal entry", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while retrieving journal entry", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -406,9 +455,11 @@ def update_journal_entry(request):
     data, metadata = get_clean_data(request)
     user = metadata.get("user")
     if not user:
-        return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
 
-    user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+    user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return ResponseProvider(message="User ID not found", code=400).bad_request()
 
@@ -419,60 +470,86 @@ def update_journal_entry(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Validate required fields
         required_fields = ["id", "date", "reference", "lines"]
         for field in required_fields:
             if field not in data:
-                return ResponseProvider(message=f"{field.replace('_', ' ').title()} is required", code=400).bad_request()
+                return ResponseProvider(
+                    message=f"{field.replace('_', ' ').title()} is required", code=400
+                ).bad_request()
 
         # Validate journal entry existence
         journal_entries = registry.database(
             model_name="JournalEntry",
             operation="filter",
-            data={"id": data["id"], "corporate_id": corporate_id}
+            data={"id": data["id"], "corporate_id": corporate_id},
         )
         if not journal_entries:
-            return ResponseProvider(message="Journal entry not found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Journal entry not found for this corporate", code=404
+            ).bad_request()
         journal_entry_id = journal_entries[0]["id"]
 
         # Validate lines
         if not isinstance(data["lines"], list) or not data["lines"]:
-            return ResponseProvider(message="At least one line item is required", code=400).bad_request()
+            return ResponseProvider(
+                message="At least one line item is required", code=400
+            ).bad_request()
 
         # Validate each line and account existence
         total_debit = Decimal(0)
         total_credit = Decimal(0)
         for line in data["lines"]:
             if "account_id" not in line:
-                return ResponseProvider(message="Account ID is required for each line", code=400).bad_request()
+                return ResponseProvider(
+                    message="Account ID is required for each line", code=400
+                ).bad_request()
             accounts = registry.database(
                 model_name="Account",
                 operation="filter",
-                data={"id": line["account_id"], "corporate_id": corporate_id, "is_active": True}
+                data={
+                    "id": line["account_id"],
+                    "corporate_id": corporate_id,
+                    "is_active": True,
+                },
             )
             if not accounts:
-                return ResponseProvider(message=f"Account {line['account_id']} not found or inactive", code=404).bad_request()
+                return ResponseProvider(
+                    message=f"Account {line['account_id']} not found or inactive",
+                    code=404,
+                ).bad_request()
             debit = Decimal(str(line.get("debit", 0.00)))
             credit = Decimal(str(line.get("credit", 0.00)))
             if debit < 0 or credit < 0:
-                return ResponseProvider(message="Debit and credit amounts cannot be negative", code=400).bad_request()
+                return ResponseProvider(
+                    message="Debit and credit amounts cannot be negative", code=400
+                ).bad_request()
             if debit > 0 and credit > 0:
-                return ResponseProvider(message="Line cannot have both debit and credit", code=400).bad_request()
+                return ResponseProvider(
+                    message="Line cannot have both debit and credit", code=400
+                ).bad_request()
             total_debit += debit
             total_credit += credit
 
         # Validate balanced entry
         if total_debit != total_credit:
-            return ResponseProvider(message="Journal entry is unbalanced: total debit must equal total credit", code=400).bad_request()
+            return ResponseProvider(
+                message="Journal entry is unbalanced: total debit must equal total credit",
+                code=400,
+            ).bad_request()
 
         # Update journal entry and lines within a transaction
         with transaction.atomic():
@@ -481,20 +558,22 @@ def update_journal_entry(request):
                 "date": data["date"],
                 "reference": data["reference"],
                 "description": data.get("description", ""),
-                "is_posted": journal_entries[0].get("is_posted", False)  # Preserve posting status
+                "is_posted": journal_entries[0].get(
+                    "is_posted", False
+                ),  # Preserve posting status
             }
             journal_entry = registry.database(
                 model_name="JournalEntry",
                 operation="update",
                 instance_id=journal_entry_id,
-                data=journal_entry_data
+                data=journal_entry_data,
             )
 
             # Delete existing lines
             registry.database(
                 model_name="JournalEntryLine",
                 operation="delete",
-                data={"journal_entry_id": journal_entry_id}
+                data={"journal_entry_id": journal_entry_id},
             )
 
             # Create new lines
@@ -504,12 +583,10 @@ def update_journal_entry(request):
                     "account_id": line["account_id"],
                     "debit": str(line.get("debit", 0.00)),
                     "credit": str(line.get("credit", 0.00)),
-                    "description": line.get("description", "")
+                    "description": line.get("description", ""),
                 }
                 registry.database(
-                    model_name="JournalEntryLine",
-                    operation="create",
-                    data=line_data
+                    model_name="JournalEntryLine", operation="create", data=line_data
                 )
 
         # Log transaction
@@ -518,8 +595,12 @@ def update_journal_entry(request):
             user=user,
             message=f"Journal entry {journal_entry['reference']} updated for corporate {corporate_id}",
             state_name="Completed",
-            extra={"journal_entry_id": journal_entry["id"], "total_debit": str(total_debit), "total_credit": str(total_credit)},
-            request=request
+            extra={
+                "journal_entry_id": journal_entry["id"],
+                "total_debit": str(total_debit),
+                "total_credit": str(total_credit),
+            },
+            request=request,
         )
 
         # Serialize response
@@ -535,20 +616,20 @@ def update_journal_entry(request):
                     "account_id": str(line["account_id"]),
                     "debit": str(line["debit"]),
                     "credit": str(line["credit"]),
-                    "description": line.get("description", "")
+                    "description": line.get("description", ""),
                 }
                 for line in registry.database(
                     model_name="JournalEntryLine",
                     operation="filter",
-                    data={"journal_entry_id": journal_entry["id"]}
+                    data={"journal_entry_id": journal_entry["id"]},
                 )
-            ]
+            ],
         }
 
         return ResponseProvider(
             message="Journal entry updated successfully",
             data=serialized_journal_entry,
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -557,9 +638,11 @@ def update_journal_entry(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while updating journal entry", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while updating journal entry", code=500
+        ).exception()
 
 
 @csrf_exempt
@@ -581,15 +664,21 @@ def delete_journal_entry(request):
         data, metadata = get_clean_data(request)
         user = metadata.get("user")
         if not user:
-            return ResponseProvider(message="User not authenticated", code=401).unauthorized()
+            return ResponseProvider(
+                message="User not authenticated", code=401
+            ).unauthorized()
 
-        user_id = user.get("id") if isinstance(user, dict) else getattr(user, 'id', None)
+        user_id = (
+            user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+        )
         if not user_id:
             return ResponseProvider(message="User ID not found", code=400).bad_request()
 
         journal_entry_id = data.get("id")
         if not journal_entry_id:
-            return ResponseProvider(message="Journal entry ID is required", code=400).bad_request()
+            return ResponseProvider(
+                message="Journal entry ID is required", code=400
+            ).bad_request()
 
         registry = ServiceRegistry()
 
@@ -597,23 +686,29 @@ def delete_journal_entry(request):
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data={"customuser_ptr_id": user_id, "is_active": True}
+            data={"customuser_ptr_id": user_id, "is_active": True},
         )
         if not corporate_users:
-            return ResponseProvider(message="User has no corporate association", code=400).bad_request()
+            return ResponseProvider(
+                message="User has no corporate association", code=400
+            ).bad_request()
 
         corporate_id = corporate_users[0]["corporate_id"]
         if not corporate_id:
-            return ResponseProvider(message="Corporate ID not found", code=400).bad_request()
+            return ResponseProvider(
+                message="Corporate ID not found", code=400
+            ).bad_request()
 
         # Validate journal entry existence
         journal_entries = registry.database(
             model_name="JournalEntry",
             operation="filter",
-            data={"id": journal_entry_id, "corporate_id": corporate_id}
+            data={"id": journal_entry_id, "corporate_id": corporate_id},
         )
         if not journal_entries:
-            return ResponseProvider(message="Journal entry not found for this corporate", code=404).bad_request()
+            return ResponseProvider(
+                message="Journal entry not found for this corporate", code=404
+            ).bad_request()
 
         # Delete journal entry and its lines within a transaction
         with transaction.atomic():
@@ -621,13 +716,13 @@ def delete_journal_entry(request):
             registry.database(
                 model_name="JournalEntryLine",
                 operation="delete",
-                data={"journal_entry_id": journal_entry_id}
+                data={"journal_entry_id": journal_entry_id},
             )
             # Delete journal entry
             registry.database(
                 model_name="JournalEntry",
                 operation="delete",
-                instance_id=journal_entry_id
+                instance_id=journal_entry_id,
             )
 
             TransactionLogBase.log(
@@ -636,13 +731,13 @@ def delete_journal_entry(request):
                 message=f"Journal entry {journal_entry_id} deleted for corporate {corporate_id}",
                 state_name="Completed",
                 extra={"journal_entry_id": journal_entry_id},
-                request=request
+                request=request,
             )
 
         return ResponseProvider(
             message="Journal entry deleted successfully",
             data={"journal_entry_id": journal_entry_id},
-            code=200
+            code=200,
         ).success()
 
     except Exception as e:
@@ -651,6 +746,8 @@ def delete_journal_entry(request):
             user=user,
             message=str(e),
             state_name="Failed",
-            request=request
+            request=request,
         )
-        return ResponseProvider(message="An error occurred while deleting journal entry", code=500).exception()
+        return ResponseProvider(
+            message="An error occurred while deleting journal entry", code=500
+        ).exception()
