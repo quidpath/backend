@@ -24,7 +24,7 @@ urlpatterns = [
     # Subscription Webhooks (from Billing Service)
     path(
         "webhooks/subscription",
-        subscription_webhook.handle_subscription_webhook,
+        subscription_webhook.subscription_webhook,
         name="subscription_webhook",
     ),
     # Subscription API (for corporates)

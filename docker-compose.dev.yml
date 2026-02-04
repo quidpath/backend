@@ -12,7 +12,7 @@ services:
       - .env.dev
     environment:
       DJANGO_SETTINGS_MODULE: quidpath_backend.settings.dev
-      BILLING_SERVICE_URL: http://billing-backend-dev:8002/api/billing  # Use container name for inter-service communication
+      BILLING_SERVICE_URL: http://billing-backend-dev:8000/api/billing  # Use container name for inter-service communication
     depends_on:
       - db
     networks:

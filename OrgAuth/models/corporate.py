@@ -5,7 +5,6 @@ from Authentication.models.role import Role
 from quidpath_backend.core.base_models.base import BaseModel
 
 
-# Create your models here.
 class Corporate(BaseModel):
     name = models.CharField(max_length=255)
     industry = models.CharField(max_length=255, blank=True, null=True)
@@ -40,7 +39,3 @@ class CorporateUser(CustomUser):
 
     def __str__(self):
         return self.username
-
-
-# Import subscription model
-from OrgAuth.models.subscription import CorporateSubscription
