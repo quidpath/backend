@@ -32,7 +32,7 @@ RUN chmod +x /start.sh
 ENV DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod
 
 # Expose Django port
-EXPOSE 8000
+EXPOSE 8004
 
 # Run using bash (not sh)
 CMD ["/bin/bash", "/start.sh"]

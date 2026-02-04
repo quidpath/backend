@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: django-backend-dev
     ports:
-      - "8000:8000"
+      - "8004:8000"
     volumes:
       - .:/app  # mount local code for live reload
     env_file:
