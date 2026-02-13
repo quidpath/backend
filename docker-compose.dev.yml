@@ -1,8 +1,6 @@
 services:
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
+    image: ${DOCKER_IMAGE_TAG:-bethwelkimutai/quidpath_backend:stage-latest}
     container_name: django-backend-dev
     ports:
       - "8004:8000"

@@ -296,9 +296,7 @@ temp/
 .LSOverride
 
 # Linux
-*~
-
-# Windows
+*~# Windows
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/# Project specific

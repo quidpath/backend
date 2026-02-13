@@ -1,10 +1,10 @@
 services:
   db:
     image: postgres:15
-    container_name: postgres_prod
+    container_name: postgres_stage
     restart: unless-stopped
     volumes:
-      - /mnt/quidpath-data/postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -18,18 +18,17 @@ services:
       - quidpath_network
 
   backend:
-    image: ${DOCKER_IMAGE_TAG:-bethwelkimutai/quidpath_backend:prod-latest}
-    container_name: django-backend
+    image: ${DOCKER_IMAGE_TAG:-bethwelkimutai/quidpath_backend:stage-latest}
+    container_name: django-backend-stage
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8004:8000"
+      - "127.0.0.1:8005:8000"
     depends_on:
       db:
         condition: service_healthy
     env_file:
       - .env
     environment:
-      # Explicitly expose these from .env to ensure Django sees them
       DATABASE_URL: ${DATABASE_URL}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -40,8 +39,8 @@ services:
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
     volumes:
-      - /mnt/quidpath-data/media:/app/media
-      - /mnt/quidpath-data/staticfiles:/app/staticfiles
+      - media_data:/app/media
+      - static_data:/app/staticfiles
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/api/auth/health/ || exit 1"]
       interval: 30s
@@ -57,8 +56,5 @@ networks:
 
 volumes:
   postgres_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/quidpath-data/postgres
+  media_data:
+  static_data:
