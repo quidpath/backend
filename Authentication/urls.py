@@ -15,6 +15,12 @@ from Authentication.views.microservice_api import (batch_get_corporates,
 from Authentication.views.register import register_user
 from Authentication.views.user import refresh_token
 from Authentication.views.UserProfile import corporateuser_update_profile
+from Authentication.views.notifications import (
+    get_notifications,
+    mark_notification_read,
+    mark_all_notifications_read,
+    get_unread_count,
+)
 
 urlpatterns = [
     path("login/", login_user, name="login"),
@@ -42,5 +48,22 @@ urlpatterns = [
         "corporates/batch/",
         batch_get_corporates,
         name="microservice-batch-corporates",
+    ),
+    # Notification endpoints
+    path("notifications/", get_notifications, name="get-notifications"),
+    path(
+        "notifications/<uuid:notification_id>/mark-read/",
+        mark_notification_read,
+        name="mark-notification-read",
+    ),
+    path(
+        "notifications/mark-all-read/",
+        mark_all_notifications_read,
+        name="mark-all-notifications-read",
+    ),
+    path(
+        "notifications/unread-count/",
+        get_unread_count,
+        name="get-unread-count",
     ),
 ]

@@ -34,5 +34,5 @@ ENV DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod
 # Expose Django port
 EXPOSE 8004
 
-# Run using bash (not sh)
-CMD ["/bin/bash", "/start.sh"]
+# Use Daphne for ASGI/WebSocket support
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8004", "quidpath_backend.asgi:application"]

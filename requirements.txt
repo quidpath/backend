@@ -13,6 +13,11 @@ dj-database-url
 gunicorn
 whitenoise
 
+# WebSocket Support for Real-time Notifications
+channels>=4.0.0
+channels-redis>=4.1.0
+daphne>=4.0.0
+
 # HTTP and API
 requests
 
@@ -39,8 +44,3 @@ chardet
 
 # AWS Services
 boto3>=1.34.0
-
-
-
-
-

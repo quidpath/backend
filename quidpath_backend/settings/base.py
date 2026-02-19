@@ -23,6 +23,7 @@ ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0").s
 
 # Application definition
 INSTALLED_APPS = [
+    "daphne",  # Must be first for ASGI support
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -31,6 +32,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
+    "channels",  # WebSocket support
     "Authentication",
     "corsheaders",
     "OrgAuth",
@@ -71,6 +73,25 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "quidpath_backend.wsgi.application"
+ASGI_APPLICATION = "quidpath_backend.asgi.application"
+
+# Channels Configuration for WebSocket
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [(os.environ.get("REDIS_HOST", "localhost"), int(os.environ.get("REDIS_PORT", 6379)))],
+        },
+    },
+}
+
+# Fallback to in-memory channel layer for development without Redis
+if os.environ.get("USE_MEMORY_CHANNEL_LAYER", "false").lower() == "true":
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer"
+        }
+    }
 
 # Database (PostgreSQL via DATABASE_URL)
 DATABASES = {

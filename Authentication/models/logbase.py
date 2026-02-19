@@ -52,6 +52,14 @@ class Notification(BaseModel):
     notification_type = models.ForeignKey(NotificationType, on_delete=models.PROTECT)
     state = models.ForeignKey(State, on_delete=models.PROTECT)
     response_payload = models.JSONField(blank=True, null=True)
+    is_read = models.BooleanField(default=False)
+    corporate = models.ForeignKey(
+        "OrgAuth.Corporate",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="notifications",
+    )
 
     def __str__(self):
         return f"{self.title} → {self.destination}"

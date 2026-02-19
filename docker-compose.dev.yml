@@ -1,42 +1,85 @@
 services:
-  web:
-    image: ${DOCKER_IMAGE_TAG:-bethwelkimutai/quidpath_backend:stage-latest}
-    container_name: django-backend-dev
-    ports:
-      - "8004:8000"
-    volumes:
-      - .:/app  # mount local code for live reload
-    env_file:
-      - .env.dev
-    environment:
-      DJANGO_SETTINGS_MODULE: quidpath_backend.settings.dev
-      BILLING_SERVICE_URL: http://billing-backend-dev:8000/api/billing  # Use container name for inter-service communication
-    depends_on:
-      - db
-    networks:
-      - backend_net   # 👈 attach to custom network
-      - quidpath_network  # Shared network for billing service communication
-
   db:
-        image: postgres:15
-        container_name: postgres_dev
-        restart: always
-        environment:
-          POSTGRES_USER: devuser
-          POSTGRES_PASSWORD: devpass
-          POSTGRES_DB: devdb
-        ports:
-          - "5432:5432"
-        volumes:
-          - postgres_data:/var/lib/postgresql/data
-        networks:
-          - backend_net
+    image: postgres:15
+    container_name: postgres_dev
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: devdb
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d devdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quidpath_network
 
-volumes:
-  postgres_data:
+  redis:
+    image: redis:alpine
+    container_name: redis_dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quidpath_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: django-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: "quidpath_backend.settings.dev"
+      DJANGO_ENV: "dev"
+      DEBUG: "true"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0,*"
+      DATABASE_URL: "postgresql://devuser:devpass@db:5432/devdb"
+      SECRET_KEY: "local-secret-key"
+      SMTP_USER: "quidpath@gmail.com"
+      SMTP_PASSWORD: "krpm whuy jfav lstb"
+      MPESA_CONSUMER_KEY: "WZ6b1Y6ZjRbwNJwwQzULthXjesQR0OtsEuQh9jt7tz3CtSpG"
+      MPESA_CONSUMER_SECRET: "zuVci1S1rl6An6bistz6jUo1eJ0Is8kM3IGlghGFCUpF4coKx7YtmGbAbLgvyddS"
+      MPESA_SHORTCODE: "174379"
+      MPESA_PASSKEY: "bfb279f9aa9bdbcf158e97dd71a467cd"
+      MPESA_CALLBACK_URL: "http://127.0.0.1:8000/billing/mpesa/callback/"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      USE_MEMORY_CHANNEL_LAYER: "false"
+    volumes:
+      - .:/app
+      - /app/.venv
+      - media_dev:/app/media
+      - staticfiles_dev:/app/staticfiles
+    networks:
+      - quidpath_network
 
 networks:
-  backend_net:
-    driver: bridge
   quidpath_network:
-    external: true  # Shared network for microservices communication
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+  media_dev:
+  staticfiles_dev:
