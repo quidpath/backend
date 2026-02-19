@@ -10,9 +10,14 @@ from dotenv import load_dotenv
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# Load .env or .env.dev depending on DJANGO_ENV
+# Load .env file only if it exists (for local development)
+# In production (Docker), environment variables are set by docker-compose
 ENV_FILE = BASE_DIR / (".env.dev" if os.environ.get("DJANGO_ENV") == "dev" else ".env")
-load_dotenv(ENV_FILE)
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
+else:
+    # In Docker, .env might not exist, which is fine - env vars come from docker-compose
+    pass
 
 # Security & Debug
 SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-dev-key")
@@ -97,14 +102,39 @@ if os.environ.get("USE_MEMORY_CHANNEL_LAYER", "false").lower() == "true":
     }
 
 # Database (PostgreSQL via DATABASE_URL)
-DATABASES = {
-    "default": dj_database_url.config(
-        default=os.environ.get(
-            "DATABASE_URL"
-        ),  # e.g. postgres://devuser:devpass@db:5432/devdb
-        conn_max_age=600,
-    )
-}
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+
+if DATABASE_URL:
+    # Use DATABASE_URL if provided
+    DATABASES = {
+        "default": dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+        )
+    }
+else:
+    # Fallback to individual environment variables
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("DB_NAME", "quidpath_db"),
+            "USER": os.environ.get("DB_USER", "quidpath_user"),
+            "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+            "HOST": os.environ.get("DB_HOST", "db"),
+            "PORT": os.environ.get("DB_PORT", "5432"),
+        }
+    }
+
+# Validate database configuration
+if not DATABASES.get("default") or not DATABASES["default"].get("ENGINE"):
+    import sys
+    print("ERROR: Database configuration is invalid!", file=sys.stderr)
+    print(f"DATABASE_URL: {DATABASE_URL}", file=sys.stderr)
+    print(f"DB_NAME: {os.environ.get('DB_NAME')}", file=sys.stderr)
+    print(f"DB_USER: {os.environ.get('DB_USER')}", file=sys.stderr)
+    print(f"DB_HOST: {os.environ.get('DB_HOST')}", file=sys.stderr)
+    print(f"DATABASES config: {DATABASES}", file=sys.stderr)
+    sys.exit(1)
 
 # Optional: enforce SSL for production
 if os.environ.get("REQUIRE_DB_SSL", "false").lower() == "true":
