@@ -75,6 +75,7 @@ services:
 
 networks:
   quidpath_network:
+    name: tmp_quidpath_network
     driver: bridge
 
 volumes:

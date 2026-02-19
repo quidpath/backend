@@ -76,11 +76,14 @@ WSGI_APPLICATION = "quidpath_backend.wsgi.application"
 ASGI_APPLICATION = "quidpath_backend.asgi.application"
 
 # Channels Configuration for WebSocket
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.environ.get("REDIS_PORT") or 6379)
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [(os.environ.get("REDIS_HOST", "localhost"), int(os.environ.get("REDIS_PORT", 6379)))],
+            "hosts": [(REDIS_HOST, REDIS_PORT)],
         },
     },
 }
