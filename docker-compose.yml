@@ -64,12 +64,12 @@ services:
     volumes:
       - /mnt/quidpath-data/media:/app/media
       - /mnt/quidpath-data/staticfiles:/app/staticfiles
-    # healthcheck:
-    #   test: ["CMD-SHELL", "curl -f http://localhost:8004/api/auth/health/ || exit 1"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
-    #   start_period: 40s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8004/api/auth/health/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - quidpath_network
 

@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdk-pixbuf-2.0-0 \
     shared-mime-info \
     libffi-dev \
+    curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python packages
@@ -24,9 +26,9 @@ RUN pip install --no-cache-dir -r requirements/prod.txt
 # Copy project files
 COPY . /app
 
-# Copy and set up start script
-COPY start.sh /start.sh
-RUN chmod +x /start.sh
+# Copy and set up entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Environment variables
 ENV DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod
@@ -34,5 +36,5 @@ ENV DJANGO_SETTINGS_MODULE=quidpath_backend.settings.prod
 # Expose Django port
 EXPOSE 8004
 
-# Use Daphne for ASGI/WebSocket support
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8004", "quidpath_backend.asgi:application"]
+# Use entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]

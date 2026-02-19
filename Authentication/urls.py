@@ -21,8 +21,10 @@ from Authentication.views.notifications import (
     mark_all_notifications_read,
     get_unread_count,
 )
+from Authentication.views.health import health_check
 
 urlpatterns = [
+    path("health/", health_check, name="health-check"),
     path("login/", login_user, name="login"),
     path("register/", register_user, name="register"),
     path("get_profile/", get_profile, name="profile"),
