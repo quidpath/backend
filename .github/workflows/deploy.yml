@@ -77,9 +77,15 @@ jobs:
           
           # Add quidpath-backend specific secrets here as needed
           # Example:
-          # secrets["POSTGRES_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD }}"
-          # secrets["SECRET_KEY"]="${{ secrets.SECRET_KEY }}"
-          # secrets["JWT_SECRET_KEY"]="${{ secrets.JWT_SECRET_KEY }}"
+          secrets["POSTGRES_USER"]="${{ secrets.POSTGRES_USER }}"
+          secrets["POSTGRES_DB"]="${{ secrets.POSTGRES_DB }}"
+          secrets["DATABASE_URL"]="${{ secrets.DATABASE_URL }}"
+          secrets["POSTGRES_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD }}"
+          secrets["SECRET_KEY"]="${{ secrets.SECRET_KEY }}"
+          secrets["JWT_SECRET_KEY"]="${{ secrets.JWT_SECRET_KEY }}"
+          secrets["REDIS_HOST"]="${{ secrets.REDIS_HOST }}"
+          secrets["REDIS_PORT"]="${{ secrets.REDIS_PORT }}"
+          secrets["USE_MEMORY_CHANNEL_LAYER"]="${{ secrets.USE_MEMORY_CHANNEL_LAYER }}"
           
           json="{}"
           for key in "${!secrets[@]}"; do
