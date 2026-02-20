@@ -5,24 +5,28 @@ def seed_notification_types(apps, schema_editor):
     NotificationType = apps.get_model("Authentication", "NotificationType")
     db_alias = schema_editor.connection.alias
 
-    for type_id in ["USSD", "EMAIL"]:
-        # Use queryset update to avoid Django PK-change insert behavior
-        updated = NotificationType.objects.using(db_alias).filter(name=type_id).update(
-            id=type_id,
-            description=f"{type_id} notification"
+    types = [
+        {"id": 1, "name": "USSD", "description": "USSD notification"},
+        {"id": 2, "name": "EMAIL", "description": "Email notification"},
+    ]
+
+    for t in types:
+        updated = NotificationType.objects.using(db_alias).filter(name=t["name"]).update(
+            id=t["id"],
+            description=t["description"]
         )
         if not updated:
             NotificationType.objects.using(db_alias).create(
-                id=type_id,
-                name=type_id,
-                description=f"{type_id} notification"
+                id=t["id"],
+                name=t["name"],
+                description=t["description"]
             )
 
 
 def reverse_seed(apps, schema_editor):
     NotificationType = apps.get_model("Authentication", "NotificationType")
     db_alias = schema_editor.connection.alias
-    NotificationType.objects.using(db_alias).filter(id__in=["USSD", "EMAIL"]).delete()
+    NotificationType.objects.using(db_alias).filter(id__in=[1, 2]).delete()
 
 
 class Migration(migrations.Migration):
