@@ -3,13 +3,16 @@ from django.db import migrations
 
 def seed_notification_types(apps, schema_editor):
     NotificationType = apps.get_model("Authentication", "NotificationType")
-    NotificationType.objects.update_or_create(
-        id="USSD",
-        defaults={"name": "USSD", "description": "USSD notification"}
+    
+    # Use name as lookup field since it's unique
+    ussd, created = NotificationType.objects.update_or_create(
+        name="USSD",
+        defaults={"id": "USSD", "description": "USSD notification"}
     )
-    NotificationType.objects.update_or_create(
-        id="EMAIL",
-        defaults={"name": "EMAIL", "description": "EMAIL notification"}
+    
+    email, created = NotificationType.objects.update_or_create(
+        name="EMAIL",
+        defaults={"id": "EMAIL", "description": "EMAIL notification"}
     )
 
 
