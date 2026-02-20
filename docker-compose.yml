@@ -4,7 +4,7 @@ services:
     container_name: postgres_prod
     restart: unless-stopped
     volumes:
-      - /mnt/quidpath-data/postgres:/var/lib/postgresql/data
+      - /mnt/quidpath-data-prod/postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
