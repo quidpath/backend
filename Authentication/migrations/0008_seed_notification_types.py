@@ -3,17 +3,19 @@ from django.db import migrations
 
 def seed_notification_types(apps, schema_editor):
     NotificationType = apps.get_model("Authentication", "NotificationType")
-    
-    # Use name as lookup field since it's unique
-    ussd, created = NotificationType.objects.update_or_create(
-        name="USSD",
-        defaults={"id": "USSD", "description": "USSD notification"}
-    )
-    
-    email, created = NotificationType.objects.update_or_create(
-        name="EMAIL",
-        defaults={"id": "EMAIL", "description": "EMAIL notification"}
-    )
+
+    for type_id in ["USSD", "EMAIL"]:
+        obj = NotificationType.objects.filter(name=type_id).first()
+        if obj:
+            obj.id = type_id
+            obj.description = f"{type_id} notification"
+            obj.save()
+        else:
+            NotificationType.objects.create(
+                id=type_id,
+                name=type_id,
+                description=f"{type_id} notification"
+            )
 
 
 def reverse_seed(apps, schema_editor):
