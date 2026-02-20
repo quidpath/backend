@@ -85,7 +85,6 @@ jobs:
           secrets["JWT_SECRET_KEY"]="${{ secrets.JWT_SECRET_KEY }}"
           secrets["REDIS_HOST"]="${{ secrets.REDIS_HOST }}"
           secrets["REDIS_PORT"]="${{ secrets.REDIS_PORT }}"
-          secrets["IMAGE_TAG"]="${{ secrets.IMAGE_TAG }}"
           secrets["USE_MEMORY_CHANNEL_LAYER"]="${{ secrets.USE_MEMORY_CHANNEL_LAYER }}"
           
           json="{}"
