@@ -48,7 +48,7 @@ def create_corporate(request):
                     status=400,
                 )
 
-        # ✅ Create the corporate
+        # Create the corporate
         corporate = ServiceRegistry().database("corporate", "create", data=data)
 
         if isinstance(corporate, dict):
@@ -58,7 +58,7 @@ def create_corporate(request):
             corporate_name = corporate.name
             corporate_id = corporate.id
 
-        # ✅ Create 30-day free trial subscription via Billing Service
+        # Create 30-day free trial subscription via Billing Service
         try:
             from quidpath_backend.core.billing_client import \
                 BillingServiceClient
@@ -109,7 +109,7 @@ def create_corporate(request):
             )
             # Don't fail corporate creation if trial creation fails
 
-        # ✅ Log the creation
+        # Log the creation
         TransactionLogBase.log(
             "CORPORATE_CREATED",
             user=None,
@@ -117,7 +117,7 @@ def create_corporate(request):
             request=request,
         )
 
-        # ✅ Send email notification
+        # Send email notification
         notification_service = NotificationServiceHandler()
         email_recipient = email
         replace_items = {"corporate_name": corporate_name}
@@ -151,7 +151,7 @@ def list_corporates(request):
         for corp in corporates:
             corp_dict = {}
 
-            if hasattr(corp, "_meta"):  # It's a Django model
+            if hasattr(corp, "_meta"):  
                 for field in corp.meta.fields:
                     field_name = field.name
                     value = getattr(corp, field_name)
@@ -493,7 +493,7 @@ def approve_corporate(request):
             corporate.is_disapproved = False
             corporate.save()
 
-            # ✅ Manually trigger signal (if you use post_save signal normally)
+            # Manually trigger signal (if you use post_save signal normally)
             from OrgAuth.core.signals import create_superadmin_on_approval
 
             create_superadmin_on_approval(

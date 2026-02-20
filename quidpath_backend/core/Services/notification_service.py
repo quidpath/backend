@@ -8,14 +8,42 @@ from asgiref.sync import async_to_sync
 class NotificationTypeService:
     """Manage NotificationType model."""
 
+    NOTIFICATION_TYPES = {
+        "USSD": 1,
+        "Email": 2,
+    }
+
     def get_or_create_type(self, name: str) -> NotificationType:
-        return NotificationType.objects.get_or_create(
-            name=name, defaults={"description": f"{name} notification"}
-        )[0]
+        type_id = self.NOTIFICATION_TYPES.get(name)
+
+        if type_id:
+            obj, created = NotificationType.objects.get_or_create(
+                name=name,
+                defaults={
+                    "id": type_id,
+                    "description": f"{name} notification"
+                }
+            )
+        else:
+            obj, created = NotificationType.objects.get_or_create(
+                name=name,
+                defaults={"description": f"{name} notification"}
+            )
+
+        return obj
+
+    def get_email_type(self) -> NotificationType:
+        return self.get_or_create_type("Email")
+
+    def get_ussd_type(self) -> NotificationType:
+        return self.get_or_create_type("USSD")
 
 
 class NotificationService:
     """Manage Notification model."""
+
+    def __init__(self):
+        self.notification_type_service = NotificationTypeService()
 
     def create_notification(
         self, corporate, title, destination, message, notification_type, state
@@ -28,17 +56,45 @@ class NotificationService:
             state=state,
             corporate=corporate,
         )
-        
+
         # Send real-time notification via WebSocket
         self.send_realtime_notification(notification)
-        
+
         return notification
 
+    def create_email_notification(
+        self, corporate, title, destination, message, state
+    ):
+        """Convenience method to create an Email notification."""
+        notification_type = self.notification_type_service.get_email_type()
+        return self.create_notification(
+            corporate=corporate,
+            title=title,
+            destination=destination,
+            message=message,
+            notification_type=notification_type,
+            state=state,
+        )
+
+    def create_ussd_notification(
+        self, corporate, title, destination, message, state
+    ):
+        """Convenience method to create a USSD notification."""
+        notification_type = self.notification_type_service.get_ussd_type()
+        return self.create_notification(
+            corporate=corporate,
+            title=title,
+            destination=destination,
+            message=message,
+            notification_type=notification_type,
+            state=state,
+        )
+
     def send_realtime_notification(self, notification):
-        """Send notification to user via WebSocket"""
+        """Send notification to user via WebSocket."""
         try:
             channel_layer = get_channel_layer()
-            
+
             # Prepare notification data
             notification_data = {
                 "id": str(notification.id),
@@ -50,14 +106,13 @@ class NotificationService:
                 "is_read": notification.is_read,
                 "created_at": notification.created_at.isoformat(),
             }
-            
-            # Send to user-specific group (based on email/destination)
-            # You may need to map email to user_id for better targeting
+
+            # Send to user-specific group based on email/destination
             from Authentication.models.user import CustomUser
             try:
                 user = CustomUser.objects.get(email=notification.destination)
                 user_group = f"user_{user.id}_notifications"
-                
+
                 async_to_sync(channel_layer.group_send)(
                     user_group,
                     {
@@ -67,7 +122,7 @@ class NotificationService:
                 )
             except CustomUser.DoesNotExist:
                 pass
-            
+
             # Also send to corporate group if applicable
             if notification.corporate:
                 corporate_group = f"corporate_{notification.corporate.id}_notifications"
@@ -78,13 +133,24 @@ class NotificationService:
                         "notification": notification_data,
                     }
                 )
+
         except Exception as e:
-            # Log error but don't fail the notification creation
             print(f"Error sending real-time notification: {e}")
 
     def mark_failed(self, notification_id):
         failed_state = StateService().get_failed()
         Notification.objects.filter(id=notification_id).update(state=failed_state)
+
+    def mark_read(self, notification_id):
+        """Mark a notification as read."""
+        Notification.objects.filter(id=notification_id).update(is_read=True)
+
+    def get_unread_notifications(self, corporate):
+        """Get all unread notifications for a corporate."""
+        return Notification.objects.filter(
+            corporate=corporate,
+            is_read=False
+        ).order_by("-created_at")
 
     def update_transaction_notification_log(
         self, transaction: Transaction, response: dict

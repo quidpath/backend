@@ -24,20 +24,20 @@ def register_user(request):
     email = data.get("email")
     password = data.get("password")
 
-    # ✅ Required fields
+    # Required fields
     if not username or not email or not password:
         return JsonResponse(
             {"error": "username, email, password are required"}, status=400
         )
 
-    # ✅ Check duplicates
+    # Check duplicates
     if CustomUser.objects.filter(username=username).exists():
         return JsonResponse({"error": "Username already taken"}, status=400)
 
     if CustomUser.objects.filter(email=email).exists():
         return JsonResponse({"error": "Email already registered"}, status=400)
 
-    # ✅ Create user via registry (inactive by default)
+    # Create user via registry (inactive by default)
     user_data = {
         "username": username,
         "email": email,
@@ -52,12 +52,12 @@ def register_user(request):
     else:
         user = created_user
 
-    # ✅ Generate OTP & timestamp
+    # Generate OTP & timestamp
     otp_code = user.generate_otp()
     user.last_otp_sent_at = now()
     user.save()
 
-    # ✅ Send OTP email
+    # Send OTP email
     NotificationServiceHandler().send_notification(
         [
             {
@@ -70,7 +70,7 @@ def register_user(request):
         ]
     )
 
-    # ✅ Log actions
+    # Log actions
     TransactionLogBase.log(
         "USER_REGISTERED",
         user=user,
@@ -80,7 +80,7 @@ def register_user(request):
         "OTP_SENT", user=user, message="Initial OTP sent for registration"
     )
 
-    # ✅ Respond without issuing tokens (must verify OTP)
+    # Respond without issuing tokens (must verify OTP)
     return JsonResponse(
         {
             "message": "User registered successfully. OTP sent to email.",
