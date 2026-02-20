@@ -19,7 +19,7 @@ def load_tables(path: Path) -> Dict[str, pd.DataFrame]:
 
     if suffix in EXCEL_SUFFIXES:
         try:
-            # ✅ FIX: Try to detect header row first, but fall back to header=None if detection fails
+            #  FIX: Try to detect header row first, but fall back to header=None if detection fails
             # Read with header=None to get all raw data
             frames = pd.read_excel(
                 path,
@@ -47,7 +47,7 @@ def load_tables(path: Path) -> Dict[str, pd.DataFrame]:
         # Replace "nan" strings (from pandas) with empty strings
         normalized = normalized.replace("nan", "")
 
-        # ✅ FIX: Remove completely empty rows at the start
+        #  FIX: Remove completely empty rows at the start
         # Find first non-empty row
         first_data_row = 0
         for idx in range(len(normalized)):

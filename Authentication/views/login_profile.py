@@ -160,10 +160,10 @@ def get_profile(request):
         if corp and corp.logo:
             try:
                 if hasattr(corp.logo, "path") and os.path.exists(corp.logo.path):
-                    # ✅ Use filesystem path directly
+                    #  Use filesystem path directly
                     logo_data = process_logo_data(corp.logo.path)
                 else:
-                    # ✅ Build absolute path using MEDIA_ROOT
+                    #  Build absolute path using MEDIA_ROOT
                     logo_data = process_logo_data(
                         os.path.join(settings.MEDIA_ROOT, str(corp.logo))
                     )

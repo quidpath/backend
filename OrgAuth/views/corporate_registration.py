@@ -480,7 +480,7 @@ def approve_corporate(request):
         )
 
     try:
-        decision = str(decision_raw).lower() == "true"  # ✅ Ensures boolean
+        decision = str(decision_raw).lower() == "true"  # Ensures boolean
 
         corporate = Corporate.objects.filter(id=corporate_id).first()
         if not corporate:

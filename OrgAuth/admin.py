@@ -95,16 +95,16 @@ class CorporateAdmin(admin.ModelAdmin):
                 trial = result.get("trial", {})
                 days = trial.get("days_remaining", 0)
                 return format_html(
-                    '<span style="color: orange;" title="Trial">🆓 Trial ({} days)</span>',
+                    '<span style="color: orange;" title="Trial"> Trial ({} days)</span>',
                     days,
                 )
             elif access_type == "subscription":
                 return format_html(
-                    '<span style="color: green;" title="Active">✅ Active</span>'
+                    '<span style="color: green;" title="Active">Active</span>'
                 )
         else:
             return format_html(
-                '<span style="color: red;" title="Expired">❌ Expired</span>'
+                '<span style="color: red;" title="Expired">Expired</span>'
             )
 
     billing_status.short_description = "Billing Status"
@@ -120,7 +120,7 @@ class CorporateAdmin(admin.ModelAdmin):
         if not result.get("success"):
             return format_html(
                 '<div style="color: red; padding: 10px; background: #fff3cd; border-radius: 5px;">'
-                "<strong>⚠️ Error loading billing data:</strong> {}"
+                "<strong>Error loading billing data:</strong> {}"
                 "</div>",
                 result.get("message", "Unknown error"),
             )
@@ -135,12 +135,12 @@ class CorporateAdmin(admin.ModelAdmin):
         html = '<div style="background: #f8f9fa; padding: 20px; border-radius: 8px; font-family: Arial, sans-serif;">'
 
         # Access Status
-        html += '<h2 style="margin-top: 0; color: #2c3e50;">📊 Billing Overview</h2>'
+        html += '<h2 style="margin-top: 0; color: #2c3e50;">Billing Overview</h2>'
 
         # Trial info
         if trial:
             status_color = "#28a745" if trial["status"] == "active" else "#6c757d"
-            status_icon = "✅" if trial["status"] == "active" else "⏱️"
+            status_icon = "[ACTIVE]" if trial["status"] == "active" else "[PENDING]"
             html += f"""
                 <div style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid {status_color};">
                     <h3 style="margin-top: 0;">{status_icon} Trial Status</h3>
@@ -154,7 +154,7 @@ class CorporateAdmin(admin.ModelAdmin):
         if subscription:
             html += f"""
                 <div style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #007bff;">
-                    <h3 style="margin-top: 0;">💼 Active Subscription</h3>
+                    <h3 style="margin-top: 0;"> Active Subscription</h3>
                     <p><strong>Plan:</strong> {subscription["plan_name"]} <span style="background: #007bff; color: white; padding: 2px 8px; border-radius: 3px; font-size: 11px;">{subscription["plan_tier"]}</span></p>
                     <p><strong>Billing Cycle:</strong> {subscription["billing_cycle"].upper()}</p>
                     <p><strong>Amount:</strong> <span style="font-size: 18px; font-weight: bold;">{subscription["currency"]} {subscription["total_amount"]}</span></p>
@@ -166,7 +166,7 @@ class CorporateAdmin(admin.ModelAdmin):
         outstanding_color = "#dc3545" if totals.get("outstanding", 0) > 0 else "#28a745"
         html += f"""
             <div style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
-                <h3 style="margin-top: 0;">💰 Financial Summary</h3>
+                <h3 style="margin-top: 0;">Financial Summary</h3>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="padding: 5px 0;"><strong>Total Invoiced:</strong></td>
@@ -188,7 +188,7 @@ class CorporateAdmin(admin.ModelAdmin):
         if invoices:
             html += """
                 <div style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
-                    <h3 style="margin-top: 0;">📄 Recent Invoices</h3>
+                    <h3 style="margin-top: 0;">Recent Invoices</h3>
                     <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                         <thead>
                             <tr style="background: #e9ecef; text-align: left;">
@@ -225,7 +225,7 @@ class CorporateAdmin(admin.ModelAdmin):
         if payments:
             html += """
                 <div style="background: white; padding: 15px; border-radius: 5px;">
-                    <h3 style="margin-top: 0;">💳 Recent Payments</h3>
+                    <h3 style="margin-top: 0;">Recent Payments</h3>
                     <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                         <thead>
                             <tr style="background: #e9ecef; text-align: left;">

@@ -38,7 +38,7 @@ class PermissionAdmin(admin.ModelAdmin):
     list_display = ("id", "name")
 
 
-# ✅ State Admin
+#  State Admin
 @admin.register(State)
 class StateAdmin(admin.ModelAdmin):
     list_display = ("name", "description", "created_at", "updated_at")
@@ -46,14 +46,14 @@ class StateAdmin(admin.ModelAdmin):
     list_filter = ("created_at",)
 
 
-# ✅ NotificationType Admin
+#  NotificationType Admin
 @admin.register(NotificationType)
 class NotificationTypeAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "description")
     search_fields = ("name",)
 
 
-# ✅ Notification Admin
+#  Notification Admin
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ("title", "destination", "notification_type", "state", "created_at")
@@ -61,7 +61,7 @@ class NotificationAdmin(admin.ModelAdmin):
     list_filter = ("notification_type", "state", "created_at")
 
 
-# ✅ TransactionType Admin
+#  TransactionType Admin
 @admin.register(TransactionType)
 class TransactionTypeAdmin(admin.ModelAdmin):
     list_display = ("name", "simple_name", "class_name", "created_at")
@@ -69,7 +69,7 @@ class TransactionTypeAdmin(admin.ModelAdmin):
     list_filter = ("created_at",)
 
 
-# ✅ Transaction Admin
+#  Transaction Admin
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
     list_display = (
@@ -86,7 +86,7 @@ class TransactionAdmin(admin.ModelAdmin):
     list_filter = ("transaction_type", "state", "created_at")
 
 
-# ✅ Organisation Admin
+#  Organisation Admin
 @admin.register(Organisation)
 class OrganisationAdmin(admin.ModelAdmin):
     list_display = ("name", "email", "phone", "created_at", "updated_at")

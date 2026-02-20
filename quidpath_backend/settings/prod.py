@@ -97,7 +97,7 @@ X_FRAME_OPTIONS = "DENY"
 # SECURE_SSL_REDIRECT = True
 
 # ====================================
-# 📜LOGGING CONFIGURATION
+# LOGGING CONFIGURATION
 # ====================================
 LOGGING = {
     "version": 1,

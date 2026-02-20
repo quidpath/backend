@@ -85,6 +85,8 @@ jobs:
           secrets["JWT_SECRET_KEY"]="${{ secrets.JWT_SECRET_KEY }}"
           secrets["REDIS_HOST"]="${{ secrets.REDIS_HOST }}"
           secrets["REDIS_PORT"]="${{ secrets.REDIS_PORT }}"
+          secrets["SMTP_USER"]="${{ secrets.SMTP_USER }}"
+          secrets["SMTP_PASSWORD"]="${{ secrets.SMTP_PASSWORD }}"
           secrets["USE_MEMORY_CHANNEL_LAYER"]="${{ secrets.USE_MEMORY_CHANNEL_LAYER }}"
           
           json="{}"

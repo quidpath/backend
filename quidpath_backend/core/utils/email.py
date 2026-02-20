@@ -117,7 +117,16 @@ class NotificationServiceHandler(TemplateManagementEngine):
         """
         from_address = from_address or settings.DEFAULT_FROM_EMAIL
         sender = sender or settings.SMTP_USER
-        password = password or settings.SMTP_PASS
+        password = password or settings.SMTP_PASSWORD
+
+        # Validate SMTP credentials
+        if not sender or not password:
+            log.error("SMTP credentials not configured. SMTP_USER or SMTP_PASSWORD is missing.")
+            return {
+                "status": "failed",
+                "code": "400.001.008",
+                "message": "SMTP credentials not configured",
+            }
 
         try:
             # Validate email

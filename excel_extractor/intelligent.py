@@ -29,7 +29,7 @@ class StatementParser:
 
     def __init__(self, spec: StatementSpec, label_threshold: float = 0.75) -> None:
         self.spec = spec
-        # ✅ UPGRADE: Use advanced label matcher with comprehensive aliases
+        #  UPGRADE: Use advanced label matcher with comprehensive aliases
         # Build alias dict from spec fields
         spec_aliases = {}
         for field in spec.required_fields + spec.optional_fields:
@@ -45,24 +45,24 @@ class StatementParser:
 
     def parse(self, tables: Dict[str, pd.DataFrame]) -> Optional[Dict[str, Any]]:
         """Parse the given tables for the statement defined by this spec."""
-        # ✅ FIX: Define all_fields at the start (required + optional)
+        #  FIX: Define all_fields at the start (required + optional)
         all_fields = list(self.spec.required_fields) + list(self.spec.optional_fields)
         extracted: Dict[str, Any] = {field: None for field in all_fields}
 
-        print(f"📝 Parsing for statement: {self.spec.name}")
+        print(f" Parsing for statement: {self.spec.name}")
         print(f"   Looking for fields: {all_fields}")
-        logger.info(f"📝 Parsing for statement: {self.spec.name}")
+        logger.info(f" Parsing for statement: {self.spec.name}")
         logger.info(f"   Looking for fields: {all_fields}")
 
         for sheet_name, df in tables.items():
-            print(f"🔍 Scanning sheet '{sheet_name}' for {self.spec.name}")
+            print(f" Scanning sheet '{sheet_name}' for {self.spec.name}")
             print(f"   Sheet dimensions: {len(df)} rows x {len(df.columns)} columns")
-            logger.info(f"🔍 Scanning sheet '{sheet_name}' for {self.spec.name}")
+            logger.info(f" Scanning sheet '{sheet_name}' for {self.spec.name}")
             logger.info(
                 f"   Sheet dimensions: {len(df)} rows x {len(df.columns)} columns"
             )
 
-            # ✅ FIX: Skip completely empty rows at the start
+            #  FIX: Skip completely empty rows at the start
             # Find first row with actual data
             first_data_row = 0
             for idx in range(len(df)):
@@ -86,36 +86,36 @@ class StatementParser:
 
             if first_data_row > 0:
                 print(
-                    f"⏭️ Skipping {first_data_row} empty rows at start of sheet '{sheet_name}'"
+                    f"⏭ Skipping {first_data_row} empty rows at start of sheet '{sheet_name}'"
                 )
                 logger.info(
-                    "⏭️ Skipping %d empty rows at start of sheet '%s'",
+                    "⏭ Skipping %d empty rows at start of sheet '%s'",
                     first_data_row,
                     sheet_name,
                 )
                 df = df.iloc[first_data_row:].reset_index(drop=True)
 
-            # ✅ DEBUG: Show first 10 rows of the actual DataFrame
-            print(f"📋 First 10 rows of DataFrame after skipping empty rows:")
+            #  DEBUG: Show first 10 rows of the actual DataFrame
+            print(f" First 10 rows of DataFrame after skipping empty rows:")
             for idx in range(min(10, len(df))):
                 row_preview = df.iloc[idx].tolist()
                 print(f"   Row {idx}: {row_preview}")
 
-            # ✅ FIX: Initialize sheet_extracted with all fields
+            #  FIX: Initialize sheet_extracted with all fields
             sheet_extracted = {field: None for field in all_fields}
 
-            # ✅ STRICT MODE: First pass - collect all potential matches with priority scores
+            #  STRICT MODE: First pass - collect all potential matches with priority scores
             # Priority: Summary/total rows > Individual line items
-            # ✅ FIX: Initialize candidate_matches with BOTH required and optional fields
+            #  FIX: Initialize candidate_matches with BOTH required and optional fields
             candidate_matches: Dict[str, List[Tuple[str, Any, float]]] = {
                 field: [] for field in all_fields
             }
 
-            # ✅ FIX: Only scan rows orientation since column scan is buggy
+            #  FIX: Only scan rows orientation since column scan is buggy
             # Column scan extracts from wrong row after transpose (labels row instead of values row)
             # Row-wise scanning is sufficient for most financial statements
             for orientation in ["rows"]:
-                print(f"🔄 Scanning in '{orientation}' orientation")
+                print(f" Scanning in '{orientation}' orientation")
                 iterator = df.iterrows()
 
                 # Track current section (for context-aware matching)
@@ -124,7 +124,7 @@ class StatementParser:
                 for row_idx, row_series in iterator:
                     row_list = row_series.tolist()
 
-                    # ✅ FIX: Only skip first 3 rows if they're document titles (not financial data)
+                    #  FIX: Only skip first 3 rows if they're document titles (not financial data)
                     # Check if this row contains a recognizable financial field label
                     if row_idx < 3:
                         contains_financial_label = False
@@ -141,7 +141,7 @@ class StatementParser:
                         if not contains_financial_label:
                             continue
 
-                    # ✅ DEBUG: Log rows after 60 to find missing Net Profit
+                    #  DEBUG: Log rows after 60 to find missing Net Profit
                     if row_idx > 60:  # Show all rows after 60
                         first_cell = str(row_list[0])[:80] if row_list else ""
                         last_cell = (
@@ -149,9 +149,9 @@ class StatementParser:
                             if row_list and len(row_list) > 1
                             else ""
                         )
-                        print(f"🔍 Row {row_idx}: '{first_cell}' ... '{last_cell}'")
+                        print(f" Row {row_idx}: '{first_cell}' ... '{last_cell}'")
 
-                    # ✅ FIX: Skip rows that are completely empty or only contain numbers
+                    #  FIX: Skip rows that are completely empty or only contain numbers
                     row_has_labels = False
                     for cell in row_list:
                         label_text = self._coerce_label(cell)
@@ -162,7 +162,7 @@ class StatementParser:
                     if not row_has_labels:
                         continue  # Skip this row - no labels found
 
-                    # ✅ FIX: Detect section headers (update current_section)
+                    #  FIX: Detect section headers (update current_section)
                     first_label = self._coerce_label(row_list[0]) if row_list else ""
                     if first_label:
                         first_label_lower = first_label.lower()
@@ -182,14 +182,14 @@ class StatementParser:
                             ):
                                 current_section = "income"
                                 print(
-                                    f"📍 Section: INCOME (detected from '{first_label}')"
+                                    f" Section: INCOME (detected from '{first_label}')"
                                 )
                         elif any(
                             term in first_label_lower
                             for term in ["cost of sales", "cost of goods", "cogs"]
                         ):
                             current_section = "cogs"
-                            print(f"📍 Section: COGS (detected from '{first_label}')")
+                            print(f" Section: COGS (detected from '{first_label}')")
                         elif any(
                             term in first_label_lower
                             for term in [
@@ -200,7 +200,7 @@ class StatementParser:
                         ):
                             current_section = "expenses"
                             print(
-                                f"📍 Section: EXPENSES (detected from '{first_label}')"
+                                f" Section: EXPENSES (detected from '{first_label}')"
                             )
                         elif any(
                             term in first_label_lower
@@ -211,7 +211,7 @@ class StatementParser:
                             ]
                         ):
                             current_section = "profit"
-                            print(f"📍 Section: PROFIT (detected from '{first_label}')")
+                            print(f" Section: PROFIT (detected from '{first_label}')")
 
                     # Scan through the row to find labels
                     for col_idx in range(len(row_list)):
@@ -219,19 +219,19 @@ class StatementParser:
                         if not label_text:
                             continue
 
-                        # ✅ UPGRADE: Use advanced matcher with comprehensive aliases
+                        #  UPGRADE: Use advanced matcher with comprehensive aliases
                         field = self.matcher.match(label_text)
                         if not field:
                             logger.debug(
-                                "🔍 Label '%s' did not match any field", label_text
+                                " Label '%s' did not match any field", label_text
                             )
                             continue
 
-                        # ✅ FIX: Context-aware validation - don't match expenses to revenue in expense section
+                        #  FIX: Context-aware validation - don't match expenses to revenue in expense section
                         label_lower = label_text.lower()
                         if current_section == "expenses" and field == "total_revenue":
                             print(
-                                f"⚠️ SKIP: Label '{label_text}' is in EXPENSES section, can't be revenue"
+                                f" SKIP: Label '{label_text}' is in EXPENSES section, can't be revenue"
                             )
                             logger.debug(
                                 "Skipping revenue match for '%s' - in expenses section",
@@ -268,10 +268,10 @@ class StatementParser:
                             indicator in label_lower for indicator in expense_indicators
                         )
 
-                        # ✅ FIX: Don't match expense-like terms to revenue
+                        #  FIX: Don't match expense-like terms to revenue
                         if is_expense_like and field == "total_revenue":
                             print(
-                                f"⚠️ SKIP: Label '{label_text}' looks like an expense, can't be revenue"
+                                f" SKIP: Label '{label_text}' looks like an expense, can't be revenue"
                             )
                             logger.debug(
                                 "Skipping revenue match for expense-like label '%s'",
@@ -279,14 +279,14 @@ class StatementParser:
                             )
                             continue
 
-                        # ✅ FIX: Skip "Non-Operating" labels when matching to operating fields
+                        #  FIX: Skip "Non-Operating" labels when matching to operating fields
                         label_lower = label_text.lower()
                         if (
                             field == "operating_expenses"
                             and "non-operating" in label_lower
                         ):
                             print(
-                                f"⚠️ SKIP: Label '{label_text}' contains 'non-operating', skipping for field: {field}"
+                                f" SKIP: Label '{label_text}' contains 'non-operating', skipping for field: {field}"
                             )
                             logger.debug(
                                 "Skipping 'non-operating' label '%s' for operating_expenses",
@@ -298,7 +298,7 @@ class StatementParser:
                             and "non-operating" in label_lower
                         ):
                             print(
-                                f"⚠️ SKIP: Label '{label_text}' contains 'non-operating', skipping for field: {field}"
+                                f" SKIP: Label '{label_text}' contains 'non-operating', skipping for field: {field}"
                             )
                             logger.debug(
                                 "Skipping 'non-operating' label '%s' for operating_income",
@@ -306,7 +306,7 @@ class StatementParser:
                             )
                             continue
 
-                        # ✅ FIX: "Total Operating Income" is ambiguous - often means Total Revenue, not Operating Profit
+                        #  FIX: "Total Operating Income" is ambiguous - often means Total Revenue, not Operating Profit
                         # If the label says "Total Operating Income" and we already have revenue, it's likely revenue
                         # Only use "Operating Profit" for operating_income
                         if (
@@ -314,7 +314,7 @@ class StatementParser:
                             and "total operating income" in label_lower
                         ):
                             print(
-                                f"⚠️ AMBIGUOUS: Label '{label_text}' could be revenue OR profit"
+                                f" AMBIGUOUS: Label '{label_text}' could be revenue OR profit"
                             )
                             print(
                                 f"   Re-mapping to total_revenue (will use 'Operating Profit' for operating_income)"
@@ -327,10 +327,10 @@ class StatementParser:
                             # Boost priority since it's a total
                             priority = 2.0
                             print(
-                                f"   ✅ Now matching to: {field} with priority {priority}"
+                                f"    Now matching to: {field} with priority {priority}"
                             )
 
-                        # ✅ FIX: Check if this is a section header with no values
+                        #  FIX: Check if this is a section header with no values
                         # (e.g., "Trading Income", "Cost of Sales", "Operating Expenses")
                         has_numeric_value = False
                         for cell in row_list[1:]:  # Skip first column (label)
@@ -351,7 +351,7 @@ class StatementParser:
                                 except:
                                     pass
 
-                        # ✅ FIX: Skip section headers with no values (wait for "Total" row)
+                        #  FIX: Skip section headers with no values (wait for "Total" row)
                         is_section_header = (
                             (
                                 "income" in label_lower
@@ -366,7 +366,7 @@ class StatementParser:
 
                         if is_section_header:
                             print(
-                                f"⚠️ SKIP: Label '{label_text}' is a section header with no values"
+                                f" SKIP: Label '{label_text}' is a section header with no values"
                             )
                             print(
                                 f"   Waiting for 'Total {label_text}' row or line items"
@@ -377,30 +377,30 @@ class StatementParser:
                             )
                             continue
 
-                        print(f"🎯 MATCH FOUND in {orientation} orientation:")
+                        print(f" MATCH FOUND in {orientation} orientation:")
                         print(
                             f"   Row {row_idx}, Label: '{label_text}' → Field: {field}"
                         )
                         print(f"   Full row: {row_list}")
 
-                        # ✅ FIX: Verify field is in our spec and exists in candidate_matches
+                        #  FIX: Verify field is in our spec and exists in candidate_matches
                         if field not in all_fields:
                             logger.warning(
-                                "⚠️ Matched field '%s' not in spec for %s, skipping",
+                                " Matched field '%s' not in spec for %s, skipping",
                                 field,
                                 self.spec.name,
                             )
                             continue
 
-                        # ✅ FIX: Defensive check - ensure field exists in candidate_matches
+                        #  FIX: Defensive check - ensure field exists in candidate_matches
                         if field not in candidate_matches:
                             logger.warning(
-                                "⚠️ Field '%s' not in candidate_matches, initializing",
+                                " Field '%s' not in candidate_matches, initializing",
                                 field,
                             )
                             candidate_matches[field] = []
 
-                        # ✅ STRICT MODE: Determine priority - summary/total rows get higher priority
+                        #  STRICT MODE: Determine priority - summary/total rows get higher priority
                         # BUT: Don't give high priority to "Total" rows with value = 0 (they're incorrect!)
                         is_summary_row = self._is_summary_row(label_text, row_list)
                         priority = 2.0 if is_summary_row else 1.0
@@ -432,7 +432,7 @@ class StatementParser:
                             if not has_nonzero:
                                 priority = 0.5  # Lower than line items (1.0)
                                 print(
-                                    f"⚠️ 'Total' row has value = 0, downgrading priority to {priority}"
+                                    f" 'Total' row has value = 0, downgrading priority to {priority}"
                                 )
                                 logger.debug(
                                     "Downgrading priority for zero-value Total row '%s'",
@@ -448,9 +448,9 @@ class StatementParser:
                                 logger.debug("Extracted risk_level: %s", value)
                             continue
 
-                        # ✅ UPGRADE: Pass label text to help determine tax fields
+                        #  UPGRADE: Pass label text to help determine tax fields
                         print(
-                            f"🔎 Trying to extract value for label '{label_text}' (field: {field}) at col_idx={col_idx}"
+                            f" Trying to extract value for label '{label_text}' (field: {field}) at col_idx={col_idx}"
                         )
                         print(f"   Row contents: {row_list}")
                         value = self._find_value_in_row(
@@ -463,9 +463,9 @@ class StatementParser:
                             candidate_matches[field].append(
                                 (label_text, value, priority)
                             )
-                            print(f"✅ Added candidate: {field} = {value}")
+                            print(f" Added candidate: {field} = {value}")
                             logger.info(
-                                "🔍 Found candidate for %s: %s (from label '%s', priority=%.1f, row %s)",
+                                " Found candidate for %s: %s (from label '%s', priority=%.1f, row %s)",
                                 field,
                                 value,
                                 label_text,
@@ -473,19 +473,19 @@ class StatementParser:
                                 row_idx,
                             )
                         else:
-                            # ✅ UPGRADE: Try searching entire row as fallback for merged cells
+                            #  UPGRADE: Try searching entire row as fallback for merged cells
                             from .number_extractor import extract_numeric_value
 
-                            # ✅ DEBUG: Log entire row contents for troubleshooting
+                            #  DEBUG: Log entire row contents for troubleshooting
                             logger.warning(
-                                "❌ Could not find numeric value for label '%s' (field: %s) in row %s",
+                                " Could not find numeric value for label '%s' (field: %s) in row %s",
                                 label_text,
                                 field,
                                 row_idx,
                             )
-                            print(f"🔍 DEBUG - Full row contents (row {row_idx}):")
+                            print(f" DEBUG - Full row contents (row {row_idx}):")
                             logger.info(
-                                "🔍 DEBUG - Full row contents (row %s):", row_idx
+                                " DEBUG - Full row contents (row %s):", row_idx
                             )
                             for idx, cell in enumerate(row_list):
                                 print(
@@ -506,7 +506,7 @@ class StatementParser:
                                     (label_text, int(fallback_value), priority)
                                 )
                                 logger.info(
-                                    "✅ Found candidate for %s: %s (from entire row search, label '%s', priority=%.1f, row %s)",
+                                    " Found candidate for %s: %s (from entire row search, label '%s', priority=%.1f, row %s)",
                                     field,
                                     int(fallback_value),
                                     label_text,
@@ -515,20 +515,20 @@ class StatementParser:
                                 )
                             else:
                                 logger.error(
-                                    "❌ FAILED to extract value from entire row for '%s' (field: %s)",
+                                    " FAILED to extract value from entire row for '%s' (field: %s)",
                                     label_text,
                                     field,
                                 )
 
-            # ✅ DEBUG: Log how many rows were actually scanned
-            print(f"\n📊 Finished scanning {len(df)} rows")
+            #  DEBUG: Log how many rows were actually scanned
+            print(f"\n Finished scanning {len(df)} rows")
             print(
-                f"📊 Total candidates collected: {sum(len(v) for v in candidate_matches.values())}"
+                f" Total candidates collected: {sum(len(v) for v in candidate_matches.values())}"
             )
 
-            # ✅ STRICT MODE: Second pass - select highest priority match for each field
+            #  STRICT MODE: Second pass - select highest priority match for each field
             # OR sum line items if "Total" row has zero value
-            print("\n🎯 SELECTING BEST CANDIDATES FROM ALL MATCHES:")
+            print("\n SELECTING BEST CANDIDATES FROM ALL MATCHES:")
             print("=" * 80)
 
             # Fields that should be SUMMED if no valid total exists
@@ -547,16 +547,16 @@ class StatementParser:
                 if not candidates:
                     continue
 
-                # ✅ FIX: Only process fields that are in our spec
+                #  FIX: Only process fields that are in our spec
                 if field not in all_fields:
                     continue
 
                 # Sort by priority (highest first), then by value (largest first)
                 candidates.sort(key=lambda x: (-x[2], -abs(x[1])))
 
-                print(f"\n📊 Field: {field} ({len(candidates)} candidate(s))")
+                print(f"\n Field: {field} ({len(candidates)} candidate(s))")
 
-                # ✅ INTELLIGENT SUMMATION: If field is summable and has multiple line items,
+                #  INTELLIGENT SUMMATION: If field is summable and has multiple line items,
                 # ALWAYS sum them (since "Total" rows are unreliable - often = 0)
                 should_sum = False
                 if field in summable_fields and len(candidates) > 1:
@@ -570,7 +570,7 @@ class StatementParser:
                     if valid_total:
                         # Use the valid Total (move it to front of candidates)
                         print(
-                            f"   ✅ Found valid 'Total' row: '{valid_total[0]}' = {valid_total[1]:,}"
+                            f"    Found valid 'Total' row: '{valid_total[0]}' = {valid_total[1]:,}"
                         )
                         # Re-sort to put valid total first (override by setting its priority very high)
                         candidates = [valid_total] + [
@@ -586,7 +586,7 @@ class StatementParser:
                         if len(non_zero_items) > 1:  # Only sum if multiple line items
                             should_sum = True
                             print(
-                                f"   ⚠️ No valid 'Total' found, will sum {len(non_zero_items)} line items"
+                                f"    No valid 'Total' found, will sum {len(non_zero_items)} line items"
                             )
 
                 if should_sum:
@@ -600,17 +600,17 @@ class StatementParser:
                     total_sum = sum(value for _, value, _ in line_items)
                     sheet_extracted[field] = total_sum
 
-                    print(f"   💰 SUMMED {len(line_items)} line items:")
+                    print(f"    SUMMED {len(line_items)} line items:")
                     for idx, (label, value, priority) in enumerate(
                         line_items[:5]
                     ):  # Show first 5
                         print(f"      + '{label}' = {value:,}")
                     if len(line_items) > 5:
                         print(f"      + ... ({len(line_items) - 5} more items)")
-                    print(f"   ✅ TOTAL: {total_sum:,}")
+                    print(f"    TOTAL: {total_sum:,}")
 
                     logger.info(
-                        "✅ STRICT MODE: Summed %s: %s (from %d line items)",
+                        " STRICT MODE: Summed %s: %s (from %d line items)",
                         field,
                         total_sum,
                         len(line_items),
@@ -620,7 +620,7 @@ class StatementParser:
                     for idx, (label, value, priority) in enumerate(
                         candidates[:3]
                     ):  # Show top 3
-                        marker = "✅ SELECTED" if idx == 0 else "   Skipped"
+                        marker = " SELECTED" if idx == 0 else "   Skipped"
                         print(
                             f"   {marker}: '{label}' = {value:,} (priority {priority})"
                         )
@@ -628,7 +628,7 @@ class StatementParser:
                     selected_label, selected_value, selected_priority = candidates[0]
                     sheet_extracted[field] = selected_value
                     logger.info(
-                        "✅ STRICT MODE: Selected %s: %s (from label '%s', priority=%.1f)",
+                        " STRICT MODE: Selected %s: %s (from label '%s', priority=%.1f)",
                         field,
                         selected_value,
                         selected_label,
@@ -644,17 +644,17 @@ class StatementParser:
 
             print("=" * 80)
 
-            # ✅ STRICT MODE: After selecting all fields, validate if we have all required
-            print("📊 DEBUG - All extracted fields:")
+            #  STRICT MODE: After selecting all fields, validate if we have all required
+            print(" DEBUG - All extracted fields:")
             print(json.dumps(sheet_extracted, indent=2, default=str))
-            print("📊 DEBUG - Required fields status:")
+            print(" DEBUG - Required fields status:")
             logger.info(
-                "📊 DEBUG - All extracted fields: %s",
+                " DEBUG - All extracted fields: %s",
                 json.dumps(sheet_extracted, indent=2, default=str),
             )
-            logger.info("📊 DEBUG - Required fields status:")
+            logger.info(" DEBUG - Required fields status:")
 
-            # ✅ FIX: Ensure total_revenue includes other_income
+            #  FIX: Ensure total_revenue includes other_income
             # Check if total_revenue already includes other_income by seeing if they sum correctly
             if sheet_extracted.get("other_income"):
                 total_rev = sheet_extracted.get("total_revenue", 0)
@@ -677,13 +677,13 @@ class StatementParser:
                     if other_percentage < 5:
                         # Very likely total_revenue already includes other_income
                         print(
-                            f"💡 total_revenue ({total_rev:,}) likely includes other_income ({other_inc:,}, {other_percentage:.2f}%)"
+                            f" total_revenue ({total_rev:,}) likely includes other_income ({other_inc:,}, {other_percentage:.2f}%)"
                         )
                         print(f"   No adjustment needed - keeping total_revenue as-is")
                     else:
                         # other_income is significant, might need to add it
                         print(
-                            f"💡 Calculating total_revenue: {total_rev:,} + {other_inc:,} = {expected_with_other:,}"
+                            f" Calculating total_revenue: {total_rev:,} + {other_inc:,} = {expected_with_other:,}"
                         )
                         sheet_extracted["total_revenue"] = expected_with_other
                         logger.info(
@@ -692,17 +692,17 @@ class StatementParser:
                         )
                 else:
                     print(
-                        f"💡 total_revenue = {total_rev:,}, other_income = {other_inc:,} - keeping as-is"
+                        f" total_revenue = {total_rev:,}, other_income = {other_inc:,} - keeping as-is"
                     )
 
-            # ✅ FIX: Apply fallback mappings for missing required fields
+            #  FIX: Apply fallback mappings for missing required fields
             # Map optional fields to required fields if required ones are missing
             fallback_mappings = {
                 "operating_income": "operating_profit",  # Operating income = Operating profit
                 "interest_expense": "finance_costs",  # Interest expense = Finance costs (BUT NOT TAXES!)
             }
 
-            # ✅ FIX: Special handling - don't use interest_expense/finance_costs as fallback for taxes
+            #  FIX: Special handling - don't use interest_expense/finance_costs as fallback for taxes
             # If taxes is missing but we wrongly assigned tax values to interest_expense, move them
             if (
                 sheet_extracted.get("taxes") is None
@@ -714,7 +714,7 @@ class StatementParser:
                 # If interest_expense > 10% of revenue, it's likely actually taxes (mismatched)
                 if revenue > 0 and ie_value > revenue * 0.10:
                     print(
-                        f"⚠️ WARNING: interest_expense ({ie_value}) seems too high (>{ie_value/revenue*100:.1f}% of revenue)"
+                        f" WARNING: interest_expense ({ie_value}) seems too high (>{ie_value/revenue*100:.1f}% of revenue)"
                     )
                     print(
                         f"   This might actually be taxes that were mismatched. Keeping as interest_expense."
@@ -728,37 +728,37 @@ class StatementParser:
                 ):
                     sheet_extracted[required_field] = sheet_extracted[optional_field]
                     print(
-                        f"✅ FALLBACK: Using {optional_field} ({sheet_extracted[optional_field]}) for missing {required_field}"
+                        f" FALLBACK: Using {optional_field} ({sheet_extracted[optional_field]}) for missing {required_field}"
                     )
                     logger.info(
-                        "✅ FALLBACK: Using %s (%s) for missing %s",
+                        " FALLBACK: Using %s (%s) for missing %s",
                         optional_field,
                         sheet_extracted[optional_field],
                         required_field,
                     )
 
             # Re-check required fields after fallback
-            print("📊 DEBUG - Required fields status (after fallback):")
+            print(" DEBUG - Required fields status (after fallback):")
             missing_fields = []
             for req_field in self.spec.required_fields:
                 value = sheet_extracted.get(req_field)
-                status_line = f"  {req_field}: {'✅ FOUND' if value is not None else '❌ MISSING'} ({value if value is not None else 'None'})"
+                status_line = f"  {req_field}: {' FOUND' if value is not None else ' MISSING'} ({value if value is not None else 'None'})"
                 print(status_line)
                 logger.info(
                     "  %s: %s (%s)",
                     req_field,
-                    "✅ FOUND" if value is not None else "❌ MISSING",
+                    " FOUND" if value is not None else " MISSING",
                     value if value is not None else "None",
                 )
                 if value is None:
                     missing_fields.append(req_field)
 
             if missing_fields:
-                print(f"\n❌ MISSING REQUIRED FIELDS: {', '.join(missing_fields)}")
+                print(f"\n MISSING REQUIRED FIELDS: {', '.join(missing_fields)}")
                 print(f"   These fields had NO candidates collected during scanning.")
                 print(f"   Check if labels for these fields exist in the statement.")
 
-            # ✅ FIX: Normalize negative values to positive for expense fields
+            #  FIX: Normalize negative values to positive for expense fields
             # In some statements, expenses are stored as negative numbers
             # We need to convert them to positive for our calculations
             expense_fields = [
@@ -775,7 +775,7 @@ class StatementParser:
                 "total_expenses",
             ]
 
-            print("\n🔄 Normalizing negative expense values to positive:")
+            print("\n Normalizing negative expense values to positive:")
             for field in expense_fields:
                 if field in sheet_extracted and sheet_extracted[field] is not None:
                     value = sheet_extracted[field]
@@ -786,7 +786,7 @@ class StatementParser:
                             f"   {field}: {value:,} → {positive_value:,} (converted negative to positive)"
                         )
                         logger.info(
-                            "✅ Normalized %s: %s → %s (converted negative to positive)",
+                            " Normalized %s: %s → %s (converted negative to positive)",
                             field,
                             value,
                             positive_value,
@@ -802,7 +802,7 @@ class StatementParser:
                     if k in self.spec.required_fields
                 }
                 logger.info(
-                    "📊 STRICT MODE - Extracted values before validation: %s",
+                    " STRICT MODE - Extracted values before validation: %s",
                     json.dumps(validated_payload, indent=2),
                 )
 
@@ -811,7 +811,7 @@ class StatementParser:
                     for validator in self.spec.validators:
                         validator(validated_payload)
                     logger.info(
-                        "✅ Successfully extracted and validated %s from sheet '%s'",
+                        " Successfully extracted and validated %s from sheet '%s'",
                         self.spec.name,
                         sheet_name,
                     )
@@ -819,19 +819,19 @@ class StatementParser:
                 except Exception as e:
                     validation_error = str(e)
                     logger.warning(
-                        "⚠️ STRICT MODE: Validation failed for %s in sheet '%s': %s",
+                        " STRICT MODE: Validation failed for %s in sheet '%s': %s",
                         self.spec.name,
                         sheet_name,
                         e,
                     )
                     logger.warning(
-                        "📋 STRICT MODE: Extracted values that failed validation (using as-is): %s",
+                        " STRICT MODE: Extracted values that failed validation (using as-is): %s",
                         json.dumps(sheet_extracted, indent=2, default=str),
                     )
 
-                    # ✅ STRICT MODE: Return data even if validation fails - use exact values from document
+                    #  STRICT MODE: Return data even if validation fails - use exact values from document
                     logger.info(
-                        "⚠️ STRICT MODE: Returning extracted data despite validation failure - using exact values from document"
+                        " STRICT MODE: Returning extracted data despite validation failure - using exact values from document"
                     )
                     # Add validation_warning to the extracted data
                     sheet_extracted["_validation_warning"] = validation_error
@@ -845,7 +845,7 @@ class StatementParser:
         """
         Find a value in the same row as the label, using robust number extraction.
 
-        ✅ UPGRADE: Uses universal number extractor that handles:
+         UPGRADE: Uses universal number extractor that handles:
         - Unicode spaces, commas, currency symbols
         - Accounting negatives: (10000)
         - OCR noise
@@ -873,7 +873,7 @@ class StatementParser:
         """
         Convert a cell value to a label string if possible.
 
-        ✅ FIX: Better detection of labels vs numbers, handles edge cases.
+         FIX: Better detection of labels vs numbers, handles edge cases.
         """
         if value is None:
             return None
@@ -885,7 +885,7 @@ class StatementParser:
         if not text or text.lower() == "nan" or text.lower() == "":
             return None
 
-        # ✅ FIX: Skip if it's clearly a number (with better detection)
+        #  FIX: Skip if it's clearly a number (with better detection)
         # Check if it's a pure number (digits, dots, commas, minus signs, parentheses)
         # But allow labels that contain numbers (e.g., "Q1 2023", "Year 2024")
         numeric_chars = (
@@ -917,7 +917,7 @@ class StatementParser:
             ):  # At least 3 chars and >80% digits
                 return None
 
-        # ✅ FIX: Skip very short strings that are likely numbers or codes
+        #  FIX: Skip very short strings that are likely numbers or codes
         if len(text) <= 2 and (text.isdigit() or text.replace("-", "").isdigit()):
             return None
 
@@ -1023,19 +1023,19 @@ class IntelligentStatementExtractor:
             raise ExtractorError(f"File does not exist: {path}")
 
         print("=" * 80)
-        print("🚀 STARTING INTELLIGENT EXTRACTION")
+        print(" STARTING INTELLIGENT EXTRACTION")
         print("=" * 80)
-        print(f"📁 File: {path}")
-        print(f"📋 Specs to try: {[spec.name for spec in self.specs]}")
+        print(f" File: {path}")
+        print(f" Specs to try: {[spec.name for spec in self.specs]}")
         logger.info("=" * 80)
-        logger.info("🚀 STARTING INTELLIGENT EXTRACTION")
+        logger.info(" STARTING INTELLIGENT EXTRACTION")
         logger.info("=" * 80)
-        logger.info(f"📁 File: {path}")
-        logger.info(f"📋 Specs to try: {[spec.name for spec in self.specs]}")
+        logger.info(f" File: {path}")
+        logger.info(f" Specs to try: {[spec.name for spec in self.specs]}")
 
         tables = load_tables(path)
-        print(f"📊 Loaded {len(tables)} sheet(s) from file:")
-        logger.info(f"📊 Loaded {len(tables)} sheet(s) from file:")
+        print(f" Loaded {len(tables)} sheet(s) from file:")
+        logger.info(f" Loaded {len(tables)} sheet(s) from file:")
         for sheet_name, df in tables.items():
             print(
                 f"   - Sheet '{sheet_name}': {len(df)} rows x {len(df.columns)} columns"
@@ -1053,9 +1053,9 @@ class IntelligentStatementExtractor:
         statements: Dict[str, Dict[str, Any]] = {}
 
         for spec in self.specs:
-            print(f"🔍 Attempting to extract: {spec.name}")
+            print(f" Attempting to extract: {spec.name}")
             print(f"   Required fields: {spec.required_fields}")
-            logger.info(f"🔍 Attempting to extract: {spec.name}")
+            logger.info(f" Attempting to extract: {spec.name}")
             logger.info(f"   Required fields: {spec.required_fields}")
             parser = StatementParser(spec)
             try:
@@ -1075,7 +1075,7 @@ class IntelligentStatementExtractor:
                 continue
 
             if data:
-                logger.info("✅ Successfully extracted %s from %s", spec.name, path)
+                logger.info(" Successfully extracted %s from %s", spec.name, path)
                 logger.info(f"   Extracted data keys: {list(data.keys())}")
                 # Remove internal validation warning field before returning
                 clean_data = {k: v for k, v in data.items() if not k.startswith("_")}
@@ -1083,28 +1083,28 @@ class IntelligentStatementExtractor:
 
                 if "_validation_warning" in data:
                     logger.warning(
-                        "⚠️ %s extracted with validation warning: %s",
+                        " %s extracted with validation warning: %s",
                         spec.name,
                         data.get("_validation_warning"),
                     )
                 else:
-                    logger.info("✅ Successfully extracted %s", spec.name)
+                    logger.info(" Successfully extracted %s", spec.name)
 
                 logger.info(
-                    "📄 Final JSON for %s:\n%s",
+                    " Final JSON for %s:\n%s",
                     spec.name,
                     json.dumps(clean_data, indent=2),
                 )
                 break  # Found the first matching statement type
             else:
                 logger.warning(
-                    f"❌ Failed to extract {spec.name} - parser returned None"
+                    f" Failed to extract {spec.name} - parser returned None"
                 )
 
         if not statements:
             logger.error("=" * 80)
             logger.error(
-                "❌ EXTRACTION FAILED: No recognizable statements found in file: %s",
+                " EXTRACTION FAILED: No recognizable statements found in file: %s",
                 path,
             )
             logger.error("=" * 80)

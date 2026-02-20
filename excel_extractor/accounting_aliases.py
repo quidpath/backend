@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-# ✅ COMPREHENSIVE ACCOUNTING ALIAS DICTIONARY
+# COMPREHENSIVE ACCOUNTING ALIAS DICTIONARY
 # Each canonical field maps to a list of 20-40+ synonyms covering all variations
 
 ACCOUNTING_ALIASES: Dict[str, List[str]] = {
@@ -27,8 +27,8 @@ ACCOUNTING_ALIASES: Dict[str, List[str]] = {
         "turnover",
         "total turnover",
         "net turnover",
-        # ✅ REMOVED "operating income" (ambiguous - could be revenue OR profit)
-        # ✅ REMOVED "income" alone (too generic)
+        # REMOVED "operating income" (ambiguous - could be revenue OR profit)
+        # REMOVED "income" alone (too generic)
         "total income",
         "sales revenue",
         "revenue from sales",
@@ -129,7 +129,7 @@ ACCOUNTING_ALIASES: Dict[str, List[str]] = {
         "parts & materials",
         "purchases - parts & materials",
         "purchases parts materials",
-        # ✅ FIX: Add hire/rental of tools and equipment
+        #  FIX: Add hire/rental of tools and equipment
         "hire of small tools",
         "hire small tools equipment",
         "hire of tools",
@@ -238,7 +238,7 @@ ACCOUNTING_ALIASES: Dict[str, List[str]] = {
         "administrative expenses",
         "admin expenses",
         "total admin",
-        # ✅ FIX: Add commonly missed expense categories
+        #  FIX: Add commonly missed expense categories
         "travel expenses",
         "travel",
         "travelling expenses",
@@ -434,7 +434,7 @@ ACCOUNTING_ALIASES: Dict[str, List[str]] = {
         "net income after tax",
         "net profit for the period",
         "profit for the year",
-        "profit for the period",  # ✅ ADD: Common in statements
+        "profit for the period",  #  ADD: Common in statements
         # With colons
         "net income:",
         "net profit:",
@@ -461,7 +461,7 @@ ACCOUNTING_ALIASES: Dict[str, List[str]] = {
         "net in come",
         "net pr0fit",
         "profit aftcr tax",
-        # ✅ DO NOT ADD "profit before tax" - it belongs to EBIT/pre-tax profit
+        #  DO NOT ADD "profit before tax" - it belongs to EBIT/pre-tax profit
     ],
     "depreciation": [
         # Standard terms
@@ -521,7 +521,7 @@ ACCOUNTING_ALIASES: Dict[str, List[str]] = {
         # Long forms
         "earnings before interest and taxation",
         "operating profit before interest and tax",
-        "profit before tax",  # ✅ ADD: Common pre-tax profit label
+        "profit before tax",  #  ADD: Common pre-tax profit label
         "profit before income tax",
         "pbt",
         "p.b.t.",
@@ -741,7 +741,7 @@ def _normalize_for_matching(text: str) -> str:
     return text.strip()
 
 
-# ✅ FIELD PRIORITY (for tie-breaking)
+#  FIELD PRIORITY (for tie-breaking)
 # Fields that should take precedence when multiple matches occur
 FIELD_PRIORITY = {
     "total_revenue": 10,
@@ -749,8 +749,8 @@ FIELD_PRIORITY = {
     "gross_profit": 8,
     "operating_expenses": 7,
     "operating_income": 6,
-    "taxes": 6,  # ✅ FIX: Boost taxes priority to match interest_expense (prevent "Tax Expense" matching to interest)
-    "net_income": 6,  # ✅ FIX: Boost net_income to match taxes (prevent "Net Profit/Loss" matching to taxes)
+    "taxes": 6,  #  FIX: Boost taxes priority to match interest_expense (prevent "Tax Expense" matching to interest)
+    "net_income": 6,  #  FIX: Boost net_income to match taxes (prevent "Net Profit/Loss" matching to taxes)
     "interest_expense": 5,
     "ebit": 6,  # Same as operating_income
     "ebitda": 5,

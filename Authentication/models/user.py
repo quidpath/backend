@@ -38,7 +38,7 @@ class CustomUser(BaseModel, AbstractBaseUser, PermissionsMixin):
     gender = models.CharField(max_length=10, blank=True, null=True)
     last_login = models.DateTimeField(blank=True, null=True)
 
-    # ✅ OTP-related fields
+    #  OTP-related fields
     otp_code = models.CharField(max_length=6, blank=True, null=True)
     last_otp_sent_at = models.DateTimeField(blank=True, null=True)
 
@@ -59,7 +59,7 @@ class CustomUser(BaseModel, AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
-    # ✅ OTP Generation
+    #  OTP Generation
     def generate_otp(self):
         """Generate a new 6-digit OTP and update timestamp"""
         code = f"{random.randint(100000, 999999)}"
@@ -68,7 +68,7 @@ class CustomUser(BaseModel, AbstractBaseUser, PermissionsMixin):
         self.save(update_fields=["otp_code", "last_otp_sent_at"])
         return code
 
-    # ✅ OTP Validation
+    #  OTP Validation
     def otp_is_valid(self, otp):
         """Check if OTP matches and is <24h old"""
         if not self.otp_code or not self.last_otp_sent_at:

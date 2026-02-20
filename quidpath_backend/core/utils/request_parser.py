@@ -58,7 +58,7 @@ def get_clean_data(request):
         "user_agent": request.META.get("HTTP_USER_AGENT"),
         "origin": request.META.get("HTTP_ORIGIN"),
         "user": user,
-        "corporate_user": corporate_user,  # ✅ Add this
+        "corporate_user": corporate_user,
         "role": getattr(corporate_user, "role", None),
         "organisation_id": getattr(corporate_user, "corporate_id", None),
     }
@@ -88,7 +88,7 @@ def resolve_user_from_token(request):
 
         user = CustomUser.objects.filter(id=user_id).first()
 
-        # ✅ Fix: Correct way to get CorporateUser if it inherits from CustomUser
+        # Fix: Correct way to get CorporateUser if it inherits from CustomUser
         corporate_user = (
             CorporateUser.objects.filter(pk=user.pk).first() if user else None
         )

@@ -23,7 +23,7 @@ from .accounting_aliases import (ACCOUNTING_ALIASES, FIELD_PRIORITY,
 
 logger = logging.getLogger(__name__)
 
-# ✅ BLACKLIST: Generic labels that should never match any field
+#  BLACKLIST: Generic labels that should never match any field
 # These are common column headers or generic terms that appear in financial statements
 GENERIC_LABEL_BLACKLIST = {
     # Document structure
@@ -87,7 +87,7 @@ GENERIC_LABEL_BLACKLIST = {
     "for the period ended",
     "as at",
     "as of",
-    # ✅ ADD: Intermediate calculation labels (not final totals)
+    #  ADD: Intermediate calculation labels (not final totals)
     "operating income before opex",
     "operating income before expenses",
     "income before opex",
@@ -229,11 +229,11 @@ class AdvancedLabelMatcher:
         if not normalized_label:
             return None
 
-        # ✅ FIX: Check blacklist first - skip generic labels
+        #  FIX: Check blacklist first - skip generic labels
         # Check exact match in blacklist
         if normalized_label in GENERIC_LABEL_BLACKLIST:
             logger.debug(
-                "🚫 Label '%s' is in blacklist (generic term), skipping", label
+                " Label '%s' is in blacklist (generic term), skipping", label
             )
             return None
 
@@ -243,30 +243,30 @@ class AdvancedLabelMatcher:
             # If the label is ONLY generic words (no financial terms), skip it
             # But allow labels like "Total Revenue" where "Total" is generic but "Revenue" is financial
             if len(label_words) == 1:  # Single generic word
-                logger.debug("🚫 Label '%s' is a single generic word, skipping", label)
+                logger.debug(" Label '%s' is a single generic word, skipping", label)
                 return None
             # For multi-word, check if ALL words are generic
             if label_words.issubset(GENERIC_LABEL_BLACKLIST):
                 logger.debug(
-                    "🚫 Label '%s' contains only generic words, skipping", label
+                    " Label '%s' contains only generic words, skipping", label
                 )
                 return None
 
-        # ✅ PRIORITY 1: Exact match (case-insensitive, normalized)
+        #  PRIORITY 1: Exact match (case-insensitive, normalized)
         if normalized_label in self.exact_map:
             field = self.exact_map[normalized_label]
-            logger.debug("✅ Exact match: '%s' -> %s", label, field)
+            logger.debug(" Exact match: '%s' -> %s", label, field)
             return field
 
-        # ✅ PRIORITY 2: Alias match (check if normalized label matches any alias)
+        #  PRIORITY 2: Alias match (check if normalized label matches any alias)
         if normalized_label in self.alias_map:
             field, original_alias = self.alias_map[normalized_label]
             logger.debug(
-                "✅ Alias match: '%s' -> %s (via '%s')", label, field, original_alias
+                " Alias match: '%s' -> %s (via '%s')", label, field, original_alias
             )
             return field
 
-        # ✅ PRIORITY 2.5: Keyword matching (flexible matching)
+        #  PRIORITY 2.5: Keyword matching (flexible matching)
         # Check if label contains key terms from any field's aliases
         label_words = set(normalized_label.split())
         for field, alias_list in self.aliases.items():
@@ -288,19 +288,19 @@ class AdvancedLabelMatcher:
                     )
                     if overlap_ratio >= 0.5:  # At least 50% of significant words match
                         logger.debug(
-                            "✅ Keyword match: '%s' -> %s (via keywords: %s)",
+                            " Keyword match: '%s' -> %s (via keywords: %s)",
                             label,
                             field,
                             significant_alias_words,
                         )
                         return field
 
-        # ✅ PRIORITY 3: Fuzzy matching
+        #  PRIORITY 3: Fuzzy matching
         fuzzy_match = self._fuzzy_match(normalized_label)
         if fuzzy_match:
             field, score, match_type = fuzzy_match
             logger.debug(
-                "✅ Fuzzy match: '%s' -> %s (score=%.1f, type=%s)",
+                " Fuzzy match: '%s' -> %s (score=%.1f, type=%s)",
                 label,
                 field,
                 score,
@@ -310,7 +310,7 @@ class AdvancedLabelMatcher:
 
         # No match found
         logger.debug(
-            "❌ No match found for label: '%s' (normalized: '%s')",
+            " No match found for label: '%s' (normalized: '%s')",
             label,
             normalized_label,
         )

@@ -22,7 +22,7 @@ COPY requirements/ /app/requirements/
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements/dev.txt
 
-# ✅ Install OCR dependencies
+# Install OCR dependencies
 RUN pip install --no-cache-dir paddlepaddle paddleocr
 
 # Copy project

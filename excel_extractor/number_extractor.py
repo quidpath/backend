@@ -37,7 +37,7 @@ def extract_numeric_value(
     Returns:
         Extracted numeric value as float, or None if no valid number found
     """
-    # ✅ FIX: Handle direct numeric types (int, float) from Excel/pandas
+    #  FIX: Handle direct numeric types (int, float) from Excel/pandas
     if isinstance(row, (int, float)):
         return float(row)
 
@@ -50,7 +50,7 @@ def extract_numeric_value(
     # Extract all numbers from all cells
     all_numbers = []
     for cell in cells:
-        # ✅ FIX: Handle direct numeric values from Excel
+        #  FIX: Handle direct numeric values from Excel
         if isinstance(cell, (int, float)):
             all_numbers.append(float(cell))
         else:
@@ -132,7 +132,7 @@ def _extract_numbers_from_text(text: str) -> List[float]:
     # Remove accounting format numbers from text to avoid double extraction
     text = re.sub(accounting_pattern, " ", text)
 
-    # ✅ FIX: Extract negative numbers FIRST to avoid double extraction
+    #  FIX: Extract negative numbers FIRST to avoid double extraction
     # Pattern 2A: Negative numbers with minus sign
     negative_pattern = r"-[\d\s,]+\.?\d*"
     negative_matches = re.finditer(negative_pattern, text)

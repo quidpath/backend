@@ -26,12 +26,12 @@ def normalize_label_text(label: str) -> str:
     """
     Normalize label text for fuzzy matching.
 
-    ✅ FIX: Handles unicode hyphens, special characters, and whitespace.
+     FIX: Handles unicode hyphens, special characters, and whitespace.
     """
     if not label or not isinstance(label, str):
         return ""
 
-    # ✅ FIX: Replace unicode hyphens and dashes with regular hyphens
+    #  FIX: Replace unicode hyphens and dashes with regular hyphens
     # Handle: "–" (en-dash), "—" (em-dash), "−" (minus sign), etc.
     label = label.replace("–", "-").replace("—", "-").replace("−", "-")
     label = label.replace("&", "and").replace("+", "and")
@@ -43,7 +43,7 @@ def normalize_label_text(label: str) -> str:
 
     lowered = ascii_label.lower()
 
-    # ✅ FIX: Preserve hyphens and ampersands, but replace other special chars with spaces
+    #  FIX: Preserve hyphens and ampersands, but replace other special chars with spaces
     # Keep: letters, numbers, spaces, hyphens
     cleaned = re.sub(r"[^a-z0-9\s\-]", " ", lowered)
 
@@ -137,13 +137,13 @@ class LabelMatcher:
     """
     Fuzzy label matcher for financial statement fields.
 
-    ✅ FIX: Improved fuzzy matching with better threshold handling and partial matches.
+     FIX: Improved fuzzy matching with better threshold handling and partial matches.
     """
 
     def __init__(
         self, labels: Mapping[str, Sequence[str]], threshold: float = 0.75
     ) -> None:
-        # ✅ FIX: Lower threshold to 0.75 to catch more variations
+        #  FIX: Lower threshold to 0.75 to catch more variations
         self.threshold = threshold
         self.labels = {
             field: [normalize_label_text(label) for label in variations]
@@ -154,7 +154,7 @@ class LabelMatcher:
         """
         Match a label to a field using fuzzy matching.
 
-        ✅ FIX: Improved matching with:
+         FIX: Improved matching with:
         - Exact match first (fastest)
         - Partial word matching (e.g., "sales revenue" matches "revenue")
         - Fuzzy string matching with SequenceMatcher
@@ -170,11 +170,11 @@ class LabelMatcher:
 
         for field, variations in self.labels.items():
             for variation in variations:
-                # ✅ FIX: Exact match (highest priority)
+                #  FIX: Exact match (highest priority)
                 if normalized == variation:
                     return field
 
-                # ✅ FIX: Check if all words in variation are in label (partial match)
+                #  FIX: Check if all words in variation are in label (partial match)
                 variation_words = set(variation.split())
                 if variation_words and label_words:
                     # If variation words are subset of label words, it's a good match
@@ -191,10 +191,10 @@ class LabelMatcher:
                                 best_match = LabelMatch(field=field, score=score)
                             continue
 
-                # ✅ FIX: Fuzzy string matching (fallback)
+                #  FIX: Fuzzy string matching (fallback)
                 score = SequenceMatcher(None, normalized, variation).ratio()
 
-                # ✅ FIX: Boost score if key words match
+                #  FIX: Boost score if key words match
                 if any(
                     word in normalized for word in variation.split() if len(word) > 3
                 ):
@@ -203,10 +203,10 @@ class LabelMatcher:
                 if best_match is None or score > best_match.score:
                     best_match = LabelMatch(field=field, score=score)
 
-        # ✅ FIX: Return match if score meets threshold
+        #  FIX: Return match if score meets threshold
         if best_match and best_match.score >= self.threshold:
             logger.debug(
-                "✅ Matched label '%s' to field '%s' with score %.2f",
+                " Matched label '%s' to field '%s' with score %.2f",
                 label,
                 best_match.field,
                 best_match.score,

@@ -69,19 +69,19 @@ class TransactionLogBase:
         """
         try:
             with transaction.atomic():
-                # ✅ 1. Get or create State
+                #  1. Get or create State
                 state = self._get_state(state_name)
 
-                # ✅ 2. Get or create TransactionType
+                #  2. Get or create TransactionType
                 txn_type = self._get_transaction_type(transaction_type)
 
-                # ✅ 3. Normalize user (can be dict or model)
+                #  3. Normalize user (can be dict or model)
                 user_instance = self._normalize_user(user)
 
-                # ✅ 4. Extract request IP if present
+                #  4. Extract request IP if present
                 source_ip = self._get_request_ip(request)
 
-                # ✅ 5. Compose extra payload
+                #  5. Compose extra payload
                 details_payload = extra or {}
                 if request:
                     details_payload.update(
@@ -95,7 +95,7 @@ class TransactionLogBase:
                         }
                     )
 
-                # ✅ 6. Create Transaction
+                #  6. Create Transaction
                 txn_data = {
                     "reference": str(uuid.uuid4()),
                     "transaction_type": txn_type,
@@ -115,14 +115,14 @@ class TransactionLogBase:
                 transaction_obj = Transaction.objects.create(**txn_data)
 
                 logger.info(
-                    f"[TransactionLog] ✅ {transaction_type} | user={user_instance} | state={state_name}"
+                    f"[TransactionLog] {transaction_type} | user={user_instance} | state={state_name}"
                 )
 
                 return transaction_obj
 
         except Exception as e:
             logger.exception(
-                f"[TransactionLog] ❌ Failed logging {transaction_type}: {e}"
+                f"[TransactionLog] Failed logging {transaction_type}: {e}"
             )
             return None
 

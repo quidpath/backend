@@ -117,7 +117,7 @@ INCOME_STATEMENT_SPEC = StatementSpec(
             "revenue sales",
             "total income",
             "operating revenue",
-            "sales income",  # ✅ FIX: More variations
+            "sales income",  #  FIX: More variations
         ],
         "cogs": [
             "cogs",
@@ -132,7 +132,7 @@ INCOME_STATEMENT_SPEC = StatementSpec(
             "total cogs",
             "cost goods",
             "direct labor costs",
-            "purchases",  # ✅ FIX: More variations
+            "purchases",  #  FIX: More variations
             "materials",
             "parts materials",
             "labor costs",  # Common variations
@@ -156,7 +156,7 @@ INCOME_STATEMENT_SPEC = StatementSpec(
             "operating expense total",
             "total opex",
             "operating overhead",
-            "total operating costs",  # ✅ FIX: More variations for totals
+            "total operating costs",  #  FIX: More variations for totals
         ],
         "operating_income": [
             "operating income",
