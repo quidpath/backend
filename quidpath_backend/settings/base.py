@@ -101,44 +101,30 @@ if os.environ.get("USE_MEMORY_CHANNEL_LAYER", "false").lower() == "true":
         }
     }
 
-# Database (PostgreSQL via DATABASE_URL)
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+# Database Configuration - PostgreSQL via DATABASE_URL
+# Security Best Practice: Use DATABASE_URL instead of individual credentials
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-if DATABASE_URL:
-    # Use DATABASE_URL if provided
-    DATABASES = {
-        "default": dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-        )
-    }
-else:
-    # Fallback to individual environment variables
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.environ.get("DB_NAME", "quidpath_db"),
-            "USER": os.environ.get("DB_USER", "quidpath_user"),
-            "PASSWORD": os.environ.get("DB_PASSWORD", ""),
-            "HOST": os.environ.get("DB_HOST", "db"),
-            "PORT": os.environ.get("DB_PORT", "5432"),
-        }
-    }
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required. "
+        "Format: postgresql://user:password@host:port/dbname"
+    )
 
-# Validate database configuration
-if not DATABASES.get("default") or not DATABASES["default"].get("ENGINE"):
-    import sys
-    print("ERROR: Database configuration is invalid!", file=sys.stderr)
-    print(f"DATABASE_URL: {DATABASE_URL}", file=sys.stderr)
-    print(f"DB_NAME: {os.environ.get('DB_NAME')}", file=sys.stderr)
-    print(f"DB_USER: {os.environ.get('DB_USER')}", file=sys.stderr)
-    print(f"DB_HOST: {os.environ.get('DB_HOST')}", file=sys.stderr)
-    print(f"DATABASES config: {DATABASES}", file=sys.stderr)
-    sys.exit(1)
+# Parse DATABASE_URL with connection pooling
+DATABASES = {
+    "default": dj_database_url.config(
+        default=DATABASE_URL,
+        conn_max_age=600,  # Connection pooling (10 minutes)
+        conn_health_checks=True,  # Enable connection health checks
+        ssl_require=os.environ.get("DB_SSL_REQUIRE", "false").lower() == "true",
+    )
+}
 
-# Optional: enforce SSL for production
-if os.environ.get("REQUIRE_DB_SSL", "false").lower() == "true":
-    DATABASES["default"]["OPTIONS"] = {"sslmode": "require"}
+# Production SSL enforcement
+if not DEBUG and os.environ.get("DB_SSL_REQUIRE", "false").lower() == "true":
+    DATABASES["default"].setdefault("OPTIONS", {})
+    DATABASES["default"]["OPTIONS"]["sslmode"] = "require"
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

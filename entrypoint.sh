@@ -3,13 +3,26 @@ set -e
 
 echo "Starting Django Application"
 
+# Validate DATABASE_URL is set
+if [ -z "$DATABASE_URL" ]; then
+    echo "ERROR: DATABASE_URL environment variable is not set!"
+    echo "Format: postgresql://user:password@host:port/database"
+    exit 1
+fi
+
+# Extract database connection details from DATABASE_URL for pg_isready
+# Format: postgresql://user:password@host:port/database
+DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+DB_USER=$(echo "$DATABASE_URL" | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
+
 # Wait for database to be ready
-echo "Waiting for database..."
+echo "Waiting for database at ${DB_HOST}:${DB_PORT}..."
 MAX_RETRIES=30
 RETRY_COUNT=0
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if pg_isready -h "${DB_HOST:-db}" -p "${DB_PORT:-5432}" -U "${DB_USER:-quidpath_user}" > /dev/null 2>&1; then
+    if pg_isready -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" > /dev/null 2>&1; then
         echo "Database is ready!"
         break
     fi

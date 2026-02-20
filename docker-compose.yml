@@ -48,28 +48,21 @@ services:
     env_file:
       - .env
     environment:
-      # Explicitly expose these from .env to ensure Django sees them
+      # Security Best Practice: Only pass DATABASE_URL
       DATABASE_URL: ${DATABASE_URL}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
+      # Redis configuration
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       USE_MEMORY_CHANNEL_LAYER: ${USE_MEMORY_CHANNEL_LAYER}
     volumes:
       - /mnt/quidpath-data/media:/app/media
       - /mnt/quidpath-data/staticfiles:/app/staticfiles
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8004/api/auth/health/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -f http://localhost:8004/api/auth/health/ || exit 1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
     networks:
       - quidpath_network
 

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 print("Using Production Settings")
 
 # ====================================
-# 🔒 SECURITY SETTINGS
+# SECURITY SETTINGS
 # ====================================
 DEBUG = False
 
@@ -20,7 +20,7 @@ ALLOWED_HOSTS = os.environ.get(
 ).split(",")
 
 # ====================================
-# 🧩 CSRF & CORS CONFIGURATION
+# CSRF & CORS CONFIGURATION
 # ====================================
 # CSRF trusted origins must include scheme (Django 4+). Allow override via env.
 _env_csrf = os.environ.get("CSRF_TRUSTED_ORIGINS", "").strip()
@@ -64,7 +64,7 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 ]
 
 # ====================================
-# ⚙️ STATIC & MEDIA FILES
+#  STATIC & MEDIA FILES
 # ====================================
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -74,18 +74,30 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 # ====================================
-# 🧱 SECURITY MIDDLEWARE HEADERS
+# SECURITY MIDDLEWARE HEADERS
 # ====================================
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_HTTPONLY = True
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+
+# HSTS (HTTP Strict Transport Security)
+# Uncomment after confirming HTTPS works properly
+# SECURE_HSTS_SECONDS = 31536000  # 1 year
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# SECURE_HSTS_PRELOAD = True
+
+# Redirect HTTP to HTTPS (enable after HTTPS is configured)
+# SECURE_SSL_REDIRECT = True
 
 # ====================================
-# 📜 LOGGING CONFIGURATION
+# 📜LOGGING CONFIGURATION
 # ====================================
 LOGGING = {
     "version": 1,
@@ -100,18 +112,18 @@ LOGGING = {
 }
 
 # ====================================
-# 💾 DATABASE (Handled in base.py)
+#  DATABASE (Handled in base.py)
 # ====================================
 # Using dj_database_url from base.py
 # No need to redefine DATABASES here
 
 # ====================================
-# 📧 EMAIL SETTINGS (Inherited from base)
+# EMAIL SETTINGS (Inherited from base)
 # ====================================
 # SMTP configs come from base.py (.env provides credentials)
 
 # ====================================
-# ✅ NOTES
+# NOTES
 # ====================================
 # - Ensure your Amplify frontend uses:
 #     NEXT_PUBLIC_API_BASE_URL=https://api.quidpath.com/
@@ -120,15 +132,15 @@ LOGGING = {
 #     docker compose restart backend
 #
 # ====================================
-# 🔐 NGINX CONFIGURATION REQUIREMENT
+# NGINX CONFIGURATION REQUIREMENT
 # ====================================
-# ⚠️ CRITICAL: Django admin CSRF requires the Referer header.
+# CRITICAL: Django admin CSRF requires the Referer header.
 #
 # Your Nginx config MUST use:
 #   add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 #
 # NOT:
-#   add_header Referrer-Policy "no-referrer" always;  ❌ (blocks CSRF)
+#   add_header Referrer-Policy "no-referrer" always;  (blocks CSRF)
 #
 # Why: Django's CSRF protection validates the Referer header to confirm same-origin
 #      requests. If Nginx sends "no-referrer", the browser omits Referer entirely,
