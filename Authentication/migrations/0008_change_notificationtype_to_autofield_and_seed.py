@@ -150,13 +150,7 @@ class Migration(migrations.Migration):
             name='id',
         ),
         
-        # Step 2: Change Notification.notification_type_id to text temporarily
-        migrations.RunSQL(
-            sql='ALTER TABLE "Authentication_notification" ALTER COLUMN "notification_type_id" TYPE TEXT',
-            reverse_sql='ALTER TABLE "Authentication_notification" ALTER COLUMN "notification_type_id" TYPE VARCHAR(50)'
-        ),
-        
-        # Step 3: Add new AutoField primary key to NotificationType
+        # Step 2: Add new AutoField primary key to NotificationType
         migrations.AddField(
             model_name='notificationtype',
             name='id',
@@ -164,13 +158,19 @@ class Migration(migrations.Migration):
             preserve_default=False,
         ),
         
+        # Step 3: Change Notification.notification_type_id to text temporarily (BEFORE Python function)
+        migrations.RunSQL(
+            sql='ALTER TABLE "Authentication_notification" ALTER COLUMN "notification_type_id" TYPE TEXT',
+            reverse_sql='ALTER TABLE "Authentication_notification" ALTER COLUMN "notification_type_id" TYPE VARCHAR(50)'
+        ),
+        
         # Step 4: Migrate data to ensure USSD=1, EMAIL=2
         migrations.RunPython(migrate_data_forward, migrate_data_backward),
         
-        # Step 5: Change Notification.notification_type_id to integer
+        # Step 5: Change Notification.notification_type_id to integer (AFTER Python function)
         migrations.RunSQL(
             sql='ALTER TABLE "Authentication_notification" ALTER COLUMN "notification_type_id" TYPE INTEGER USING "notification_type_id"::integer',
-            reverse_sql='ALTER TABLE "Authentication_notification" ALTER COLUMN "notification_type_id" TYPE VARCHAR(50)'
+            reverse_sql='ALTER TABLE "Authentication_notification" ALTER COLUMN "notification_type_id" TYPE TEXT'
         ),
         
         # Step 6: Recreate foreign key constraint
