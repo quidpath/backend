@@ -82,13 +82,13 @@ def migrate_data_forward(apps, schema_editor):
                 id_mapping[old_id] = new_id
                 new_id += 1
         
-        # Step 6: Update notification foreign keys
+        # Step 6: Update notification foreign keys (column is TEXT at this point)
         for old_id, new_id in id_mapping.items():
             cursor.execute("""
                 UPDATE "Authentication_notification"
                 SET notification_type_id = %s
                 WHERE notification_type_id = %s
-            """, [str(new_id), old_id])
+            """, [str(new_id), str(old_id)])  # Both must be strings since column is TEXT
         
         # Step 7: Reset sequence
         cursor.execute("""
