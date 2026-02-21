@@ -8,32 +8,16 @@ from asgiref.sync import async_to_sync
 class NotificationTypeService:
     """Manage NotificationType model."""
 
-    NOTIFICATION_TYPES = {
-        "USSD": 1,
-        "Email": 2,
-    }
-
     def get_or_create_type(self, name: str) -> NotificationType:
-        type_id = self.NOTIFICATION_TYPES.get(name)
-
-        if type_id:
-            obj, created = NotificationType.objects.get_or_create(
-                name=name,
-                defaults={
-                    "id": type_id,
-                    "description": f"{name} notification"
-                }
-            )
-        else:
-            obj, created = NotificationType.objects.get_or_create(
-                name=name,
-                defaults={"description": f"{name} notification"}
-            )
-
+        """Get or create a NotificationType by name."""
+        obj, created = NotificationType.objects.get_or_create(
+            name=name,
+            defaults={"description": f"{name} notification"}
+        )
         return obj
 
     def get_email_type(self) -> NotificationType:
-        return self.get_or_create_type("Email")
+        return self.get_or_create_type("EMAIL")
 
     def get_ussd_type(self) -> NotificationType:
         return self.get_or_create_type("USSD")

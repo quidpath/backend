@@ -26,7 +26,7 @@ class State(BaseModel):
 class NotificationType(models.Model):
     """Type of notification (Email, SMS, Push)."""
 
-    id = models.CharField(max_length=50, primary_key=True)
+    # id will auto-generate as 1, 2, 3, etc. (default Django behavior)
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField(blank=True, null=True)
 
@@ -36,12 +36,15 @@ class NotificationType(models.Model):
     @classmethod
     def bootstrap_defaults(cls):
         """Ensure default notification types exist."""
-        defaults = ["EMAIL", "SMS"]
-        for name in defaults:
+        defaults = [
+            {"name": "USSD", "description": "USSD notification"},
+            {"name": "EMAIL", "description": "EMAIL notification"},
+        ]
+        for item in defaults:
             cls.objects.get_or_create(
-                name=name, defaults={"description": f"{name} notification"}
+                name=item["name"], 
+                defaults={"description": item["description"]}
             )
-
 
 class Notification(BaseModel):
     """Actual notification record."""

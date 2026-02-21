@@ -122,7 +122,7 @@ class DocumentNotificationHandler(TemplateManagementEngine):
         """
         from_address = from_address or settings.DEFAULT_FROM_EMAIL
         sender = sender or settings.SMTP_USER
-        password = password or settings.SMTP_PASS
+        password = password or settings.SMTP_PASSWORD
 
         # Validate SMTP credentials
         if not sender or not password:

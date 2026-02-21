@@ -43,6 +43,12 @@ python manage.py migrate --noinput || {
     exit 1
 }
 
+# Bootstrap essential data
+echo "Bootstrapping essential data..."
+python manage.py bootstrap_data || {
+    echo "Bootstrap failed, continuing anyway..."
+}
+
 # Collect static files
 echo "Collecting static files..."
 python manage.py collectstatic --noinput --clear || {
