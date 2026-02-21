@@ -11,8 +11,8 @@ class NotificationTypeService:
     def get_or_create_type(self, name: str) -> NotificationType:
         """Get or create a NotificationType by name."""
         obj, created = NotificationType.objects.get_or_create(
-            name=name,
-            defaults={"description": f"{name} notification"}
+            id=name,
+            defaults={"name": name, "description": f"{name} notification"}
         )
         return obj
 
