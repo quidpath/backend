@@ -9,17 +9,30 @@ class NotificationTypeService:
     """Manage NotificationType model."""
 
     def get_or_create_type(self, name: str) -> NotificationType:
-        """Get or create a NotificationType by name."""
-        obj, created = NotificationType.objects.get_or_create(
-            id=name,
-            defaults={"name": name, "description": f"{name} notification"}
-        )
-        return obj
+        """
+        Get or create a NotificationType by name.
+        Works with existing database structure where:
+        - id=1, name=USSD
+        - id=2, name=EMAIL
+        """
+        try:
+            # Try to get by name (name is unique)
+            obj = NotificationType.objects.get(name=name)
+            return obj
+        except NotificationType.DoesNotExist:
+            # If not found, create with auto-incrementing ID
+            obj = NotificationType.objects.create(
+                name=name,
+                description=f"{name} notification"
+            )
+            return obj
 
     def get_email_type(self) -> NotificationType:
+        """Get EMAIL notification type (id=2 in your database)"""
         return self.get_or_create_type("EMAIL")
 
     def get_ussd_type(self) -> NotificationType:
+        """Get USSD notification type (id=1 in your database)"""
         return self.get_or_create_type("USSD")
 
 
