@@ -15,3 +15,6 @@ class StateService:
 
     def get_pending(self):
         return State.objects.get(name="Pending")
+
+    def get_sent(self):
+        return State.objects.get(name="Sent")

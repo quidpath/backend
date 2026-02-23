@@ -61,7 +61,7 @@ def register_user(request):
     NotificationServiceHandler().send_notification(
         [
             {
-                "message_type": "EMAIL",
+                "message_type": "2",  # EMAIL type
                 "organisation_id": None,
                 "destination": user.email,
                 "message": f"<p>Welcome {user.username},</p><p>Your OTP is <b>{otp_code}</b>.</p>",

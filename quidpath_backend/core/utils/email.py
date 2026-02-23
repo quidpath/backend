@@ -53,15 +53,17 @@ class NotificationServiceHandler(TemplateManagementEngine):
                 # Get Organisation
                 organisation = CorporateService().get_or_default(corporate_id)
 
-                # Create notification record (state initially Completed)
+                # Create notification record with Pending state initially
                 notification_obj = NotificationService().create_notification(
                     corporate=organisation,
                     title=f"{notif_type_name} Notification",
                     destination=destination,
                     message=message,
                     notification_type=notification_type,
-                    state=StateService().get_completed(),
+                    state=StateService().get_pending(),
                 )
+
+                log.info(f"Attempting to send {notif_type_name} notification to {destination}")
 
                 # Send actual notification
                 if notif_type_name == "SMS":
@@ -74,9 +76,19 @@ class NotificationServiceHandler(TemplateManagementEngine):
                         destination, message, organisation.name, cc
                     )
 
-                # Update Notification state if failed
-                if notification_response.get("code") != "200.001.001":
+                # Update Notification state based on response
+                if notification_response.get("code") == "200.001.001":
+                    # Mark as sent/completed
+                    notification_obj.state = StateService().get_sent()
+                    notification_obj.response_payload = notification_response
+                    notification_obj.save()
+                    log.info(f"Successfully sent {notif_type_name} notification to {destination}")
+                else:
+                    # Mark as failed
                     NotificationService().mark_failed(notification_obj.id)
+                    notification_obj.response_payload = notification_response
+                    notification_obj.save()
+                    log.error(f"Failed to send {notif_type_name} notification to {destination}: {notification_response.get('message')}")
 
                 # Optionally update transaction logs
                 if trans:
@@ -121,21 +133,28 @@ class NotificationServiceHandler(TemplateManagementEngine):
 
         # Validate SMTP credentials
         if not sender or not password:
-            log.error("SMTP credentials not configured. SMTP_USER or SMTP_PASSWORD is missing.")
+            error_msg = f"SMTP credentials not configured. SMTP_USER={'set' if sender else 'missing'}, SMTP_PASSWORD={'set' if password else 'missing'}"
+            log.error(error_msg)
             return {
                 "status": "failed",
                 "code": "400.001.008",
-                "message": "SMTP credentials not configured",
+                "message": error_msg,
             }
+
+        log.info(f"Preparing to send email to {recipient_email} with subject: {subject}")
+        log.debug(f"SMTP Config: Host={settings.SMTP_HOST}, Port={settings.SMTP_PORT}, User={sender}")
 
         try:
             # Validate email
             try:
                 validate_email(recipient_email)
-            except ValidationError:
+            except ValidationError as ve:
+                error_msg = f"Invalid email address: {recipient_email}"
+                log.error(error_msg)
                 return {
                     "status": "failed",
-                    "message": f"Invalid email: {recipient_email}",
+                    "code": "400.001.009",
+                    "message": error_msg,
                 }
 
             msg = MIMEMultipart()
@@ -169,20 +188,38 @@ class NotificationServiceHandler(TemplateManagementEngine):
                     msg.attach(part)
 
             # Connect SMTP
-            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT)
+            log.info(f"Connecting to SMTP server {settings.SMTP_HOST}:{settings.SMTP_PORT}")
+            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+            server.set_debuglevel(0)  # Set to 1 for verbose SMTP debugging
+            
+            log.info("Starting TLS...")
             server.starttls()
+            
+            log.info(f"Logging in as {sender}...")
             server.login(sender, password)
+            
+            log.info(f"Sending email to {toaddrs}...")
             server.sendmail(from_address, toaddrs, msg.as_string())
             server.quit()
 
+            log.info(f"Email sent successfully to {recipient_email}")
             return {
                 "status": "success",
                 "code": "200.001.001",
                 "message": "Email sent successfully",
             }
+        except smtplib.SMTPAuthenticationError as e:
+            error_msg = f"SMTP Authentication failed: {str(e)}"
+            log.error(error_msg)
+            return {"status": "failed", "code": "400.001.010", "message": error_msg}
+        except smtplib.SMTPException as e:
+            error_msg = f"SMTP error occurred: {str(e)}"
+            log.error(error_msg)
+            return {"status": "failed", "code": "400.001.011", "message": error_msg}
         except Exception as e:
-            log.error("Error sending email: %s", e)
-            return {"status": "failed", "code": "400.001.007", "message": str(e)}
+            error_msg = f"Unexpected error sending email: {str(e)}"
+            log.exception(error_msg)
+            return {"status": "failed", "code": "400.001.007", "message": error_msg}
 
     def _send_email_without_attachment(
         self, destination, message, corporate_name, cc=None
