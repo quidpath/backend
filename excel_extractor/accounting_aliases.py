@@ -27,8 +27,6 @@ ACCOUNTING_ALIASES: Dict[str, List[str]] = {
         "turnover",
         "total turnover",
         "net turnover",
-        # REMOVED "operating income" (ambiguous - could be revenue OR profit)
-        # REMOVED "income" alone (too generic)
         "total income",
         "sales revenue",
         "revenue from sales",
@@ -391,7 +389,6 @@ ACCOUNTING_ALIASES: Dict[str, List[str]] = {
         "tax expen",
         "it",
         "i.t.",
-        # Tax types
         "corporate tax",
         "company tax",
         "corporation tax",

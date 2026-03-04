@@ -18,6 +18,7 @@ services:
       retries: 5
     networks:
       - quidpath_network
+      
 
   redis:
     image: redis:alpine
