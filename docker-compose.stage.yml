@@ -45,7 +45,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # No env_file: deployment injects secrets (e.g. docker compose --env-file .env up)
     environment:
       DATABASE_URL: ${DATABASE_URL}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -70,10 +69,3 @@ networks:
     name: stage_quidpath_network
     driver: bridge
 
-volumes:
-  postgres_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/quidpath-data-stage/postgres
