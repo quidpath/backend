@@ -35,13 +35,33 @@ def _apply_api_security_headers(response):
 def issue_tokens_for_user(user, role=None, corporate_id=None):
     refresh = RefreshToken.for_user(user)
     # Add custom claims to refresh token
+    refresh["iss"] = "quidpath-backend"  # Add issuer for microservices
+    refresh["user_id"] = str(user.id)  # Add user_id for microservices
+    refresh["username"] = user.username  # Add username for microservices
+    refresh["email"] = user.email  # Add email for microservices
     if role:
         refresh["role"] = role
     if corporate_id:
         refresh["organisation_id"] = str(corporate_id)
+        refresh["corporate_id"] = str(corporate_id)  # Add corporate_id for microservices
     refresh["is_global_user"] = False if corporate_id else True
     refresh["is_superuser"] = user.is_superuser  # Add superuser status to payload
-    return str(refresh.access_token), str(refresh)
+    
+    # Get access token and add the same custom claims
+    access = refresh.access_token
+    access["iss"] = "quidpath-backend"
+    access["user_id"] = str(user.id)
+    access["username"] = user.username
+    access["email"] = user.email
+    if role:
+        access["role"] = role
+    if corporate_id:
+        access["organisation_id"] = str(corporate_id)
+        access["corporate_id"] = str(corporate_id)
+    access["is_global_user"] = False if corporate_id else True
+    access["is_superuser"] = user.is_superuser
+    
+    return str(access), str(refresh)
 
 
 @csrf_exempt

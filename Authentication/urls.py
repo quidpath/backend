@@ -13,6 +13,17 @@ from Authentication.views.microservice_api import (batch_get_corporates,
                                                    get_corporate_details,
                                                    get_user_details)
 from Authentication.views.register import register_user
+from Authentication.views.individual_registration import register_individual_user
+from Authentication.views.email_activation import (
+    register_individual_with_email_activation,
+    activate_account,
+    resend_activation_email,
+)
+from Authentication.views.logo_settings import (
+    upload_corporate_logo,
+    get_corporate_logo,
+    delete_corporate_logo,
+)
 from Authentication.views.user import refresh_token
 from Authentication.views.UserProfile import corporateuser_update_profile
 from Authentication.views.notifications import (
@@ -21,12 +32,21 @@ from Authentication.views.notifications import (
     mark_all_notifications_read,
     get_unread_count,
 )
+from Authentication.views.plans import (
+    get_subscription_plans,
+    initiate_subscription_payment,
+    check_subscription_status,
+)
 from Authentication.views.health import health_check
 
 urlpatterns = [
     path("health/", health_check, name="health-check"),
     path("login/", login_user, name="login"),
     path("register/", register_user, name="register"),
+    path("register-individual/", register_individual_user, name="register-individual"),
+    path("register-individual-email/", register_individual_with_email_activation, name="register-individual-email"),
+    path("activate-account/", activate_account, name="activate-account"),
+    path("resend-activation/", resend_activation_email, name="resend-activation"),
     path("get_profile/", get_profile, name="profile"),
     path("token/refresh/", refresh_token, name="token_refresh"),
     path("logout/", logout_user, name="logout"),
@@ -38,6 +58,10 @@ urlpatterns = [
     path("user-profile-update/", corporateuser_update_profile, name="user-profile"),
     path("corp-user-update/", corporate_update_profile, name="corp-profile"),
     path("change-password/", change_password, name="change_password"),
+    # Logo settings endpoints
+    path("logo/upload/", upload_corporate_logo, name="upload-logo"),
+    path("logo/get/", get_corporate_logo, name="get-logo"),
+    path("logo/delete/", delete_corporate_logo, name="delete-logo"),
     # Microservice API endpoints
     path("users/<uuid:user_id>/", get_user_details, name="microservice-user-details"),
     path(
@@ -68,4 +92,8 @@ urlpatterns = [
         get_unread_count,
         name="get-unread-count",
     ),
+    # Subscription plan endpoints
+    path("plans/", get_subscription_plans, name="get-subscription-plans"),
+    path("payments/initiate/", initiate_subscription_payment, name="initiate-subscription-payment"),
+    path("subscription/status/", check_subscription_status, name="check-subscription-status"),
 ]

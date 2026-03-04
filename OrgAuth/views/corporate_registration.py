@@ -64,18 +64,21 @@ def create_corporate(request):
                 BillingServiceClient
 
             billing_client = BillingServiceClient()
-            trial_result = billing_client.create_trial(
+            
+            # Create subscription instead of trial - no free tier
+            subscription_result = billing_client.create_subscription(
                 corporate_id=str(corporate_id),
                 corporate_name=corporate_name,
                 plan_tier="starter",
+                billing_cycle="monthly",
             )
 
-            if not trial_result.get("success"):
+            if not subscription_result.get("success"):
                 logger.warning(
-                    f"Failed to create trial for corporate {corporate_id}: {trial_result.get('message')}"
+                    f"Failed to create subscription for corporate {corporate_id}: {subscription_result.get('message')}"
                 )
 
-            # Fallback: Create local trial record if billing service fails
+            # Create local subscription record
             try:
                 from datetime import timedelta
                 from decimal import Decimal
@@ -85,29 +88,27 @@ def create_corporate(request):
                 from Payments.models.organization_billing import \
                     OrganizationSubscription
 
-                trial_end = timezone.now().date() + timedelta(days=30)
                 OrganizationSubscription.objects.create(
                     corporate_id=corporate_id,
                     plan_type="basic",
-                    status="trial",
+                    status="pending",
                     monthly_price_usd=Decimal("0.00"),
                     start_date=timezone.now().date(),
-                    end_date=trial_end,
+                    end_date=timezone.now().date() + timedelta(days=30),
                     max_users=5,
                     current_users=1,
                 )
                 logger.info(
-                    f"Created 30-day trial subscription for corporate {corporate_name}"
+                    f"Created subscription record for corporate {corporate_name}"
                 )
             except Exception as e:
                 logger.error(
-                    f"Failed to create trial subscription: {str(e)}", exc_info=True
+                    f"Failed to create subscription record: {str(e)}", exc_info=True
                 )
         except Exception as e:
             logger.error(
-                f"Failed to create trial subscription: {str(e)}", exc_info=True
+                f"Failed to create subscription: {str(e)}", exc_info=True
             )
-            # Don't fail corporate creation if trial creation fails
 
         # Log the creation
         TransactionLogBase.log(

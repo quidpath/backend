@@ -57,6 +57,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "quidpath_backend.core.middleware.subscription_middleware.SubscriptionMiddleware",
+    "quidpath_backend.core.middleware.billing_middleware.BillingAccessMiddleware",
 ]
 
 ROOT_URLCONF = "quidpath_backend.urls"
@@ -163,8 +164,9 @@ DEFAULT_FROM_EMAIL = "noreply@quidpath.com"
 
 # Billing Service Configuration
 BILLING_SERVICE_URL = os.environ.get(
-    "BILLING_SERVICE_URL", "http://localhost:8002/api/billing"
+    "BILLING_SERVICE_URL", "http://billing-backend-dev:8002"
 )
+BILLING_SERVICE_API_KEY = os.environ.get("BILLING_SERVICE_API_KEY", "")
 
 # Internationalization
 LANGUAGE_CODE = "en-us"
@@ -206,3 +208,12 @@ SERVICE_API_KEYS = {
 
 # Webhook Configuration
 BILLING_WEBHOOK_SECRET = os.environ.get("BILLING_WEBHOOK_SECRET", "")
+
+# M-Pesa Daraja API Configuration
+MPESA_ENVIRONMENT = os.environ.get("MPESA_ENVIRONMENT", "production")
+MPESA_CONSUMER_KEY = os.environ.get("MPESA_CONSUMER_KEY", "")
+MPESA_CONSUMER_SECRET = os.environ.get("MPESA_CONSUMER_SECRET", "")
+MPESA_BUSINESS_SHORT_CODE = os.environ.get("MPESA_BUSINESS_SHORT_CODE", "9895960")
+MPESA_TILL_NUMBER = os.environ.get("MPESA_TILL_NUMBER", "9100097")
+MPESA_PASSKEY = os.environ.get("MPESA_PASSKEY", "")
+MPESA_CALLBACK_URL = os.environ.get("MPESA_CALLBACK_URL", "https://api.quidpath.com/api/payments/mpesa/callback/")

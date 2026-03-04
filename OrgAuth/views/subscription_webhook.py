@@ -1,6 +1,7 @@
 """
 Subscription Webhook Handler
-Receives and processes subscription events from Billing Service
+Receives and processes subscription events from Billing Service.
+Uses get_clean_data_safe and ResponseProvider; method check inside view.
 """
 
 import hashlib
@@ -10,13 +11,13 @@ import logging
 from datetime import datetime
 
 from django.conf import settings
-from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
 
 from OrgAuth.models import Corporate
 from OrgAuth.models.subscription import CorporateSubscription
+from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.request_parser import get_clean_data_safe
 
 logger = logging.getLogger(__name__)
 
@@ -43,35 +44,32 @@ def verify_webhook_signature(request):
 
 
 @csrf_exempt
-@require_http_methods(["POST"])
 def subscription_webhook(request):
     """
-    Handle subscription webhooks from Billing Service
-
-    Events:
-    - subscription.created
-    - subscription.activated
-    - subscription.cancelled
-    - subscription.expired
-    - subscription.upgraded
-    - subscription.downgraded
-    - payment.succeeded
-    - payment.failed
+    Handle subscription webhooks from Billing Service.
+    Events: subscription.created, subscription.activated, subscription.cancelled,
+    subscription.expired, subscription.upgraded, subscription.downgraded,
+    payment.succeeded, payment.failed.
     """
+    if request.method != "POST":
+        return ResponseProvider.method_not_allowed(["POST"])
 
-    # Verify webhook signature
     if not verify_webhook_signature(request):
         logger.warning("Invalid webhook signature")
-        return JsonResponse({"error": "Invalid signature"}, status=403)
+        return ResponseProvider.error_response("Invalid signature", status=403)
+
+    payload, err = get_clean_data_safe(
+        request, allowed_methods=["POST"], require_json_body=True
+    )
+    if err is not None:
+        return err
 
     try:
-        payload = json.loads(request.body)
-        event_type = payload.get("event")
-        data = payload.get("data", {})
+        event_type = (payload or {}).get("event")
+        data = (payload or {}).get("data", {})
 
-        logger.info(f"Received webhook: {event_type}")
+        logger.info("Received webhook: %s", event_type)
 
-        # Route to appropriate handler
         handlers = {
             "subscription.created": handle_subscription_created,
             "subscription.activated": handle_subscription_activated,
@@ -85,20 +83,16 @@ def subscription_webhook(request):
 
         handler = handlers.get(event_type)
         if not handler:
-            logger.warning(f"Unknown event type: {event_type}")
-            return JsonResponse({"error": "Unknown event type"}, status=400)
+            logger.warning("Unknown event type: %s", event_type)
+            return ResponseProvider.error_response("Unknown event type", status=400)
 
-        # Process the event
         result = handler(data)
-
-        return JsonResponse({"status": "success", "message": result})
-
-    except json.JSONDecodeError:
-        logger.error("Invalid JSON payload")
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
+        return ResponseProvider.success_response(
+            data={"status": "success", "message": result}
+        )
     except Exception as e:
-        logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
-        return JsonResponse({"error": str(e)}, status=500)
+        logger.exception("Error processing webhook: %s", e)
+        return ResponseProvider.error_response(str(e), status=500)
 
 
 def handle_subscription_created(data):

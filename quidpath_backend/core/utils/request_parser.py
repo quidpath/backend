@@ -1,5 +1,6 @@
 # core/utils/request_parser.py
 import json
+import logging
 
 import jwt
 from django.contrib.auth import get_user_model
@@ -10,6 +11,38 @@ import quidpath_backend
 from Authentication.models import CustomUser
 from OrgAuth.models import CorporateUser
 from quidpath_backend.settings import base as settings
+
+logger = logging.getLogger(__name__)
+
+
+def get_clean_data_safe(request, allowed_methods=None, require_json_body=True, max_body_length=1024 * 1024):
+    """
+    Parse and validate request: method check and optional JSON body.
+    Returns (data, error_response). If error_response is not None, return it from the view.
+    For GET, data is request.GET as dict; for POST/PUT/PATCH, data is parsed JSON body.
+    """
+    if allowed_methods is None:
+        allowed_methods = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    from quidpath_backend.core.utils.json_response import ResponseProvider
+
+    if request.method not in allowed_methods:
+        return None, ResponseProvider.method_not_allowed(allowed_methods)
+
+    data = None
+    if require_json_body and request.method in ("POST", "PUT", "PATCH") and request.body:
+        if len(request.body) > max_body_length:
+            return None, ResponseProvider.error_response("Request body too large", status=413)
+        try:
+            data = json.loads(request.body.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.warning("Invalid JSON body: %s", e)
+            return None, ResponseProvider.error_response("Invalid JSON body", status=400)
+        if not isinstance(data, dict):
+            return None, ResponseProvider.error_response("JSON body must be an object", status=400)
+    elif request.method == "GET":
+        data = dict(request.GET.items())
+
+    return data, None
 
 
 def get_request_data(request):

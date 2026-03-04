@@ -28,6 +28,10 @@ PaymentProvider = _models_module.PaymentProvider
 from .organization_billing import (OrganizationInvoice, OrganizationPayment,
                                    OrganizationSubscription)
 
+# Import individual billing models from this package
+from .individual_billing import (IndividualSubscriptionPlan, IndividualSubscription,
+                                 IndividualPayment)
+
 __all__ = [
     "RecordPayment",
     "RecordPaymentLine",
@@ -37,4 +41,7 @@ __all__ = [
     "OrganizationSubscription",
     "OrganizationInvoice",
     "OrganizationPayment",
+    "IndividualSubscriptionPlan",
+    "IndividualSubscription",
+    "IndividualPayment",
 ]

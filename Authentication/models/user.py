@@ -41,6 +41,9 @@ class CustomUser(BaseModel, AbstractBaseUser, PermissionsMixin):
     #  OTP-related fields
     otp_code = models.CharField(max_length=6, blank=True, null=True)
     last_otp_sent_at = models.DateTimeField(blank=True, null=True)
+    
+    # Metadata field for storing additional user data (activation tokens, etc.)
+    metadata = models.JSONField(default=dict, blank=True, null=True)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

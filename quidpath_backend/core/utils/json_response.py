@@ -138,3 +138,46 @@ class ResponseProvider:
     def exception(self):
         """Return an internal server error response (500)."""
         return self._response(status=500)
+
+    @staticmethod
+    def success_response(data=None, message=None, status=200):
+        """Return a success JsonResponse. Use for API views."""
+        payload = {"success": True}
+        if data is not None:
+            payload["data"] = data
+        if message is not None:
+            payload["message"] = message
+        try:
+            serialized = json.loads(
+                json.dumps(payload, default=comprehensive_serializer)
+            )
+            return JsonResponse(serialized, status=status)
+        except Exception:
+            return JsonResponse(
+                {"success": True, "message": message or "OK"}, status=status
+            )
+
+    @staticmethod
+    def error_response(message, status=400, data=None):
+        """Return an error JsonResponse."""
+        payload = {"success": False, "message": message}
+        if data is not None:
+            payload["data"] = data
+        return JsonResponse(payload, status=status)
+
+    @staticmethod
+    def method_not_allowed(allowed_methods):
+        """Return 405 Method Not Allowed."""
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "Method not allowed",
+                "allowed": allowed_methods,
+            },
+            status=405,
+        )
+
+    @staticmethod
+    def raw_response(body, status=200):
+        """Return JsonResponse with exact body (e.g. webhook)."""
+        return JsonResponse(body, status=status)
