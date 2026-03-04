@@ -72,19 +72,41 @@ jobs:
       
       - name: Prepare env_secrets payload
         id: prepare_secrets
+        env:
+          ENV_NAME: ${{ steps.env.outputs.env }}
         run: |
           declare -A secrets=()
           
-          # Add quidpath-backend specific secrets here as needed
-          # Example:
-          secrets["POSTGRES_USER"]="${{ secrets.POSTGRES_USER }}"
-          secrets["POSTGRES_DB"]="${{ secrets.POSTGRES_DB }}"
-          secrets["DATABASE_URL"]="${{ secrets.DATABASE_URL }}"
-          secrets["POSTGRES_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD }}"
+          # Stage uses its own DB/Redis (compose service names: db, redis). Prod uses DATABASE_URL/REDIS_* from secrets.
+          if [[ "$ENV_NAME" == "stage" ]]; then
+            # Use stage-specific DATABASE_URL if set; otherwise build from POSTGRES_* with host 'db'
+            if [ -n "${{ secrets.DATABASE_URL_STAGE }}" ]; then
+              secrets["DATABASE_URL"]="${{ secrets.DATABASE_URL_STAGE }}"
+            else
+              # Compose service name for postgres in stage is 'db'
+              secrets["DATABASE_URL"]="postgresql://${{ secrets.POSTGRES_USER_STAGE }}:${{ secrets.POSTGRES_PASSWORD_STAGE }}@db:5432/${{ secrets.POSTGRES_DB_STAGE }}"
+            fi
+            secrets["POSTGRES_USER"]="${{ secrets.POSTGRES_USER_STAGE }}"
+            secrets["POSTGRES_DB"]="${{ secrets.POSTGRES_DB_STAGE }}"
+            secrets["POSTGRES_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD_STAGE }}"
+            secrets["DB_HOST"]="db"
+            secrets["DB_PORT"]="5432"
+            secrets["DB_NAME"]="${{ secrets.POSTGRES_DB_STAGE }}"
+            secrets["DB_USER"]="${{ secrets.POSTGRES_USER_STAGE }}"
+            secrets["DB_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD_STAGE }}"
+            secrets["REDIS_HOST"]="redis"
+            secrets["REDIS_PORT"]="6379"
+          else
+            secrets["POSTGRES_USER"]="${{ secrets.POSTGRES_USER }}"
+            secrets["POSTGRES_DB"]="${{ secrets.POSTGRES_DB }}"
+            secrets["DATABASE_URL"]="${{ secrets.DATABASE_URL }}"
+            secrets["POSTGRES_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD }}"
+            secrets["REDIS_HOST"]="${{ secrets.REDIS_HOST }}"
+            secrets["REDIS_PORT"]="${{ secrets.REDIS_PORT }}"
+          fi
+          
           secrets["SECRET_KEY"]="${{ secrets.SECRET_KEY }}"
           secrets["JWT_SECRET_KEY"]="${{ secrets.JWT_SECRET_KEY }}"
-          secrets["REDIS_HOST"]="${{ secrets.REDIS_HOST }}"
-          secrets["REDIS_PORT"]="${{ secrets.REDIS_PORT }}"
           secrets["SMTP_USER"]="${{ secrets.SMTP_USER }}"
           secrets["SMTP_PASSWORD"]="${{ secrets.SMTP_PASSWORD }}"
           secrets["USE_MEMORY_CHANNEL_LAYER"]="${{ secrets.USE_MEMORY_CHANNEL_LAYER }}"

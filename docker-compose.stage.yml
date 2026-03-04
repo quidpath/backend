@@ -39,14 +39,13 @@ services:
     container_name: django-backend-stage
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8011:8000"
+      - "127.0.0.1:8011:8004"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    env_file:
-      - .env
+    # No env_file: deployment injects secrets (e.g. docker compose --env-file .env up)
     environment:
       DATABASE_URL: ${DATABASE_URL}
       POSTGRES_DB: ${POSTGRES_DB}
