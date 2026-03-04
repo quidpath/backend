@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "channels",  # WebSocket support
+    "quidpath_backend.core",  # Core middleware, billing, bootstrap_data command
     "Authentication",
     "corsheaders",
     "OrgAuth",

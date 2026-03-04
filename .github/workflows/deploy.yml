@@ -77,14 +77,13 @@ jobs:
         run: |
           declare -A secrets=()
           
-          # Stage uses its own DB/Redis (compose service names: postgres_stage, redis_stage). Prod uses DATABASE_URL/REDIS_* from secrets.
+          # Stage uses its own DB/Redis (compose service names: db, redis). Prod uses DATABASE_URL/REDIS_* from secrets.
           if [[ "$ENV_NAME" == "stage" ]]; then
             # Use stage-specific DATABASE_URL if set; otherwise build from POSTGRES_* with host 'db'
             if [ -n "${{ secrets.DATABASE_URL_STAGE }}" ]; then
               secrets["DATABASE_URL"]="${{ secrets.DATABASE_URL_STAGE }}"
             else
-              # Compose service name for postgres in stage is 'postgres_stage'
-              secrets["DATABASE_URL"]="postgresql://${{ secrets.POSTGRES_USER_STAGE }}:${{ secrets.POSTGRES_PASSWORD_STAGE }}@postgres_stage:5432/${{ secrets.POSTGRES_DB_STAGE }}"
+              secrets["DATABASE_URL"]="postgresql://${{ secrets.POSTGRES_USER_STAGE }}:${{ secrets.POSTGRES_PASSWORD_STAGE }}@db:5432/${{ secrets.POSTGRES_DB_STAGE }}"
             fi
             secrets["POSTGRES_USER"]="${{ secrets.POSTGRES_USER_STAGE }}"
             secrets["POSTGRES_DB"]="${{ secrets.POSTGRES_DB_STAGE }}"
@@ -96,6 +95,7 @@ jobs:
             secrets["DB_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD_STAGE }}"
             secrets["REDIS_HOST"]="redis"
             secrets["REDIS_PORT"]="6379"
+            secrets["ALLOWED_HOSTS"]="stage-api.quidpath.com,stage.quidpath.com,localhost,127.0.0.1,0.0.0.0"
           else
             secrets["POSTGRES_USER"]="${{ secrets.POSTGRES_USER }}"
             secrets["POSTGRES_DB"]="${{ secrets.POSTGRES_DB }}"
