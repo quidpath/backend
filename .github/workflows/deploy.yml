@@ -83,13 +83,11 @@ jobs:
             if [ -n "${{ secrets.DATABASE_URL_STAGE }}" ]; then
               secrets["DATABASE_URL"]="${{ secrets.DATABASE_URL_STAGE }}"
             else
-              secrets["DATABASE_URL"]="postgresql://${{ secrets.POSTGRES_USER_STAGE }}:${{ secrets.POSTGRES_PASSWORD_STAGE }}@db:5432/${{ secrets.POSTGRES_DB_STAGE }}"
+              secrets["DATABASE_URL"]="postgresql://${{ secrets.POSTGRES_USER_STAGE }}:${{ secrets.POSTGRES_PASSWORD_STAGE }}@postgres_stage:5432/${{ secrets.POSTGRES_DB_STAGE }}"
             fi
             secrets["POSTGRES_USER"]="${{ secrets.POSTGRES_USER_STAGE }}"
             secrets["POSTGRES_DB"]="${{ secrets.POSTGRES_DB_STAGE }}"
             secrets["POSTGRES_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD_STAGE }}"
-            secrets["DB_HOST"]="db"
-            secrets["DB_PORT"]="5432"
             secrets["DB_NAME"]="${{ secrets.POSTGRES_DB_STAGE }}"
             secrets["DB_USER"]="${{ secrets.POSTGRES_USER_STAGE }}"
             secrets["DB_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD_STAGE }}"

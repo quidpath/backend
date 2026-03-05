@@ -41,7 +41,7 @@ $PYTHON manage.py migrate --noinput
 echo " Collecting static files..."
 $PYTHON manage.py collectstatic --noinput
 
-echo "🟢 Starting Gunicorn server..."
+echo "Starting Gunicorn server..."
 exec gunicorn quidpath_backend.wsgi:application \
     --bind 0.0.0.0:${PORT:-8000} \
     --workers ${WORKERS:-2} \

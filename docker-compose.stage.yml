@@ -4,7 +4,7 @@ services:
     container_name: postgres_stage
     restart: unless-stopped
     volumes:
-      - /mnt/quidpath-staging-data-stage/postgres:/var/lib/postgresql/data
+      - /mnt/quidpath-stage-data/postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
