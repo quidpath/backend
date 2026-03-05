@@ -58,6 +58,7 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       USE_MEMORY_CHANNEL_LAYER: ${USE_MEMORY_CHANNEL_LAYER}
+      ALLOWED_HOSTS: "stage-api.quidpath.com,stage.quidpath.com,localhost,127.0.0.1,0.0.0.0"
     volumes:
       - /mnt/quidpath-stage-data/media:/app/media
       - /mnt/quidpath-stage-data/staticfiles:/app/staticfiles
