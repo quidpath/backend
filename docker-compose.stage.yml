@@ -61,6 +61,8 @@ services:
       DJANGO_SETTINGS_MODULE: quidpath_backend.settings.stage
       ALLOWED_HOSTS: "stage-api.quidpath.com,stage.quidpath.com,localhost,127.0.0.1,0.0.0.0"
       CSRF_TRUSTED_ORIGINS: "https://stage.quidpath.com,https://stage-api.quidpath.com"
+      BILLING_SERVICE_URL: "http://billing-backend-stage:8000/api/billing"
+      BILLING_SERVICE_SECRET: ${BILLING_SERVICE_SECRET}
     volumes:
       - /mnt/quidpath-stage-data/media:/app/media
       - /mnt/quidpath-stage-data/staticfiles:/app/staticfiles

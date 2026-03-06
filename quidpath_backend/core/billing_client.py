@@ -8,26 +8,46 @@ from typing import Any, Dict, Optional
 import requests
 
 
+def _get_billing_base_url(base_url: Optional[str] = None) -> str:
+    """Resolve billing service base URL (with /api/billing) from arg, Django settings, or env."""
+    if base_url:
+        url = base_url
+    else:
+        try:
+            from django.conf import settings
+            url = getattr(settings, "BILLING_SERVICE_URL", None) or ""
+        except Exception:
+            url = ""
+        if not url:
+            url = os.environ.get("BILLING_SERVICE_URL", "http://localhost:8002/api/billing")
+    url = url.rstrip("/")
+    if not url.endswith("api/billing"):
+        url = url + "/api/billing"
+    return url
+
+
 class BillingServiceClient:
     """
     Client to communicate with the billing microservice
     """
 
     def __init__(self, base_url: Optional[str] = None):
-        self.base_url = base_url or os.environ.get(
-            "BILLING_SERVICE_URL", "http://localhost:8002/api/billing"
-        )
+        self.base_url = _get_billing_base_url(base_url)
 
     def _make_request(
         self, method: str, endpoint: str, data: Optional[Dict] = None
     ) -> Dict:
         """Make HTTP request to billing service"""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        headers = {}
+        service_secret = os.environ.get("BILLING_SERVICE_SECRET")
+        if service_secret:
+            headers["X-Service-Key"] = service_secret
         try:
             if method.upper() == "GET":
-                response = requests.get(url, params=data, timeout=30)
+                response = requests.get(url, params=data, headers=headers, timeout=30)
             else:
-                response = requests.post(url, json=data, timeout=30)
+                response = requests.post(url, json=data, headers=headers, timeout=30)
 
             response.raise_for_status()
             return response.json()
@@ -239,10 +259,12 @@ class BillingServiceClient:
         """Get billing summary for a corporate (admin only)"""
         admin_base = self.base_url.replace("/api/billing", "/api/admin/billing")
         url = f"{admin_base}/corporate/{corporate_id}/summary/"
+        headers = {}
+        service_secret = os.environ.get("BILLING_SERVICE_SECRET")
+        if service_secret:
+            headers["X-Service-Key"] = service_secret
         try:
-            import requests
-
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:

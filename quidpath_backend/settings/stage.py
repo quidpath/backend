@@ -72,6 +72,13 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 # ====================================
+# BILLING SERVICE (stage container)
+# ====================================
+BILLING_SERVICE_URL = os.environ.get(
+    "BILLING_SERVICE_URL", "http://billing-backend-stage:8000/api/billing"
+)
+
+# ====================================
 # SECURITY MIDDLEWARE HEADERS
 # ====================================
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
