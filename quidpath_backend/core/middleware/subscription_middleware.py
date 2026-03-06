@@ -51,6 +51,11 @@ class SubscriptionMiddleware:
         if self._is_exempt_path(request.path):
             return self.get_response(request)
 
+        # Superuser and staff bypass billing: use the system without payment
+        if getattr(request, "user", None) and getattr(request.user, "is_authenticated", False):
+            if getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False):
+                return self.get_response(request)
+
         # Get corporate_id from request
         corporate_id = self._extract_corporate_id(request)
 
