@@ -97,10 +97,19 @@ jobs:
           else
             secrets["POSTGRES_USER"]="${{ secrets.POSTGRES_USER }}"
             secrets["POSTGRES_DB"]="${{ secrets.POSTGRES_DB }}"
-            secrets["DATABASE_URL"]="${{ secrets.DATABASE_URL }}"
             secrets["POSTGRES_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD }}"
+            secrets["DATABASE_URL"]="${{ secrets.DATABASE_URL }}"
+            secrets["DB_NAME"]="${{ secrets.POSTGRES_DB }}"
+            secrets["DB_USER"]="${{ secrets.POSTGRES_USER }}"
+            secrets["DB_PASSWORD"]="${{ secrets.POSTGRES_PASSWORD }}"
+            secrets["DB_HOST"]="${{ secrets.DB_HOST }}"
+            secrets["DB_PORT"]="${{ secrets.DB_PORT }}"
             secrets["REDIS_HOST"]="${{ secrets.REDIS_HOST }}"
             secrets["REDIS_PORT"]="${{ secrets.REDIS_PORT }}"
+            secrets["ALLOWED_HOSTS"]="${{ secrets.ALLOWED_HOSTS }}"
+            secrets["CSRF_TRUSTED_ORIGINS"]="${{ secrets.CSRF_TRUSTED_ORIGINS }}"
+            secrets["BILLING_SERVICE_URL"]="${{ secrets.BILLING_SERVICE_URL }}"
+            secrets["BILLING_SERVICE_SECRET"]="${{ secrets.BILLING_SERVICE_SECRET }}"
           fi
           
           secrets["SECRET_KEY"]="${{ secrets.SECRET_KEY }}"

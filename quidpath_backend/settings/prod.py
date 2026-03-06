@@ -118,6 +118,11 @@ LOGGING = {
 # No need to redefine DATABASES here
 
 # ====================================
+# BILLING SERVICE (from env; e.g. http://billing-backend:8000/api/billing)
+# ====================================
+BILLING_SERVICE_URL = os.environ.get("BILLING_SERVICE_URL", "")
+
+# ====================================
 # EMAIL SETTINGS (Inherited from base)
 # ====================================
 # SMTP configs come from base.py (.env provides credentials)
