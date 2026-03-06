@@ -265,7 +265,13 @@ class BillingServiceClient:
             headers["X-Service-Key"] = service_secret
         try:
             response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
+            if not response.ok:
+                try:
+                    body = response.json()
+                    msg = body.get("message", response.text or response.reason)
+                except Exception:
+                    msg = response.text or f"{response.status_code} {response.reason}"
+                return {"success": False, "message": msg}
             return response.json()
         except requests.exceptions.RequestException as e:
-            return {"success": False, "message": f"Error: {str(e)}"}
+            return {"success": False, "message": str(e)}
