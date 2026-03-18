@@ -8,6 +8,7 @@ from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.corporate_helper import get_corporate_id_from_data
 
 
 @csrf_exempt
@@ -34,21 +35,34 @@ def add_bank_account(request):
         data, metadata = get_clean_data(request)
         registry = ServiceRegistry()
 
-        # Validate required fields
+        # Debug logging
+        print(f"[DEBUG] Received data: {data}")
+        print(f"[DEBUG] Metadata: {metadata}")
+
+        # Extract corporate_id using helper (checks both 'corporate' and 'corporate_id')
+        corporate_id = get_corporate_id_from_data(data)
+        
+        if not corporate_id:
+            error_msg = "Corporate ID is required"
+            print(f"[DEBUG] {error_msg}")
+            return ResponseProvider(
+                message=error_msg, code=400
+            ).bad_request()
+
+        # Validate other required fields
         required_items = [
-            "corporate",
             "bank_name",
             "account_number",
             "account_name",
             "currency",
         ]
-        for item in required_items:
-            if item not in data:
-                return ResponseProvider(
-                    message=f"{item.replace('_', ' ').title()} is required", code=400
-                ).bad_request()
-
-        corporate_id = data.get("corporate")
+        missing_fields = [item for item in required_items if item not in data]
+        if missing_fields:
+            error_msg = f"Missing required fields: {', '.join(missing_fields)}"
+            print(f"[DEBUG] {error_msg}")
+            return ResponseProvider(
+                message=error_msg, code=400
+            ).bad_request()
 
         # Check if corporate exists and is active
         corporates = registry.database(

@@ -14,6 +14,7 @@ from quidpath_backend.core.utils.AccountingService import AccountingService
 from quidpath_backend.core.utils.DocsEmail import DocumentNotificationHandler
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
+from quidpath_backend.core.decorators import require_module_permission
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
@@ -589,9 +590,11 @@ def create_and_post_invoice(request):
 
 
 @csrf_exempt
+@require_module_permission("accounting")
 def list_invoices(request):
     """
     List all invoices for the user's corporate, categorized by status.
+    Superusers can view all invoices across all corporates.
 
     Returns:
     - 200: List of invoices with total count and status counts
@@ -613,29 +616,45 @@ def list_invoices(request):
     try:
         registry = ServiceRegistry()
 
+        # Check if user is superuser (works for both dict and model)
+        if isinstance(user, dict):
+            is_superuser = user.get("is_superuser", False)
+        else:
+            is_superuser = getattr(user, "is_superuser", False)
+
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
             data={"customuser_ptr_id": user_id},
         )
 
-        if not corporate_users:
+        # Superuser can access all invoices
+        if not corporate_users and not is_superuser:
             return ResponseProvider(
                 message="User has no corporate association", code=400
             ).bad_request()
 
-        corporate_id = corporate_users[0]["corporate_id"]
+        # For superusers, get all invoices; for regular users, filter by corporate
+        corporate_id = None
+        if is_superuser:
+            invoices = registry.database(
+                model_name="Invoices",
+                operation="filter",
+                data={},
+            )
+        else:
+            corporate_id = corporate_users[0]["corporate_id"]
 
-        if not corporate_id:
-            return ResponseProvider(
-                message="Corporate ID not found", code=400
-            ).bad_request()
+            if not corporate_id:
+                return ResponseProvider(
+                    message="Corporate ID not found", code=400
+                ).bad_request()
 
-        invoices = registry.database(
-            model_name="Invoices",
-            operation="filter",
-            data={"corporate_id": corporate_id},
-        )
+            invoices = registry.database(
+                model_name="Invoices",
+                operation="filter",
+                data={"corporate_id": corporate_id},
+            )
 
         for inv in invoices:
             lines = registry.database(
@@ -766,16 +785,11 @@ def get_invoice(request):
             data={"customuser_ptr_id": user_id},
         )
 
-        if not corporate_users:
+        is_superuser = getattr(user, "is_superuser", False)
+
+        if not corporate_users and not is_superuser:
             return ResponseProvider(
                 message="User has no corporate association", code=400
-            ).bad_request()
-
-        corporate_id = corporate_users[0]["corporate_id"]
-
-        if not corporate_id:
-            return ResponseProvider(
-                message="Corporate ID not found", code=400
             ).bad_request()
 
         invoice_id = data.get("id")
@@ -784,11 +798,26 @@ def get_invoice(request):
                 message="Invoice ID is required", code=400
             ).bad_request()
 
-        invoices = registry.database(
-            model_name="Invoices",
-            operation="filter",
-            data={"id": invoice_id, "corporate_id": corporate_id},
-        )
+        # Superuser can access any invoice; regular users filtered by corporate
+        if is_superuser:
+            invoices = registry.database(
+                model_name="Invoices",
+                operation="filter",
+                data={"id": invoice_id},
+            )
+        else:
+            corporate_id = corporate_users[0]["corporate_id"]
+
+            if not corporate_id:
+                return ResponseProvider(
+                    message="Corporate ID not found", code=400
+                ).bad_request()
+
+            invoices = registry.database(
+                model_name="Invoices",
+                operation="filter",
+                data={"id": invoice_id, "corporate_id": corporate_id},
+            )
         if not invoices:
             return ResponseProvider(
                 message="Invoice not found for this corporate", code=404

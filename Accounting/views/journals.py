@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
 
+from quidpath_backend.core.decorators import require_module_permission
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
@@ -203,6 +204,7 @@ def create_journal_entry(request):
 
 
 @csrf_exempt
+@require_module_permission("accounting")
 def list_journal_entries(request):
     """
     List all journal entries for the user's corporate.
@@ -227,29 +229,44 @@ def list_journal_entries(request):
     try:
         registry = ServiceRegistry()
 
+        # Check if user is superuser (works for both dict and model)
+        if isinstance(user, dict):
+            is_superuser = user.get("is_superuser", False)
+        else:
+            is_superuser = getattr(user, "is_superuser", False)
+
         # Validate user corporate association
         corporate_users = registry.database(
             model_name="CorporateUser",
             operation="filter",
             data={"customuser_ptr_id": user_id, "is_active": True},
         )
-        if not corporate_users:
+
+        if not corporate_users and not is_superuser:
             return ResponseProvider(
                 message="User has no corporate association", code=400
             ).bad_request()
 
-        corporate_id = corporate_users[0]["corporate_id"]
-        if not corporate_id:
-            return ResponseProvider(
-                message="Corporate ID not found", code=400
-            ).bad_request()
+        # For superusers, get all journal entries; for regular users, filter by corporate
+        if is_superuser:
+            journal_entries = registry.database(
+                model_name="JournalEntry",
+                operation="filter",
+                data={},
+            )
+            corporate_id = None
+        else:
+            corporate_id = corporate_users[0]["corporate_id"]
+            if not corporate_id:
+                return ResponseProvider(
+                    message="Corporate ID not found", code=400
+                ).bad_request()
 
-        # Fetch journal entries
-        journal_entries = registry.database(
-            model_name="JournalEntry",
-            operation="filter",
-            data={"corporate_id": corporate_id},
-        )
+            journal_entries = registry.database(
+                model_name="JournalEntry",
+                operation="filter",
+                data={"corporate_id": corporate_id},
+            )
 
         # Serialize journal entries with lines
         serialized_entries = []

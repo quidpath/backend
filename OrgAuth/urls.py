@@ -3,6 +3,16 @@ from django.urls import path
 from OrgAuth.views import (corporate_registration, corporate_users,
                            subscription_api, subscription_webhook)
 from OrgAuth.views.corporate_users import get_corporate_user, list_roles
+from OrgAuth.views.corporate_user_approval import (
+    approve_corporate_user,
+    ban_corporate_user,
+    unban_corporate_user,
+)
+from OrgAuth.views.corporate_management import (
+    unsuspend_corporate,
+    ban_corporate,
+    unban_corporate,
+)
 
 urlpatterns = [
     # Corporate
@@ -12,6 +22,9 @@ urlpatterns = [
     path("corporate/delete", corporate_registration.delete_corporate),
     path("corporate/approve", corporate_registration.approve_corporate),
     path("corporate/suspend", corporate_registration.suspend_corporate),
+    path("corporate/unsuspend", unsuspend_corporate),
+    path("corporate/ban", ban_corporate),
+    path("corporate/unban", unban_corporate),
     # Corporate Users (admin only)
     path("corporate-users/create", corporate_users.create_corporate_user),
     path("corporate-users/list", corporate_users.list_corporate_users),
@@ -20,6 +33,10 @@ urlpatterns = [
     path("corporate-users/delete", corporate_users.delete_corporate_user),
     path("corporate-users/suspend", corporate_users.suspend_corporate_user),
     path("corporate-users/unsuspend", corporate_users.unsuspend_corporate_user),
+    # Corporate User Approval & Ban (superuser only)
+    path("corporate-users/approve", approve_corporate_user),
+    path("corporate-users/ban", ban_corporate_user),
+    path("corporate-users/unban", unban_corporate_user),
     path("roles/", list_roles, name="list_roles"),
     # Subscription Webhooks (from Billing Service)
     path(

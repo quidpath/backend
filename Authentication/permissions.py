@@ -1,5 +1,4 @@
 """
-Authentication permissions module.
 Role-based access control permissions for QuidPath ERP.
 """
 from functools import wraps
@@ -78,9 +77,3 @@ def check_user_permissions(user, required_role=None):
         'allowed': False,
         'message': f'Insufficient permissions. Required: {required_role}, Current: {user_role}'
     }
-
-
-__all__ = [
-    'require_superuser_or_admin',
-    'check_user_permissions',
-]

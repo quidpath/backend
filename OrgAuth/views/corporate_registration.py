@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from OrgAuth.models import Corporate
 from quidpath_backend.core.utils.decorators import require_authenticated
+from quidpath_backend.core.decorators import require_superuser
 from quidpath_backend.core.utils.email import NotificationServiceHandler
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.Logbase import TransactionLogBase, logger
@@ -144,6 +145,7 @@ def create_corporate(request):
 
 
 @csrf_exempt
+@require_superuser
 def list_corporates(request):
     try:
         corporates = ServiceRegistry().database("corporate", "filter", data={})
@@ -470,6 +472,7 @@ def delete_corporate(request):
 
 
 @csrf_exempt
+@require_superuser
 def approve_corporate(request):
     data, _ = get_clean_data(request)
     corporate_id = data.get("id")

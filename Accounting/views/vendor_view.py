@@ -1,7 +1,6 @@
 import traceback
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
-from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 
 from Accounting.models.vendor import Vendor
@@ -9,13 +8,14 @@ from OrgAuth.models import Corporate
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.corporate_helper import get_corporate_id_from_data
 
 
 @csrf_exempt
 def create_vendor(request):
     data, metadata = get_clean_data(request)
     category = data.get("category")
-    corporate_id = data.get("corporate")
+    corporate_id = get_corporate_id_from_data(data)
 
     if not category or not corporate_id:
         return ResponseProvider(
@@ -173,7 +173,7 @@ def list_vendors(request):
 def get_vendor(request):
     data, metadata = get_clean_data(request)
     vendor_id = data.get("id")
-    corporate_id = data.get("corporate")
+    corporate_id = get_corporate_id_from_data(data)
 
     if not vendor_id or not corporate_id:
         return ResponseProvider(
@@ -222,7 +222,7 @@ def get_vendor(request):
 def update_vendor(request):
     data, metadata = get_clean_data(request)
     vendor_id = data.get("id")
-    corporate_id = data.get("corporate")
+    corporate_id = get_corporate_id_from_data(data)
 
     if not vendor_id or not corporate_id:
         return ResponseProvider(
@@ -305,7 +305,7 @@ def update_vendor(request):
 def delete_vendor(request):
     data, metadata = get_clean_data(request)
     vendor_id = data.get("id")
-    corporate_id = data.get("corporate")
+    corporate_id = get_corporate_id_from_data(data)
 
     if not vendor_id or not corporate_id:
         return ResponseProvider(
@@ -331,7 +331,7 @@ def delete_vendor(request):
 def search_vendors(request):
     """Search vendors by name, email, company, or phone"""
     data, metadata = get_clean_data(request)
-    corporate_id = data.get("corporate")
+    corporate_id = get_corporate_id_from_data(data)
     search_term = data.get("search", "").strip()
 
     if not corporate_id:

@@ -11,6 +11,7 @@ from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.corporate_helper import get_corporate_id_from_data
 
 
 @csrf_exempt
@@ -35,19 +36,33 @@ def create_transaction(request):
     - 500: Internal server error
     """
     data, metadata = get_clean_data(request)
-    required_fields = ["bank_account_id", "transaction_type", "amount", "corporate"]
-
+    
+    # Extract corporate_id using helper
+    corporate_id = get_corporate_id_from_data(data)
+    bank_account_id = data.get("bank_account_id")
+    transaction_type = data.get("transaction_type")
+    amount = data.get("amount")
+    
     # Validate required fields
-    for field in required_fields:
-        if not data.get(field):
-            return ResponseProvider(
-                message=f"{field.replace('_', ' ').title()} is required", code=400
-            ).bad_request()
+    if not corporate_id:
+        return ResponseProvider(
+            message="Corporate ID is required", code=400
+        ).bad_request()
+    if not bank_account_id:
+        return ResponseProvider(
+            message="Bank Account ID is required", code=400
+        ).bad_request()
+    if not transaction_type:
+        return ResponseProvider(
+            message="Transaction Type is required", code=400
+        ).bad_request()
+    if not amount:
+        return ResponseProvider(
+            message="Amount is required", code=400
+        ).bad_request()
 
     try:
         registry = ServiceRegistry()
-        corporate_id = data["corporate"]
-        bank_account_id = data["bank_account_id"]
 
         # Validate corporate
         corporates = registry.database(

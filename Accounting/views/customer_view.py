@@ -9,13 +9,14 @@ from OrgAuth.models import Corporate
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.corporate_helper import get_corporate_id_from_data
 
 
 @csrf_exempt
 def create_customer(request):
     data, metadata = get_clean_data(request)
     category = data.get("category")
-    corporate_id = data.get("corporate")
+    corporate_id = get_corporate_id_from_data(data)
 
     if not category or not corporate_id:
         return ResponseProvider(
@@ -61,7 +62,7 @@ def create_customer(request):
 @csrf_exempt
 def list_customers(request):
     data, metadata = get_clean_data(request)
-    corporate_id = data.get("corporate")
+    corporate_id = get_corporate_id_from_data(data)
 
     if not corporate_id:
         return ResponseProvider(
@@ -113,7 +114,7 @@ def list_customers(request):
 def update_customer(request):
     data, metadata = get_clean_data(request)
     customer_id = data.get("id")
-    corporate_id = data.get("corporate")
+    corporate_id = get_corporate_id_from_data(data)
 
     if not customer_id or not corporate_id:
         return ResponseProvider(
@@ -162,7 +163,7 @@ def update_customer(request):
 def delete_customer(request):
     data, metadata = get_clean_data(request)
     customer_id = data.get("id")
-    corporate_id = data.get("corporate")
+    corporate_id = get_corporate_id_from_data(data)
 
     if not customer_id or not corporate_id:
         return ResponseProvider(

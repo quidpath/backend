@@ -29,13 +29,25 @@ def get_notifications(request):
     try:
         user = request.user
         
-        # Get user's corporate/organization
-        corporate = CorporateService().get_or_default(user.corporate_id)
+        # Get user's corporate/organization if they are a CorporateUser
+        corporate = None
+        try:
+            from OrgAuth.models import CorporateUser
+            corporate_user = CorporateUser.objects.filter(id=user.id).first()
+            if corporate_user:
+                corporate = corporate_user.corporate
+        except Exception:
+            pass
         
-        # Base queryset - notifications for user's organization
-        queryset = Notification.objects.filter(
-            Q(destination=user.email) | Q(corporate=corporate)
-        ).select_related("notification_type", "state").order_by("-created_at")
+        # Base queryset - notifications for user's email and optionally their organization
+        if corporate:
+            queryset = Notification.objects.filter(
+                Q(destination=user.email) | Q(corporate=corporate)
+            ).select_related("notification_type", "state").order_by("-created_at")
+        else:
+            queryset = Notification.objects.filter(
+                destination=user.email
+            ).select_related("notification_type", "state").order_by("-created_at")
         
         # Apply filters
         is_read = request.query_params.get("is_read")
@@ -60,7 +72,7 @@ def get_notifications(request):
                 "destination": n.destination,
                 "notification_type": n.notification_type.name,
                 "state": n.state.name,
-                "is_read": getattr(n, "is_read", False),
+                "is_read": n.is_read,
                 "created_at": n.created_at.isoformat(),
                 "updated_at": n.updated_at.isoformat(),
             }
@@ -70,6 +82,9 @@ def get_notifications(request):
         return paginator.get_paginated_response(notifications_data)
     
     except Exception as e:
+        import traceback
+        print(f"Error in get_notifications: {str(e)}")
+        print(traceback.format_exc())
         return Response(
             {"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -94,11 +109,6 @@ def mark_notification_read(request, notification_id):
                 status=status.HTTP_404_NOT_FOUND,
             )
         
-        # Add is_read field if it doesn't exist (for backward compatibility)
-        if not hasattr(notification, "is_read"):
-            # You may need to add this field to the model
-            pass
-        
         notification.is_read = True
         notification.save()
         
@@ -108,6 +118,9 @@ def mark_notification_read(request, notification_id):
         )
     
     except Exception as e:
+        import traceback
+        print(f"Error in mark_notification_read: {str(e)}")
+        print(traceback.format_exc())
         return Response(
             {"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -135,6 +148,9 @@ def mark_all_notifications_read(request):
         )
     
     except Exception as e:
+        import traceback
+        print(f"Error in mark_all_notifications_read: {str(e)}")
+        print(traceback.format_exc())
         return Response(
             {"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -159,6 +175,9 @@ def get_unread_count(request):
         )
     
     except Exception as e:
+        import traceback
+        print(f"Error in get_unread_count: {str(e)}")
+        print(traceback.format_exc())
         return Response(
             {"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

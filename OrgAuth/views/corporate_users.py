@@ -347,7 +347,12 @@ def delete_corporate_user(request):
 def list_corporate_users(request):
     try:
         data, meta = get_clean_data(request)
-        admin_email = meta.get("user")
+        admin_user_obj = meta.get("user")
+        admin_email = (
+            getattr(admin_user_obj, "email", None)
+            if admin_user_obj and not isinstance(admin_user_obj, dict)
+            else (admin_user_obj.get("email") if isinstance(admin_user_obj, dict) else None)
+        )
 
         if not admin_email:
             return JsonResponse(

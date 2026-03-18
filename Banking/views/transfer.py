@@ -6,6 +6,7 @@ from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.corporate_helper import get_corporate_id_from_data
 
 
 @csrf_exempt
@@ -30,20 +31,33 @@ def create_internal_transfer(request):
     - 500: Internal server error
     """
     data, metadata = get_clean_data(request)
-    required_fields = ["from_account_id", "to_account_id", "amount", "corporate"]
-
-    # Check required fields
-    for field in required_fields:
-        if not data.get(field):
-            return ResponseProvider(
-                message=f"{field.replace('_', ' ').title()} is required", code=400
-            ).bad_request()
+    
+    # Extract corporate_id using helper
+    corporate_id = get_corporate_id_from_data(data)
+    from_account_id = data.get("from_account_id")
+    to_account_id = data.get("to_account_id")
+    amount = data.get("amount")
+    
+    # Validate required fields
+    if not corporate_id:
+        return ResponseProvider(
+            message="Corporate ID is required", code=400
+        ).bad_request()
+    if not from_account_id:
+        return ResponseProvider(
+            message="From Account ID is required", code=400
+        ).bad_request()
+    if not to_account_id:
+        return ResponseProvider(
+            message="To Account ID is required", code=400
+        ).bad_request()
+    if not amount:
+        return ResponseProvider(
+            message="Amount is required", code=400
+        ).bad_request()
 
     try:
         registry = ServiceRegistry()
-        corporate_id = data["corporate"]
-        from_account_id = data["from_account_id"]
-        to_account_id = data["to_account_id"]
 
         # Prevent transfer to the same account
         if from_account_id == to_account_id:
@@ -185,7 +199,9 @@ def list_internal_transfers(request):
     - 500: Internal server error
     """
     data, metadata = get_clean_data(request)
-    corporate_id = data.get("corporate")
+    
+    # Extract corporate_id using helper
+    corporate_id = get_corporate_id_from_data(data)
 
     if not corporate_id:
         return ResponseProvider(

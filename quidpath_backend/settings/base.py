@@ -152,6 +152,7 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "SIGNING_KEY": os.environ.get("JWT_SECRET_KEY", SECRET_KEY),
 }
 
 # Email Notification Config
@@ -205,6 +206,12 @@ JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", SECRET_KEY)
 SERVICE_API_KEYS = {
     "billing-service": os.environ.get("BILLING_SERVICE_API_KEY", ""),
     "tazama-service": os.environ.get("TAZAMA_SERVICE_API_KEY", ""),
+    # ERP microservices
+    "inventory-service": os.environ.get("INVENTORY_SERVICE_SECRET", ""),
+    "pos-service": os.environ.get("POS_SERVICE_SECRET", ""),
+    "crm-service": os.environ.get("CRM_SERVICE_SECRET", ""),
+    "hrm-service": os.environ.get("HRM_SERVICE_SECRET", ""),
+    "projects-service": os.environ.get("PROJECTS_SERVICE_SECRET", ""),
 }
 
 # Webhook Configuration

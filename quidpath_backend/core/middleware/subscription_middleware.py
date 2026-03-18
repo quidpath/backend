@@ -56,6 +56,24 @@ class SubscriptionMiddleware:
             if getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False):
                 return self.get_response(request)
 
+        # Also check JWT token directly for superuser flag (JWT auth runs after middleware)
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        if auth_header.startswith("Bearer "):
+            try:
+                import jwt as pyjwt
+                from django.conf import settings as django_settings
+                token = auth_header.split(" ", 1)[1]
+                payload = pyjwt.decode(
+                    token,
+                    django_settings.SIMPLE_JWT.get("SIGNING_KEY", django_settings.SECRET_KEY),
+                    algorithms=["HS256"],
+                    options={"verify_exp": True},
+                )
+                if payload.get("is_superuser") or payload.get("is_staff"):
+                    return self.get_response(request)
+            except Exception:
+                pass
+
         # Get corporate_id from request
         corporate_id = self._extract_corporate_id(request)
 

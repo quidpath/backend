@@ -5,6 +5,7 @@ from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.corporate_helper import get_corporate_id_from_data
 
 
 @csrf_exempt
@@ -150,7 +151,8 @@ def list_bank_charges(request):
     data, metadata = get_clean_data(request)
     registry = ServiceRegistry()
 
-    corporate_id = data.get("corporate")
+    # Extract corporate_id using helper
+    corporate_id = get_corporate_id_from_data(data)
     if not corporate_id:
         return ResponseProvider(
             message="Corporate ID is required", code=400

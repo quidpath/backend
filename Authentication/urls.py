@@ -32,12 +32,22 @@ from Authentication.views.notifications import (
     mark_all_notifications_read,
     get_unread_count,
 )
+from Authentication.views.activity import (
+    get_recent_activity,
+    get_activity_stats,
+)
 from Authentication.views.plans import (
     get_subscription_plans,
     initiate_subscription_payment,
     check_subscription_status,
 )
 from Authentication.views.health import health_check
+from Authentication.views.menu import get_menu
+from Authentication.views.settings import (
+    get_system_settings,
+    update_system_settings,
+    check_user_permissions,
+)
 
 urlpatterns = [
     path("health/", health_check, name="health-check"),
@@ -48,6 +58,7 @@ urlpatterns = [
     path("activate-account/", activate_account, name="activate-account"),
     path("resend-activation/", resend_activation_email, name="resend-activation"),
     path("get_profile/", get_profile, name="profile"),
+    path("menu/", get_menu, name="menu"),
     path("token/refresh/", refresh_token, name="token_refresh"),
     path("logout/", logout_user, name="logout"),
     path("delete-user/", delete_user, name="delete_user"),
@@ -62,6 +73,10 @@ urlpatterns = [
     path("logo/upload/", upload_corporate_logo, name="upload-logo"),
     path("logo/get/", get_corporate_logo, name="get-logo"),
     path("logo/delete/", delete_corporate_logo, name="delete-logo"),
+    # Settings and permissions
+    path("settings/", get_system_settings, name="get-settings"),
+    path("settings/update/", update_system_settings, name="update-settings"),
+    path("permissions/", check_user_permissions, name="check-permissions"),
     # Microservice API endpoints
     path("users/<uuid:user_id>/", get_user_details, name="microservice-user-details"),
     path(
@@ -92,6 +107,9 @@ urlpatterns = [
         get_unread_count,
         name="get-unread-count",
     ),
+    # Activity feed endpoints
+    path("activity/recent/", get_recent_activity, name="get-recent-activity"),
+    path("activity/stats/", get_activity_stats, name="get-activity-stats"),
     # Subscription plan endpoints
     path("plans/", get_subscription_plans, name="get-subscription-plans"),
     path("payments/initiate/", initiate_subscription_payment, name="initiate-subscription-payment"),

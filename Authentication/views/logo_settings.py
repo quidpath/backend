@@ -133,6 +133,21 @@ def get_corporate_logo(request):
     if not user:
         return JsonResponse({"error": "User not authenticated"}, status=401)
 
+    # Check if user is superuser
+    if isinstance(user, dict):
+        is_superuser = user.get("is_superuser", False)
+    else:
+        is_superuser = getattr(user, "is_superuser", False)
+
+    # Superusers don't have a corporate, return empty/default response
+    if is_superuser:
+        return JsonResponse({
+            "logo": None,
+            "corporate_id": None,
+            "corporate_name": "System Admin",
+            "message": "Superuser - no corporate associated"
+        })
+
     user_id = user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
     if not user_id:
         return JsonResponse({"error": "User ID not found"}, status=400)

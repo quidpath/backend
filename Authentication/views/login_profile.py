@@ -10,6 +10,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from Authentication.models import CustomUser
 from OrgAuth.models import CorporateUser
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from Authentication.views.menu import build_menu_for_user
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 
 
@@ -206,6 +207,8 @@ def get_profile(request):
             "logo": "",
         }
 
+    menu_sections = build_menu_for_user(user)
+
     user_profile = {
         "id": str(user.id),
         "username": user.username,
@@ -231,6 +234,7 @@ def get_profile(request):
         ),
         "corporate": corporate,
         "role": role,
+        "menu": menu_sections,
     }
 
     TransactionLogBase.log(
