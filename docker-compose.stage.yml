@@ -21,8 +21,6 @@ services:
     image: redis:alpine
     container_name: redis_stage
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6385:6379"
     volumes:
       - /mnt/quidpath-stage-data/redis:/data
     command: redis-server --appendonly yes
