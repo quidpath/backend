@@ -63,6 +63,7 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       BILLING_SERVICE_URL: "http://billing-backend-stage:8000/api/billing"
       BILLING_SERVICE_SECRET: ${BILLING_SERVICE_SECRET}
+      
     volumes:
       - /mnt/quidpath-stage-data/media:/app/media
       - /mnt/quidpath-stage-data/staticfiles:/app/staticfiles

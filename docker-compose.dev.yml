@@ -19,7 +19,6 @@ services:
     networks:
       - quidpath_network
       
-
   redis:
     image: redis:alpine
     container_name: redis_dev
