@@ -22,6 +22,9 @@ channels>=4.0.0
 channels-redis>=4.1.0
 daphne>=4.0.0
 
+# Redis cache backend
+django-redis>=5.0.0
+
 # Date and time utilities
 python-dateutil
 
