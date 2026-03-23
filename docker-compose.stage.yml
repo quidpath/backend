@@ -61,8 +61,9 @@ services:
       CSRF_TRUSTED_ORIGINS: "https://stage.quidpath.com,https://stage-api.quidpath.com"
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
-      BILLING_SERVICE_URL: "http://billing-backend-stage:8000/api/billing"
+      BILLING_SERVICE_URL: "http://billing-backend-stage:8000"
       BILLING_SERVICE_SECRET: ${BILLING_SERVICE_SECRET}
+      BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET}
 
     volumes:
       - /mnt/quidpath-stage-data/media:/app/media

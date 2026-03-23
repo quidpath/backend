@@ -16,6 +16,7 @@ from Authentication.models import CustomUser
 from OrgAuth.models import CorporateUser
 from quidpath_backend.core.utils.email import NotificationServiceHandler
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
+from quidpath_backend.core.utils.rate_limit import rate_limit
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
@@ -65,6 +66,7 @@ def issue_tokens_for_user(user, role=None, corporate_id=None):
 
 
 @csrf_exempt
+@rate_limit(max_requests=5, window_seconds=60, key_prefix="login")
 def login_user(request):
     data, _ = get_clean_data(request)
     username = data.get("username")
@@ -138,6 +140,36 @@ def login_user(request):
         user.is_active = True
         user.save(update_fields=["is_active"])
 
+    # Check if individual user still needs to pay before accessing the system
+    if not user.is_superuser and corporate_user:
+        try:
+            corporate = corporate_user.corporate
+            # If corporate is not active, user can only access billing/payment endpoints.
+            # The BillingAccessMiddleware handles blocking other endpoints with 402.
+            # We still issue tokens so the user can reach the billing setup page.
+            if not corporate.is_active:
+                access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
+                TransactionLogBase.log(
+                    "USER_LOGIN", user=user, message="User logged in (payment pending)"
+                )
+                response = JsonResponse(
+                    {
+                        "access": access_token,
+                        "refresh": refresh_token,
+                        "otp_required": False,
+                        "is_global_user": False,
+                        "organisation_id": corporate_id,
+                        "role": role,
+                        "payment_required": True,
+                        "corporate_id": str(corporate.id),
+                        "message": "Please complete your subscription payment to access the system.",
+                    }
+                )
+                response["Authorization"] = f"Bearer {access_token}"
+                return _apply_api_security_headers(response)
+        except Exception:
+            pass
+
     access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
     TransactionLogBase.log(
         "USER_LOGIN", user=user, message="User logged in successfully"
@@ -158,6 +190,7 @@ def login_user(request):
 
 
 @csrf_exempt
+@rate_limit(max_requests=5, window_seconds=60, key_prefix="verify_otp")
 def verify_otp(request):
     data, _ = get_clean_data(request)
     otp_code = data.get("otp")

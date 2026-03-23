@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth.hashers import make_password
 from django.http import JsonResponse
 from django.utils.timezone import now
@@ -6,14 +8,22 @@ from django.views.decorators.csrf import csrf_exempt
 from Authentication.models import CustomUser
 from Authentication.models.role import Role
 from OrgAuth.models import Corporate, CorporateUser
-from quidpath_backend.core.billing_client import BillingServiceClient
 from quidpath_backend.core.utils.email import NotificationServiceHandler
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
+logger = logging.getLogger(__name__)
+
 
 @csrf_exempt
 def register_individual_user(request):
+    """
+    Register an individual user:
+    1. Creates Corporate + CorporateUser (both inactive until OTP verified)
+    2. Sends OTP email
+    3. Does NOT create a billing subscription — that happens after OTP verification
+       when the user initiates payment via /billing/setup/ or /payments/initiate/
+    """
     data, metadata = get_clean_data(request)
     username = data.get("username")
     email = data.get("email")
@@ -46,7 +56,7 @@ def register_individual_user(request):
             zip_code=data.get("zip_code", ""),
             description=f"Individual account for {username}",
             is_approved=True,
-            is_active=False,
+            is_active=False,   # Activated after payment confirmed
             is_verified=False,
         )
 
@@ -58,27 +68,12 @@ def register_individual_user(request):
             password=make_password(password),
             corporate=corporate,
             role=superadmin_role,
-            is_active=False,
+            is_active=False,   # Activated after OTP verification
         )
 
         otp_code = user.generate_otp()
         user.last_otp_sent_at = now()
         user.save()
-
-        billing_client = BillingServiceClient()
-        subscription_result = billing_client.create_subscription(
-            corporate_id=str(corporate.id),
-            corporate_name=corporate.name,
-            plan_tier=plan_tier,
-            billing_cycle="monthly",
-        )
-
-        if not subscription_result.get("success"):
-            TransactionLogBase.log(
-                "BILLING_SUBSCRIPTION_FAILED",
-                user=user,
-                message=f"Failed to create subscription: {subscription_result.get('message')}",
-            )
 
         NotificationServiceHandler().send_notification(
             [
@@ -90,8 +85,9 @@ def register_individual_user(request):
                     <h3>Welcome to Quidpath!</h3>
                     <p>Hello {user.username},</p>
                     <p>Your account has been created successfully.</p>
-                    <p>Your OTP is <b>{otp_code}</b>.</p>
-                    <p>Please verify your email and complete payment to activate your account.</p>
+                    <p>Your OTP is <b>{otp_code}</b>. It expires in 24 hours.</p>
+                    <p>After verifying your OTP, you will be prompted to complete your
+                    subscription payment to activate your account.</p>
                 """,
                     "confirmation_code": otp_code,
                 }
@@ -106,11 +102,10 @@ def register_individual_user(request):
 
         return JsonResponse(
             {
-                "message": "User registered successfully. Please verify OTP and complete payment.",
+                "message": "User registered successfully. Please verify your OTP to continue.",
                 "otp_required": True,
                 "corporate_id": str(corporate.id),
                 "subscription_required": True,
-                "subscription_details": subscription_result.get("data", {}),
             },
             status=201,
         )

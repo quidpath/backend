@@ -7,7 +7,7 @@ from django.shortcuts import redirect, render
 from django.urls import path
 from django.utils.html import format_html
 
-from quidpath_backend.core.billing_client import BillingServiceClient
+from quidpath_backend.core.Services.billing_service import BillingServiceClient
 
 
 class BillingOverviewAdmin(admin.ModelAdmin):

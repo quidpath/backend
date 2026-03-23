@@ -7,11 +7,13 @@ from django.views.decorators.csrf import csrf_exempt
 from Authentication.models import CustomUser
 from quidpath_backend.core.utils.email import NotificationServiceHandler
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
+from quidpath_backend.core.utils.rate_limit import rate_limit
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
 
 @csrf_exempt
+@rate_limit(max_requests=5, window_seconds=60, key_prefix="register")
 def register_user(request):
     """
     Register a new user:

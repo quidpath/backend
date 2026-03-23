@@ -5,7 +5,7 @@ from django.utils.html import format_html
 
 from Authentication.models.role import Role
 from OrgAuth.models import Corporate, CorporateUser
-from quidpath_backend.core.billing_client import BillingServiceClient
+from quidpath_backend.core.Services.billing_service import BillingServiceClient
 
 
 @admin.register(Corporate)

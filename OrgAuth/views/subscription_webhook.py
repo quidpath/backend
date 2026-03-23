@@ -1,297 +1,108 @@
 """
 Subscription Webhook Handler
-Receives and processes subscription events from Billing Service.
-Uses get_clean_data_safe and ResponseProvider; method check inside view.
+Receives subscription/payment events from the Billing Service and updates
+the Corporate.is_active flag accordingly.
+All subscription data lives in the billing service — we only mirror is_active here.
 """
-
 import hashlib
 import hmac
-import json
 import logging
-from datetime import datetime
 
 from django.conf import settings
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from OrgAuth.models import Corporate
-from OrgAuth.models.subscription import CorporateSubscription
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.request_parser import get_clean_data_safe
 
 logger = logging.getLogger(__name__)
 
 
-def verify_webhook_signature(request):
-    """Verify webhook signature from Billing Service"""
+def _verify_signature(request) -> bool:
     signature = request.headers.get("X-Webhook-Signature")
     if not signature:
         return False
-
-    # Get webhook secret from settings
     webhook_secret = getattr(settings, "BILLING_WEBHOOK_SECRET", "")
     if not webhook_secret:
         logger.error("BILLING_WEBHOOK_SECRET not configured")
         return False
+    # Billing service signs json.dumps(payload, sort_keys=True) — not raw request.body
+    # We must re-serialize the parsed payload the same way to verify
+    try:
+        import json
+        payload = json.loads(request.body)
+        payload_json = json.dumps(payload, sort_keys=True).encode()
+    except Exception:
+        payload_json = request.body
+    expected = hmac.new(webhook_secret.encode(), payload_json, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(signature, expected)
 
-    # Calculate expected signature
-    payload = request.body
-    expected_signature = hmac.new(
-        webhook_secret.encode(), payload, hashlib.sha256
-    ).hexdigest()
 
-    return hmac.compare_digest(signature, expected_signature)
+def _set_corporate_active(corporate_id, active: bool):
+    if not corporate_id:
+        return
+    try:
+        corporate = Corporate.objects.get(id=corporate_id)
+        if corporate.is_active != active:
+            corporate.is_active = active
+            corporate.save(update_fields=["is_active"])
+            logger.info("Corporate %s is_active set to %s", corporate_id, active)
+    except Corporate.DoesNotExist:
+        logger.warning("Corporate %s not found in webhook", corporate_id)
 
 
 @csrf_exempt
 def subscription_webhook(request):
     """
-    Handle subscription webhooks from Billing Service.
-    Events: subscription.created, subscription.activated, subscription.cancelled,
-    subscription.expired, subscription.upgraded, subscription.downgraded,
-    payment.succeeded, payment.failed.
+    Handle subscription/payment webhooks from Billing Service.
+    Updates Corporate.is_active based on payment and subscription events.
     """
     if request.method != "POST":
         return ResponseProvider.method_not_allowed(["POST"])
 
-    if not verify_webhook_signature(request):
+    if not _verify_signature(request):
         logger.warning("Invalid webhook signature")
         return ResponseProvider.error_response("Invalid signature", status=403)
 
-    payload, err = get_clean_data_safe(
-        request, allowed_methods=["POST"], require_json_body=True
-    )
+    payload, err = get_clean_data_safe(request, allowed_methods=["POST"], require_json_body=True)
     if err is not None:
         return err
 
     try:
         event_type = (payload or {}).get("event")
         data = (payload or {}).get("data", {})
+        corporate_id = data.get("corporate_id")
 
-        logger.info("Received webhook: %s", event_type)
+        logger.info("Received billing webhook: %s for corporate %s", event_type, corporate_id)
 
-        handlers = {
-            "subscription.created": handle_subscription_created,
-            "subscription.activated": handle_subscription_activated,
-            "subscription.cancelled": handle_subscription_cancelled,
-            "subscription.expired": handle_subscription_expired,
-            "subscription.upgraded": handle_subscription_upgraded,
-            "subscription.downgraded": handle_subscription_downgraded,
-            "payment.succeeded": handle_payment_succeeded,
-            "payment.failed": handle_payment_failed,
+        # Events that mean the corporate should have access
+        ACTIVATE_EVENTS = {
+            "subscription.created",
+            "subscription.activated",
+            "subscription.upgraded",
+            "subscription.downgraded",
+            "payment.succeeded",
+            "trial.created",
+            "trial.activated",
         }
 
-        handler = handlers.get(event_type)
-        if not handler:
-            logger.warning("Unknown event type: %s", event_type)
-            return ResponseProvider.error_response("Unknown event type", status=400)
+        # Events that mean the corporate should lose access
+        DEACTIVATE_EVENTS = {
+            "subscription.expired",
+            "subscription.cancelled",
+            "payment.failed",
+            "trial.expired",
+        }
 
-        result = handler(data)
-        return ResponseProvider.success_response(
-            data={"status": "success", "message": result}
-        )
+        if event_type in ACTIVATE_EVENTS:
+            _set_corporate_active(corporate_id, True)
+        elif event_type in DEACTIVATE_EVENTS:
+            _set_corporate_active(corporate_id, False)
+        else:
+            logger.info("Unhandled webhook event: %s", event_type)
+
+        return ResponseProvider.success_response(data={"status": "ok", "event": event_type})
+
     except Exception as e:
         logger.exception("Error processing webhook: %s", e)
         return ResponseProvider.error_response(str(e), status=500)
-
-
-def handle_subscription_created(data):
-    """Handle subscription.created event"""
-    corporate_id = data.get("corporate_id")
-    subscription_id = data.get("subscription_id")
-    plan = data.get("plan", {})
-
-    # Create or update subscription
-    subscription, created = CorporateSubscription.objects.update_or_create(
-        billing_subscription_id=subscription_id,
-        defaults={
-            "corporate_id": corporate_id,
-            "plan_id": plan.get("id"),
-            "plan_name": plan.get("name"),
-            "plan_slug": plan.get("slug"),
-            "status": data.get("status", "trial"),
-            "start_date": timezone.now(),
-            "end_date": parse_datetime(data.get("end_date")),
-            "trial_end_date": parse_datetime(data.get("trial_end_date")),
-            "features": plan.get("features", {}),
-            "auto_renew": data.get("auto_renew", True),
-            "sync_source": "webhook",
-        },
-    )
-
-    action = "created" if created else "updated"
-    logger.info(f"Subscription {action} for corporate {corporate_id}")
-
-    return f"Subscription {action}"
-
-
-def handle_subscription_activated(data):
-    """Handle subscription.activated event"""
-    subscription_id = data.get("subscription_id")
-
-    try:
-        subscription = CorporateSubscription.objects.get(
-            billing_subscription_id=subscription_id
-        )
-        subscription.status = "active"
-        subscription.start_date = parse_datetime(data.get("start_date"))
-        subscription.end_date = parse_datetime(data.get("end_date"))
-        subscription.save()
-
-        logger.info(f"Subscription {subscription_id} activated")
-        return "Subscription activated"
-
-    except CorporateSubscription.DoesNotExist:
-        logger.error(f"Subscription {subscription_id} not found")
-        # Create it if it doesn't exist
-        return handle_subscription_created(data)
-
-
-def handle_subscription_cancelled(data):
-    """Handle subscription.cancelled event"""
-    subscription_id = data.get("subscription_id")
-
-    try:
-        subscription = CorporateSubscription.objects.get(
-            billing_subscription_id=subscription_id
-        )
-        subscription.status = "cancelled"
-        subscription.auto_renew = False
-        subscription.save()
-
-        logger.info(f"Subscription {subscription_id} cancelled")
-        return "Subscription cancelled"
-
-    except CorporateSubscription.DoesNotExist:
-        logger.error(f"Subscription {subscription_id} not found")
-        return "Subscription not found"
-
-
-def handle_subscription_expired(data):
-    """Handle subscription.expired event"""
-    subscription_id = data.get("subscription_id")
-
-    try:
-        subscription = CorporateSubscription.objects.get(
-            billing_subscription_id=subscription_id
-        )
-        subscription.status = "expired"
-        subscription.save()
-
-        logger.info(f"Subscription {subscription_id} expired")
-        return "Subscription expired"
-
-    except CorporateSubscription.DoesNotExist:
-        logger.error(f"Subscription {subscription_id} not found")
-        return "Subscription not found"
-
-
-def handle_subscription_upgraded(data):
-    """Handle subscription.upgraded event"""
-    subscription_id = data.get("subscription_id")
-    new_plan = data.get("new_plan", {})
-
-    try:
-        subscription = CorporateSubscription.objects.get(
-            billing_subscription_id=subscription_id
-        )
-        subscription.plan_id = new_plan.get("id")
-        subscription.plan_name = new_plan.get("name")
-        subscription.plan_slug = new_plan.get("slug")
-        subscription.features = new_plan.get("features", {})
-        subscription.end_date = parse_datetime(data.get("end_date"))
-        subscription.save()
-
-        logger.info(
-            f"Subscription {subscription_id} upgraded to {new_plan.get('name')}"
-        )
-        return "Subscription upgraded"
-
-    except CorporateSubscription.DoesNotExist:
-        logger.error(f"Subscription {subscription_id} not found")
-        return "Subscription not found"
-
-
-def handle_subscription_downgraded(data):
-    """Handle subscription.downgraded event"""
-    subscription_id = data.get("subscription_id")
-    new_plan = data.get("new_plan", {})
-
-    try:
-        subscription = CorporateSubscription.objects.get(
-            billing_subscription_id=subscription_id
-        )
-        subscription.plan_id = new_plan.get("id")
-        subscription.plan_name = new_plan.get("name")
-        subscription.plan_slug = new_plan.get("slug")
-        subscription.features = new_plan.get("features", {})
-        subscription.end_date = parse_datetime(data.get("end_date"))
-        subscription.save()
-
-        logger.info(
-            f"Subscription {subscription_id} downgraded to {new_plan.get('name')}"
-        )
-        return "Subscription downgraded"
-
-    except CorporateSubscription.DoesNotExist:
-        logger.error(f"Subscription {subscription_id} not found")
-        return "Subscription not found"
-
-
-def handle_payment_succeeded(data):
-    """Handle payment.succeeded event"""
-    subscription_id = data.get("subscription_id")
-
-    try:
-        subscription = CorporateSubscription.objects.get(
-            billing_subscription_id=subscription_id
-        )
-
-        # If subscription was expired, reactivate it
-        if subscription.status == "expired":
-            subscription.status = "active"
-            subscription.end_date = parse_datetime(data.get("new_end_date"))
-            subscription.save()
-            logger.info(f"Subscription {subscription_id} reactivated after payment")
-
-        return "Payment processed"
-
-    except CorporateSubscription.DoesNotExist:
-        logger.error(f"Subscription {subscription_id} not found")
-        return "Subscription not found"
-
-
-def handle_payment_failed(data):
-    """Handle payment.failed event"""
-    subscription_id = data.get("subscription_id")
-
-    try:
-        subscription = CorporateSubscription.objects.get(
-            billing_subscription_id=subscription_id
-        )
-
-        # Mark subscription as suspended if payment fails
-        subscription.status = "suspended"
-        subscription.save()
-
-        logger.warning(
-            f"Subscription {subscription_id} suspended due to payment failure"
-        )
-        return "Subscription suspended"
-
-    except CorporateSubscription.DoesNotExist:
-        logger.error(f"Subscription {subscription_id} not found")
-        return "Subscription not found"
-
-
-def parse_datetime(date_string):
-    """Parse datetime string to datetime object"""
-    if not date_string:
-        return timezone.now()
-
-    try:
-        # Try ISO format first
-        return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        # Fallback to current time
-        return timezone.now()

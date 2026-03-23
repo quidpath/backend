@@ -11,6 +11,7 @@ from Authentication.models.role import Role
 from OrgAuth.models import Corporate, CorporateUser
 from quidpath_backend.core.utils.email import NotificationServiceHandler
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
+from quidpath_backend.core.utils.rate_limit import rate_limit
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
 
@@ -20,7 +21,14 @@ def generate_activation_token(user_id: str, email: str) -> str:
 
 
 @csrf_exempt
+@rate_limit(max_requests=5, window_seconds=60, key_prefix="register_individual")
 def register_individual_with_email_activation(request):
+    """
+    Register an individual user:
+    1. Creates a Corporate + CorporateUser (inactive)
+    2. Sends activation email with link
+    3. User must click link to activate, then pay before accessing the system
+    """
     data, metadata = get_clean_data(request)
     username = data.get("username")
     email = data.get("email")
@@ -53,7 +61,7 @@ def register_individual_with_email_activation(request):
             zip_code=data.get("zip_code", ""),
             description=f"Individual account for {username}",
             is_approved=True,
-            is_active=False,
+            is_active=False,  # Inactive until payment confirmed
             is_verified=False,
         )
 
@@ -65,19 +73,20 @@ def register_individual_with_email_activation(request):
             password=make_password(password),
             corporate=corporate,
             role=superadmin_role,
-            is_active=False,
+            is_active=False,  # Inactive until email activation
         )
 
-        # Generate and save activation token
         activation_token = generate_activation_token(str(user.id), email)
         user.metadata = {
             "activation_token": activation_token,
             "activation_token_created": timezone.now().isoformat(),
             "plan_tier": plan_tier,
+            "payment_required": True,
         }
-        user.save(update_fields=['metadata'])
+        user.save(update_fields=["metadata"])
 
-        activation_link = f"{data.get('frontend_url', 'http://localhost:3000')}/activate-account?token={activation_token}&email={email}"
+        frontend_url = data.get("frontend_url", "https://app.quidpath.com")
+        activation_link = f"{frontend_url}/activate-account?token={activation_token}&email={email}"
 
         NotificationServiceHandler().send_notification([
             {
@@ -93,6 +102,7 @@ def register_individual_with_email_activation(request):
                 <p>Or copy and paste this link in your browser:</p>
                 <p>{activation_link}</p>
                 <p>This link will expire in 24 hours.</p>
+                <p>After activation, you will be prompted to complete your subscription payment before accessing the system.</p>
                 <p>If you didn't create this account, please ignore this email.</p>
             """,
             }
@@ -102,10 +112,7 @@ def register_individual_with_email_activation(request):
             "INDIVIDUAL_USER_REGISTERED_EMAIL_ACTIVATION",
             user=user,
             message=f"Individual user {username} registered with email activation",
-            extra={
-                "corporate_id": str(corporate.id),
-                "plan_tier": plan_tier,
-            },
+            extra={"corporate_id": str(corporate.id), "plan_tier": plan_tier},
         )
 
         return JsonResponse(
@@ -129,7 +136,13 @@ def register_individual_with_email_activation(request):
 
 
 @csrf_exempt
+@rate_limit(max_requests=5, window_seconds=60, key_prefix="activate_account")
 def activate_account(request):
+    """
+    Activate account via email link.
+    After activation, user must pay before they can log in and use the system.
+    Returns payment_required=True so the frontend redirects to the payment page.
+    """
     data, metadata = get_clean_data(request)
     token = data.get("token")
     email = data.get("email")
@@ -139,28 +152,38 @@ def activate_account(request):
 
     try:
         user = CustomUser.objects.get(email=email, is_active=False)
-        
-        # Ensure metadata exists
-        if not hasattr(user, 'metadata') or user.metadata is None:
+
+        if not hasattr(user, "metadata") or user.metadata is None:
             user.metadata = {}
-        
+
         stored_token = user.metadata.get("activation_token")
         token_created = user.metadata.get("activation_token_created")
-        
+
         if not stored_token or stored_token != token:
             return JsonResponse({"error": "Invalid activation token"}, status=400)
-        
+
         if token_created:
             from datetime import datetime
             token_time = datetime.fromisoformat(token_created)
             if timezone.now() - token_time > timedelta(hours=24):
-                return JsonResponse({"error": "Activation link has expired"}, status=400)
-        
+                return JsonResponse({"error": "Activation link has expired. Please request a new one."}, status=400)
+
+        # Activate the user account — but mark payment as still required
         user.is_active = True
         if not isinstance(user.metadata, dict):
             user.metadata = {}
         user.metadata["activated_at"] = timezone.now().isoformat()
+        user.metadata["payment_required"] = True
         user.save()
+
+        # Get corporate info for payment redirect
+        corporate_id = None
+        plan_tier = user.metadata.get("plan_tier", "starter")
+        try:
+            corp_user = CorporateUser.objects.select_related("corporate").get(id=user.id)
+            corporate_id = str(corp_user.corporate.id)
+        except CorporateUser.DoesNotExist:
+            pass
 
         TransactionLogBase.log(
             "ACCOUNT_ACTIVATED",
@@ -171,21 +194,24 @@ def activate_account(request):
         NotificationServiceHandler().send_notification([
             {
                 "message_type": "2",
-                "organisation_id": str(user.corporateuser.corporate.id) if hasattr(user, 'corporateuser') else None,
+                "organisation_id": corporate_id,
                 "destination": email,
                 "message": f"""
                 <h3>Account Activated!</h3>
                 <p>Hello {user.username},</p>
                 <p>Your account has been successfully activated.</p>
-                <p>You can now log in and complete your subscription payment to access all features.</p>
+                <p>Please complete your subscription payment to start using Quidpath.</p>
                 <p>Thank you for choosing Quidpath!</p>
             """,
             }
         ])
 
         return JsonResponse({
-            "message": "Account activated successfully. You can now log in.",
+            "message": "Account activated successfully. Please complete payment to access the system.",
             "username": user.username,
+            "payment_required": True,
+            "corporate_id": corporate_id,
+            "plan_tier": plan_tier,
         })
 
     except CustomUser.DoesNotExist:
@@ -200,6 +226,7 @@ def activate_account(request):
 
 
 @csrf_exempt
+@rate_limit(max_requests=5, window_seconds=60, key_prefix="resend_activation")
 def resend_activation_email(request):
     data, metadata = get_clean_data(request)
     email = data.get("email")
@@ -209,23 +236,30 @@ def resend_activation_email(request):
 
     try:
         user = CustomUser.objects.get(email=email, is_active=False)
-        
+
         activation_token = generate_activation_token(str(user.id), email)
-        
-        # Ensure metadata exists
-        if not hasattr(user, 'metadata') or user.metadata is None:
+
+        if not hasattr(user, "metadata") or user.metadata is None:
             user.metadata = {}
-        
+
         user.metadata["activation_token"] = activation_token
         user.metadata["activation_token_created"] = timezone.now().isoformat()
         user.save()
 
-        activation_link = f"{data.get('frontend_url', 'http://localhost:3000')}/activate-account?token={activation_token}&email={email}"
+        corporate_id = None
+        try:
+            corp_user = CorporateUser.objects.select_related("corporate").get(id=user.id)
+            corporate_id = str(corp_user.corporate.id)
+        except CorporateUser.DoesNotExist:
+            pass
+
+        frontend_url = data.get("frontend_url", "https://app.quidpath.com")
+        activation_link = f"{frontend_url}/activate-account?token={activation_token}&email={email}"
 
         NotificationServiceHandler().send_notification([
             {
                 "message_type": "2",
-                "organisation_id": str(user.corporateuser.corporate.id) if hasattr(user, 'corporateuser') else None,
+                "organisation_id": corporate_id,
                 "destination": email,
                 "message": f"""
                 <h3>Activation Link Resent</h3>

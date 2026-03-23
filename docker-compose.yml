@@ -65,6 +65,7 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       BILLING_SERVICE_URL: ${BILLING_SERVICE_URL}
       BILLING_SERVICE_SECRET: ${BILLING_SERVICE_SECRET}
+      BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET}
     volumes:
       - /mnt/quidpath-data/media:/app/media
       - /mnt/quidpath-data/staticfiles:/app/staticfiles

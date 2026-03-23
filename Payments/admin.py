@@ -1,8 +1,9 @@
 # Payments/admin.py
 from django.contrib import admin
 
-from .models import (PaymentProvider, RecordPayment, RecordPaymentLine,
-                     VendorPayment, VendorPaymentLine)
+from .models.erp_payments import (PaymentProvider, RecordPayment,
+                                   RecordPaymentLine, VendorPayment,
+                                   VendorPaymentLine)
 
 
 class RecordPaymentLineInline(admin.TabularInline):

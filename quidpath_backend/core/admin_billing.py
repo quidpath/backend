@@ -9,7 +9,7 @@ from django.urls import path
 from django.utils.html import format_html
 
 from OrgAuth.models import Corporate
-from quidpath_backend.core.billing_client import BillingServiceClient
+from quidpath_backend.core.Services.billing_service import BillingServiceClient
 
 
 class BillingAdminMixin:

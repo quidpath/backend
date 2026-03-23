@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
 from OrgAuth.models import CorporateUser
-from quidpath_backend.core.billing_client import BillingServiceClient
+from quidpath_backend.core.Services.billing_service import billing_service
 
 logger = logging.getLogger(__name__)
 
@@ -14,17 +14,49 @@ class BillingAccessMiddleware(MiddlewareMixin):
         "/api/auth/login/",
         "/api/auth/register/",
         "/api/auth/register-individual/",
+        "/api/auth/register-individual-email/",
+        "/api/auth/activate-account/",
+        "/api/auth/resend-activation/",
         "/api/auth/verify-otp/",
+        "/api/auth/refresh/",
         "/api/auth/password-forgot/",
         "/api/auth/verify-pass-otp/",
         "/api/auth/reset-password/",
         "/api/auth/health/",
+        "/api/auth/plans/",
+        "/api/auth/subscription/initiate-payment/",
+        "/api/auth/subscription/status/",
         "/api/billing/",
         "/api/payments/",
         "/api/orgauth/webhooks/",
         "/admin/",
         "/static/",
         "/media/",
+        # Direct paths (no prefix)
+        "/login/",
+        "/register/",
+        "/register-individual/",
+        "/register-individual-email/",
+        "/activate-account/",
+        "/resend-activation/",
+        "/verify-otp/",
+        "/token/refresh/",
+        "/password-forgot/",
+        "/verify-pass-otp/",
+        "/reset-password/",
+        "/health/",
+        "/plans/",
+        "/payments/initiate/",
+        "/subscription/status/",
+        "/corporate/create",
+        "/webhooks/",
+        "/billing/setup/",
+        "/billing/pay/",
+        # Profile endpoint — must be accessible so AuthGuard can load user data
+        "/get_profile/",
+        "/menu/",
+        # Notifications — must not block authenticated users
+        "/notifications/",
     ]
 
     def process_request(self, request):
@@ -48,31 +80,38 @@ class BillingAccessMiddleware(MiddlewareMixin):
             if not corporate.is_active:
                 return JsonResponse(
                     {
-                        "error": "Account suspended",
-                        "message": "Your account has been suspended. Please contact support.",
+                        "error": "Payment required",
+                        "message": "Please complete your subscription payment to access the system.",
                         "requires_payment": True,
+                        "corporate_id": str(corporate.id),
                     },
-                    status=403,
+                    status=402,
                 )
 
-            billing_client = BillingServiceClient()
+            billing_client = billing_service
             access_check = billing_client.check_access(str(corporate.id))
 
-            if not access_check.get("success"):
+            if not access_check or not access_check.get("success"):
                 logger.warning(
-                    f"Billing service check failed for corporate {corporate.id}: {access_check.get('message')}"
+                    "Billing service check failed for corporate %s: %s",
+                    corporate.id, (access_check or {}).get("message"),
                 )
+                # Fail open — don't block if billing service is unreachable
                 return None
 
-            has_access = access_check.get("data", {}).get("has_access", False)
-            status = access_check.get("data", {}).get("status", "unknown")
+            # check_access returns has_access at top level
+            has_access = access_check.get("has_access", True)
 
             if not has_access:
+                reason = access_check.get("reason", "no_active_subscription")
                 return JsonResponse(
                     {
                         "error": "Payment required",
-                        "message": "Your subscription has expired or payment is pending. Please complete payment to continue.",
-                        "status": status,
+                        "message": access_check.get(
+                            "message",
+                            "Your subscription has expired. Please complete payment to continue.",
+                        ),
+                        "reason": reason,
                         "requires_payment": True,
                         "corporate_id": str(corporate.id),
                     },

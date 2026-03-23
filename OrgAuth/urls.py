@@ -2,6 +2,7 @@ from django.urls import path
 
 from OrgAuth.views import (corporate_registration, corporate_users,
                            subscription_api, subscription_webhook)
+from OrgAuth.views.billing_setup import setup_org_billing, initiate_org_payment
 from OrgAuth.views.corporate_users import get_corporate_user, list_roles
 from OrgAuth.views.corporate_user_approval import (
     approve_corporate_user,
@@ -38,6 +39,9 @@ urlpatterns = [
     path("corporate-users/ban", ban_corporate_user),
     path("corporate-users/unban", unban_corporate_user),
     path("roles/", list_roles, name="list_roles"),
+    # Billing setup for approved organisations
+    path("billing/setup/", setup_org_billing, name="org-billing-setup"),
+    path("billing/pay/", initiate_org_payment, name="org-billing-pay"),
     # Subscription Webhooks (from Billing Service)
     path(
         "webhooks/subscription",

@@ -9,16 +9,19 @@ from django.views.decorators.csrf import csrf_exempt
 
 from quidpath_backend.core.Services.billing_service import billing_service
 from quidpath_backend.core.utils.json_response import ResponseProvider
+from quidpath_backend.core.utils.rate_limit import rate_limit
 from quidpath_backend.core.utils.request_parser import get_clean_data_safe
 
 logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
+@rate_limit(max_requests=5, window_seconds=60, key_prefix="plans")
 def get_subscription_plans(request):
     """
-    Get subscription plans from billing service.
+    Get subscription plans.
     Query params: type=individual or type=organization (default: individual)
+    Falls back to local DB if billing service is unavailable.
     """
     data, err = get_clean_data_safe(request, allowed_methods=["GET"], require_json_body=False)
     if err is not None:
@@ -30,10 +33,16 @@ def get_subscription_plans(request):
                 "Invalid plan type. Use 'individual' or 'organization'", status=400
             )
 
+        # Try billing service first
         plans = billing_service.get_plans(plan_type=plan_type)
+
+        # Fall back to local DB if billing service is down
+        if plans is None:
+            plans = _get_local_plans(plan_type)
+
         if plans is None:
             return ResponseProvider.error_response(
-                "Failed to fetch plans from billing service",
+                "Failed to fetch plans",
                 status=500,
                 data={"plans": []},
             )
@@ -46,7 +55,60 @@ def get_subscription_plans(request):
         return ResponseProvider.error_response(str(e), status=500)
 
 
+def _get_local_plans(plan_type: str):
+    """Static fallback plans when billing service is unavailable."""
+    if plan_type == "individual":
+        return [
+            {
+                "id": "fallback-individual-starter",
+                "tier": "starter",
+                "name": "Starter",
+                "description": "Basic individual plan",
+                "price_monthly": 500.0,
+                "max_transactions": 100,
+                "max_invoices": 50,
+                "features": {"invoicing": True, "reports": False, "api_access": False},
+                "type": "individual",
+            },
+            {
+                "id": "fallback-individual-professional",
+                "tier": "professional",
+                "name": "Professional",
+                "description": "Professional individual plan",
+                "price_monthly": 1500.0,
+                "max_transactions": 500,
+                "max_invoices": 200,
+                "features": {"invoicing": True, "reports": True, "api_access": False},
+                "type": "individual",
+            },
+        ]
+    else:
+        return [
+            {
+                "id": "fallback-org-basic",
+                "tier": "basic",
+                "name": "Basic",
+                "description": "Basic organisation plan",
+                "price_monthly": 3000.0,
+                "max_users": 5,
+                "features": {"invoicing": True, "reports": True, "api_access": False},
+                "type": "organization",
+            },
+            {
+                "id": "fallback-org-standard",
+                "tier": "standard",
+                "name": "Standard",
+                "description": "Standard organisation plan",
+                "price_monthly": 8000.0,
+                "max_users": 20,
+                "features": {"invoicing": True, "reports": True, "api_access": True},
+                "type": "organization",
+            },
+        ]
+
+
 @csrf_exempt
+@rate_limit(max_requests=5, window_seconds=60, key_prefix="initiate_payment")
 def initiate_subscription_payment(request):
     """Initiate payment for a subscription."""
     data, err = get_clean_data_safe(request, allowed_methods=["POST"], require_json_body=True)
@@ -85,6 +147,7 @@ def initiate_subscription_payment(request):
 
 
 @csrf_exempt
+@rate_limit(max_requests=5, window_seconds=60, key_prefix="sub_status")
 def check_subscription_status(request):
     """Check subscription status. Query params: entity_id (required)."""
     data, err = get_clean_data_safe(request, allowed_methods=["GET"], require_json_body=False)

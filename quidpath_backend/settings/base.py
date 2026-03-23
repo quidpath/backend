@@ -57,7 +57,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "quidpath_backend.core.middleware.subscription_middleware.SubscriptionMiddleware",
     "quidpath_backend.core.middleware.billing_middleware.BillingAccessMiddleware",
 ]
 
@@ -143,16 +142,26 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "5/minute",
+        "user": "5/minute",
+        "auth": "5/minute",
+    },
 }
 
-# JWT Configuration
+# JWT Configuration — access tokens expire in 6 hours, refresh tokens in 7 days
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=6),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
     "SIGNING_KEY": os.environ.get("JWT_SECRET_KEY", SECRET_KEY),
+    "UPDATE_LAST_LOGIN": True,
 }
 
 # Email Notification Config
@@ -164,11 +173,30 @@ SMTP_USE_TLS = True
 SMTP_USE_SSL = False
 DEFAULT_FROM_EMAIL = "noreply@quidpath.com"
 
+# Cache — use Redis if available, fall back to local memory
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "quidpath-rate-limit",
+    }
+}
+if os.environ.get("REDIS_HOST"):
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": f"redis://{os.environ.get('REDIS_HOST', 'localhost')}:{os.environ.get('REDIS_PORT', 6379)}/1",
+        }
+    }
+
 # Billing Service Configuration
 BILLING_SERVICE_URL = os.environ.get(
     "BILLING_SERVICE_URL", "http://billing-backend-dev:8002"
 )
 BILLING_SERVICE_API_KEY = os.environ.get("BILLING_SERVICE_API_KEY", "")
+# Shared secret for service-to-service calls (X-Service-Key header)
+BILLING_SERVICE_SECRET = os.environ.get("BILLING_SERVICE_SECRET", "")
+# Secret used to verify webhook signatures from billing service
+BILLING_WEBHOOK_SECRET = os.environ.get("BILLING_WEBHOOK_SECRET", "")
 
 # Internationalization
 LANGUAGE_CODE = "en-us"
