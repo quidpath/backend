@@ -150,14 +150,14 @@ class EmailTemplates:
                     
                     <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
                     
-                    <h3>Your 14-Day Free Trial Has Started</h3>
-                    <p>You have a <strong>14-day free trial</strong> to explore all features.</p>
+                    <h3>Your 30-Day Free Trial Awaits!</h3>
+                    <p>You have a <strong>30-day free trial</strong> to explore all features.</p>
                     <p>To activate your account and start your trial, please enter your billing details:</p>
                     <p style="text-align: center;">
                         <a href="[billing_url]" class="cta-button">Set Up Billing</a>
                     </p>
                     <p>After your trial ends, you will receive an M-Pesa STK push to continue your subscription.</p>
-                    <p style="color: #dc2626;"><strong>Without payment, access to the system will be restricted.</strong></p>
+                    <p style="color: #dc2626;"><strong>Without entering your billing details, you cannot access the system.</strong></p>
                 </div>
                 <div class="footer">
                     &copy; 2025 Quidpath. All rights reserved.

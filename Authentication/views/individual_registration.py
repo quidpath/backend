@@ -73,7 +73,7 @@ def register_individual_user(request):
         )
 
         # Generate activation token
-        from quidpath_backend.core.utils.token_utils import generate_activation_token
+        from Authentication.views.email_activation import generate_activation_token
         activation_token = generate_activation_token(str(user.id), email)
         
         if not hasattr(user, "metadata") or user.metadata is None:

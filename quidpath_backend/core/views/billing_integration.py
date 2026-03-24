@@ -133,3 +133,27 @@ def validate_promotion(request):
     if result and result.get("success"):
         return ResponseProvider.success_response(data=result)
     return ResponseProvider.error_response((result or {}).get("message", "Invalid promotion code"), status=400)
+
+
+@csrf_exempt
+def get_trial_status(request):
+    """Get trial status for the authenticated user's corporate"""
+    corporate_id, _, err = _get_authenticated_corporate(request)
+    if err:
+        return err
+    result = billing_service.get_trial_status(corporate_id)
+    if result is None:
+        return ResponseProvider.error_response("Billing service unavailable", status=503)
+    return ResponseProvider.success_response(data=result)
+
+
+@csrf_exempt
+def check_access(request):
+    """Check if the authenticated user's corporate has active access (trial or subscription)"""
+    corporate_id, _, err = _get_authenticated_corporate(request)
+    if err:
+        return err
+    result = billing_service.check_access(corporate_id)
+    if result is None:
+        return ResponseProvider.error_response("Billing service unavailable", status=503)
+    return ResponseProvider.success_response(data=result)

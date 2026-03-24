@@ -84,17 +84,33 @@ class BillingAccessMiddleware(MiddlewareMixin):
             
             corporate = corporate_user.corporate
 
-            if not corporate.is_active:
+            # Check if phone number has been entered (billing details)
+            if not corporate.phone or corporate.phone.strip() == "":
                 return JsonResponse(
                     {
-                        "error": "Payment required",
-                        "message": "Please complete your subscription payment to access the system.",
-                        "requires_payment": True,
+                        "error": "Billing setup required",
+                        "message": "Please enter your billing details to start your 30-day trial.",
+                        "requires_payment": False,
+                        "requires_phone": True,
                         "corporate_id": str(corporate.id),
                     },
                     status=402,
                 )
 
+            # Phone entered - check if corporate is active
+            if not corporate.is_active:
+                return JsonResponse(
+                    {
+                        "error": "Account not activated",
+                        "message": "Please complete your billing setup to activate your account.",
+                        "requires_payment": False,
+                        "requires_phone": False,
+                        "corporate_id": str(corporate.id),
+                    },
+                    status=402,
+                )
+
+            # Check billing service for active trial or subscription
             billing_client = billing_service
             access_check = billing_client.check_access(str(corporate.id))
 
@@ -116,10 +132,11 @@ class BillingAccessMiddleware(MiddlewareMixin):
                         "error": "Payment required",
                         "message": access_check.get(
                             "message",
-                            "Your subscription has expired. Please complete payment to continue.",
+                            "Your trial has expired. Please complete payment to continue.",
                         ),
                         "reason": reason,
                         "requires_payment": True,
+                        "requires_phone": False,
                         "corporate_id": str(corporate.id),
                     },
                     status=402,

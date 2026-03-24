@@ -31,4 +31,14 @@ urlpatterns = [
         billing_integration.validate_promotion,
         name="validate_promotion",
     ),
+    path(
+        "trials/status/",
+        billing_integration.get_trial_status,
+        name="trial_status",
+    ),
+    path(
+        "access/check/",
+        billing_integration.check_access,
+        name="check_access",
+    ),
 ]

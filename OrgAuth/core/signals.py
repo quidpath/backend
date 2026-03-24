@@ -61,10 +61,11 @@ def create_superadmin_on_approval(sender, instance: Corporate, created: bool, **
         except Exception as e:
             logger.warning(f"Billing service trial creation failed for {instance.name}: {e}")
 
-        # Send approval email with credentials and billing page link
+        # Send approval email with credentials and billing redirect link
         from django.conf import settings
-        frontend_url = settings.FRONTEND_URL
-        billing_url = f"{frontend_url}/settings/billing?corporate_id={instance.id}"
+        backend_url = settings.ALLOWED_HOSTS[0] if settings.ALLOWED_HOSTS else "localhost:8004"
+        # Use the redirect endpoint which will check payment status and redirect appropriately
+        billing_url = f"https://{backend_url}/billing/redirect/?corporate_id={instance.id}"
 
         notification_service = NotificationServiceHandler()
         replace_items = {
