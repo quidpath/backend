@@ -17,6 +17,23 @@ from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
 
 
+@csrf_exempt
+def get_available_roles(request):
+    """
+    Get list of roles available for assignment (excludes SUPERADMIN and SUPERUSER)
+    """
+    try:
+        # Get all roles except SUPERADMIN and SUPERUSER
+        roles = Role.objects.exclude(name__in=["SUPERADMIN", "SUPERUSER"]).values('id', 'name', 'description')
+        
+        return JsonResponse({
+            "roles": list(roles)
+        }, status=200)
+    
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
+
 def process_base64_image(base64_string, filename_prefix="profile"):
     """
     Process base64 image string and return ContentFile
@@ -202,13 +219,26 @@ def create_corporate_user(request):
         corporate = admin_corp_user.corporate
         data["corporate"] = corporate
 
-        role_id = data.get("role")
+        # Handle role - can be either ID or name
+        role_identifier = data.get("role")
         try:
-            role = Role.objects.get(id=role_id)
+            # Try to get role by ID first
+            try:
+                role = Role.objects.get(id=role_identifier)
+            except (Role.DoesNotExist, ValueError):
+                # If ID fails, try by name
+                role = Role.objects.get(name=role_identifier)
         except Role.DoesNotExist:
             return JsonResponse(
-                {"error": f"Role with ID {role_id} does not exist"}, status=404
+                {"error": f"Role '{role_identifier}' does not exist"}, status=404
             )
+        
+        # Prevent creating SUPERADMIN or SUPERUSER roles
+        if role.name.upper() in ["SUPERADMIN", "SUPERUSER"]:
+            return JsonResponse(
+                {"error": "Cannot assign SUPERADMIN or SUPERUSER role to new users."}, status=403
+            )
+        
         data["role"] = role
 
         profile_photo_base64 = data.pop("profilePhoto", None)
@@ -221,6 +251,7 @@ def create_corporate_user(request):
             else:
                 return JsonResponse({"error": "Invalid image format"}, status=400)
 
+        # Generate random password
         raw_password = get_random_string(length=12)
         data["password"] = make_password(raw_password)
 
@@ -238,32 +269,31 @@ def create_corporate_user(request):
             request=request,
         )
 
-        email_body = f"""
-            <p>Hello <strong>{full_user.username}</strong>,</p>
-            <p>You have been added to the corporate account: <strong>{corporate.name}</strong>.</p>
-            <p>Your login credentials are:</p>
-            <ul>
-                <li>Username: <strong>{full_user.username}</strong></li>
-                <li>Password: <strong>{raw_password}</strong></li>
-            </ul>
-            <p>Please login at <a href="https://quidpath.com/SignIn">https://quidpath.com/SignIn</a> and change your password after your first login.</p>
-            <p>Regards,<br/>Quidpath Team</p>
-        """
+        # Send welcome email with credentials
+        from django.conf import settings
+        notification_service = NotificationServiceHandler()
+        replace_items = {
+            "username": full_user.username,
+            "corporate_name": corporate.name,
+            "password": raw_password,
+            "login_url": f"{settings.FRONTEND_URL}/login",
+        }
+        message = notification_service.createUserWelcomeEmail(**replace_items)
 
-        NotificationServiceHandler().send_notification(
+        notification_service.send_notification(
             notifications=[
                 {
                     "message_type": "2",
-                    "organisation_id": corporate.id,
+                    "organisation_id": str(corporate.id),
                     "destination": full_user.email,
-                    "message": email_body,
+                    "message": message,
                 }
             ]
         )
 
         return JsonResponse(
             {
-                "message": "User created successfully",
+                "message": "User created successfully. Login credentials have been sent to their email.",
                 "id": str(full_user.id),
                 "corporate": {"id": str(corporate.id), "name": corporate.name},
             }
@@ -567,20 +597,18 @@ def update_corporate_user(request):
 
         target_email = get_attr(target_user, "email")
         if target_email and target_corp_id:
-            email_body = f"""
-                <p>Hello <strong>{username}</strong>,</p>
-                <p>Your account details have been updated successfully.</p>
-                <p>If you did not request this change, please contact your administrator.</p>
-                <p>Regards,<br/>Quidpath Team</p>
-            """
+            notification_service = NotificationServiceHandler()
+            replace_items = {"username": username}
+            message = notification_service.createUserUpdatedEmail(**replace_items)
+            
             try:
-                NotificationServiceHandler().send_notification(
+                notification_service.send_notification(
                     notifications=[
                         {
                             "message_type": "2",
                             "organisation_id": str(target_corp_id),
                             "destination": target_email,
-                            "message": email_body,
+                            "message": message,
                         }
                     ]
                 )
@@ -683,20 +711,18 @@ def suspend_corporate_user(request):
 
         target_email = get_attr(target_user, "email")
         if target_email and target_corp_id:
-            email_body = f"""
-                <p>Hello <strong>{username}</strong>,</p>
-                <p>Your account has been suspended by your administrator.</p>
-                <p>If you believe this is an error, please contact your system administrator.</p>
-                <p>Regards,<br/>Quidpath Team</p>
-            """
+            notification_service = NotificationServiceHandler()
+            replace_items = {"username": username}
+            message = notification_service.createUserSuspendedEmail(**replace_items)
+            
             try:
-                NotificationServiceHandler().send_notification(
+                notification_service.send_notification(
                     notifications=[
                         {
                             "message_type": "2",
                             "organisation_id": str(target_corp_id),
                             "destination": target_email,
-                            "message": email_body,
+                            "message": message,
                         }
                     ]
                 )
@@ -786,20 +812,18 @@ def unsuspend_corporate_user(request):
 
         target_email = get_attr(target_user, "email")
         if target_email and target_corp_id:
-            email_body = f"""
-                <p>Hello <strong>{username}</strong>,</p>
-                <p>Your account has been reactivated. You can now log in and continue using the platform.</p>
-                <p>If you experience any issues, please contact your administrator.</p>
-                <p>Regards,<br/>Quidpath Team</p>
-            """
+            notification_service = NotificationServiceHandler()
+            replace_items = {"username": username}
+            message = notification_service.createUserUnsuspendedEmail(**replace_items)
+            
             try:
-                NotificationServiceHandler().send_notification(
+                notification_service.send_notification(
                     notifications=[
                         {
                             "message_type": "2",
                             "organisation_id": str(target_corp_id),
                             "destination": target_email,
-                            "message": email_body,
+                            "message": message,
                         }
                     ]
                 )

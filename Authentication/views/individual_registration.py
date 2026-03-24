@@ -87,22 +87,20 @@ def register_individual_user(request):
         # Create activation link
         activation_link = f"{frontend_url}/activate-account?token={activation_token}&email={email}"
 
-        NotificationServiceHandler().send_notification(
+        notification_service = NotificationServiceHandler()
+        replace_items = {
+            "username": user.username,
+            "activation_link": activation_link,
+        }
+        message = notification_service.createIndividualActivationEmail(**replace_items)
+        
+        notification_service.send_notification(
             [
                 {
                     "message_type": "2",
                     "organisation_id": str(corporate.id),
                     "destination": user.email,
-                    "message": f"""
-                    <h3>Welcome to Quidpath!</h3>
-                    <p>Hello {user.username},</p>
-                    <p>Thank you for signing up! Please activate your account by clicking the button below:</p>
-                    <p><a href="{activation_link}" style="background-color: #000000; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Activate Account</a></p>
-                    <p>Or copy and paste this link in your browser:</p>
-                    <p>{activation_link}</p>
-                    <p>After activation, you'll be prompted to complete your subscription payment.</p>
-                    <p>This link will expire in 24 hours.</p>
-                """,
+                    "message": message,
                 }
             ]
         )

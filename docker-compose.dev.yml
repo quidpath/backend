@@ -71,6 +71,7 @@ services:
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"
       USE_MEMORY_CHANNEL_LAYER: "false"
+      FRONTEND_URL: "http://localhost:3000"
     volumes:
       - .:/app
       - /app/.venv

@@ -201,6 +201,9 @@ BILLING_SERVICE_SECRET = os.environ.get("BILLING_SERVICE_SECRET", "")
 # Secret used to verify webhook signatures from billing service
 BILLING_WEBHOOK_SECRET = os.environ.get("BILLING_WEBHOOK_SECRET", "")
 
+# Frontend URL for email links (environment-aware)
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
 # Internationalization
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "Africa/Nairobi"

@@ -88,23 +88,19 @@ def register_individual_with_email_activation(request):
         frontend_url = data.get("frontend_url", "https://app.quidpath.com")
         activation_link = f"{frontend_url}/activate-account?token={activation_token}&email={email}"
 
-        NotificationServiceHandler().send_notification([
+        notification_service = NotificationServiceHandler()
+        replace_items = {
+            "username": username,
+            "activation_link": activation_link,
+        }
+        message = notification_service.createIndividualActivationEmail(**replace_items)
+        
+        notification_service.send_notification([
             {
                 "message_type": "2",
                 "organisation_id": str(corporate.id),
                 "destination": email,
-                "message": f"""
-                <h3>Welcome to Quidpath!</h3>
-                <p>Hello {username},</p>
-                <p>Thank you for registering with Quidpath ERP.</p>
-                <p>Please click the link below to activate your account:</p>
-                <p><a href="{activation_link}" style="background-color: #000000; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Activate Account</a></p>
-                <p>Or copy and paste this link in your browser:</p>
-                <p>{activation_link}</p>
-                <p>This link will expire in 24 hours.</p>
-                <p>After activation, you will be prompted to complete your subscription payment before accessing the system.</p>
-                <p>If you didn't create this account, please ignore this email.</p>
-            """,
+                "message": message,
             }
         ])
 
@@ -191,18 +187,16 @@ def activate_account(request):
             message=f"Account activated for {user.username}",
         )
 
-        NotificationServiceHandler().send_notification([
+        notification_service = NotificationServiceHandler()
+        replace_items = {"username": user.username}
+        message = notification_service.createIndividualActivatedEmail(**replace_items)
+        
+        notification_service.send_notification([
             {
                 "message_type": "2",
                 "organisation_id": corporate_id,
                 "destination": email,
-                "message": f"""
-                <h3>Account Activated!</h3>
-                <p>Hello {user.username},</p>
-                <p>Your account has been successfully activated.</p>
-                <p>Please complete your subscription payment to start using Quidpath.</p>
-                <p>Thank you for choosing Quidpath!</p>
-            """,
+                "message": message,
             }
         ])
 
@@ -257,20 +251,19 @@ def resend_activation_email(request):
 
         activation_link = f"{frontend_url}/activate-account?token={activation_token}&email={email}"
 
-        NotificationServiceHandler().send_notification([
+        notification_service = NotificationServiceHandler()
+        replace_items = {
+            "username": user.username,
+            "activation_link": activation_link,
+        }
+        message = notification_service.createIndividualActivationResendEmail(**replace_items)
+        
+        notification_service.send_notification([
             {
                 "message_type": "2",
                 "organisation_id": corporate_id,
                 "destination": email,
-                "message": f"""
-                <h3>Activation Link Resent</h3>
-                <p>Hello {user.username},</p>
-                <p>Here is your new activation link:</p>
-                <p><a href="{activation_link}" style="background-color: #000000; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Activate Account</a></p>
-                <p>Or copy and paste this link in your browser:</p>
-                <p>{activation_link}</p>
-                <p>This link will expire in 24 hours.</p>
-            """,
+                "message": message,
             }
         ])
 

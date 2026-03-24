@@ -66,6 +66,8 @@ services:
       BILLING_SERVICE_URL: ${BILLING_SERVICE_URL}
       BILLING_SERVICE_SECRET: ${BILLING_SERVICE_SECRET}
       BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-https://www.quidpath.com}
+      FRONTEND_URL: ${FRONTEND_URL:-https://www.quidpath.com}
     volumes:
       - /mnt/quidpath-data/media:/app/media
       - /mnt/quidpath-data/staticfiles:/app/staticfiles

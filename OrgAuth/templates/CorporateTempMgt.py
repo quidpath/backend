@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pyexpat.errors import messages
+from OrgAuth.templates.EmailTemplates import EmailTemplates
 
 
 class TemplateManagementEngine:
@@ -21,75 +22,57 @@ class TemplateManagementEngine:
         return template_string
 
     def createCorporateEmail(self, **kwargs):
-        message = """
-        <html>
-  <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        background-color: #f1fdf3;
-        margin: 0;
-        padding: 0;
-      }
-      .container {
-        max-width: 600px;
-        margin: 40px auto;
-        padding: 0;
-        background-color: #ffffff;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-      }
-      .header {
-        background-color: #a7c0ba; /* Dark green */
-        padding: 20px;
-        text-align: center;
-      }
-      .header img {
-        max-width: 150px;
-        height: auto;
-      }
-      .content {
-        padding: 30px;
-        background-color: #ffffff;
-      }
-      .content h1 {
-        color: #064e3b;
-        margin-bottom: 10px;
-      }
-      .content p {
-        color: #333333;
-        line-height: 1.6;
-        font-size: 16px;
-      }
-      .footer {
-        background-color: #d1fae5; /* Light green */
-        padding: 15px;
-        text-align: center;
-        font-size: 13px;
-        color: #065f46;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1>Welcome</>
-      </div>
-      <div class="content">
-        <h1>Organization Created</h1>
-        <p>Dear <strong>[corporate_name]</strong>,</p>
-        <p>Your application has been successfully submitted. We are currently reviewing your request.</p>
-        <p>You will receive a confirmation email once your organization is approved.</p>
-        <p>Thank you for choosing our platform!</p>
-      </div>
-      <div class="footer">
-        &copy; @2025 quidpath. All rights reserved.
-      </div>
-    </div>
-  </body>
-</html>
+        """Corporate creation email - delegates to EmailTemplates"""
+        return EmailTemplates.corporate_created(**kwargs)
 
-        """
-        return self.replace_tags(message, **kwargs)
+    def createCorporateApprovalEmail(self, **kwargs):
+        """Corporate approval email - delegates to EmailTemplates"""
+        return EmailTemplates.corporate_approval(**kwargs)
+    
+    def createCorporateDisapprovalEmail(self, **kwargs):
+        """Corporate disapproval email - delegates to EmailTemplates"""
+        return EmailTemplates.corporate_disapproval(**kwargs)
+    
+    def createCorporateSuspendedEmail(self, **kwargs):
+        """Corporate suspension email - delegates to EmailTemplates"""
+        return EmailTemplates.corporate_suspended(**kwargs)
+    
+    def createCorporateProfileUpdatedEmail(self, **kwargs):
+        """Corporate profile update email - delegates to EmailTemplates"""
+        return EmailTemplates.corporate_profile_updated(**kwargs)
+    
+    def createCorporateDeletedEmail(self, **kwargs):
+        """Corporate deletion email - delegates to EmailTemplates"""
+        return EmailTemplates.corporate_deleted(**kwargs)
+    
+    def createUserWelcomeEmail(self, **kwargs):
+        """User welcome email with credentials - delegates to EmailTemplates"""
+        return EmailTemplates.user_welcome(**kwargs)
+    
+    def createUserDeletedEmail(self, **kwargs):
+        """User deletion email - delegates to EmailTemplates"""
+        return EmailTemplates.user_deleted(**kwargs)
+    
+    def createUserUpdatedEmail(self, **kwargs):
+        """User profile update email - delegates to EmailTemplates"""
+        return EmailTemplates.user_updated(**kwargs)
+    
+    def createUserSuspendedEmail(self, **kwargs):
+        """User suspension email - delegates to EmailTemplates"""
+        return EmailTemplates.user_suspended(**kwargs)
+    
+    def createUserUnsuspendedEmail(self, **kwargs):
+        """User reactivation email - delegates to EmailTemplates"""
+        return EmailTemplates.user_unsuspended(**kwargs)
+    
+    def createIndividualActivationEmail(self, **kwargs):
+        """Individual user activation email - delegates to EmailTemplates"""
+        return EmailTemplates.individual_activation(**kwargs)
+    
+    def createIndividualActivationResendEmail(self, **kwargs):
+        """Individual activation resend email - delegates to EmailTemplates"""
+        return EmailTemplates.individual_activation_resend(**kwargs)
+    
+    def createIndividualActivatedEmail(self, **kwargs):
+        """Individual account activated email - delegates to EmailTemplates"""
+        return EmailTemplates.individual_activated(**kwargs)

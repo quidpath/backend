@@ -97,6 +97,7 @@ jobs:
             secrets["BILLING_SERVICE_URL"]="http://billing-backend-stage:8000"
             secrets["BILLING_SERVICE_SECRET"]="${{ secrets.BILLING_SERVICE_SECRET }}"
             secrets["BILLING_WEBHOOK_SECRET"]="${{ secrets.BILLING_WEBHOOK_SECRET }}"
+            secrets["FRONTEND_URL"]="https://stage.quidpath.com"
           else
             secrets["POSTGRES_USER"]="${{ secrets.POSTGRES_USER }}"
             secrets["POSTGRES_DB"]="${{ secrets.POSTGRES_DB }}"
@@ -113,6 +114,7 @@ jobs:
             secrets["CSRF_TRUSTED_ORIGINS"]="${{ secrets.CSRF_TRUSTED_ORIGINS }}"
             secrets["BILLING_SERVICE_URL"]="${{ secrets.BILLING_SERVICE_URL }}"
             secrets["BILLING_SERVICE_SECRET"]="${{ secrets.BILLING_SERVICE_SECRET }}"
+            secrets["FRONTEND_URL"]="https://www.quidpath.com"
           fi
           
           secrets["SECRET_KEY"]="${{ secrets.SECRET_KEY }}"

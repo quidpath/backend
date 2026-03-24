@@ -62,30 +62,26 @@ def create_superadmin_on_approval(sender, instance: Corporate, created: bool, **
             logger.warning(f"Billing service trial creation failed for {instance.name}: {e}")
 
         # Send approval email with credentials and billing page link
-        frontend_url = "https://app.quidpath.com"
-        billing_url = f"{frontend_url}/billing/setup?corporate_id={instance.id}"
+        from django.conf import settings
+        frontend_url = settings.FRONTEND_URL
+        billing_url = f"{frontend_url}/settings/billing?corporate_id={instance.id}"
 
-        NotificationServiceHandler().send_notification(
+        notification_service = NotificationServiceHandler()
+        replace_items = {
+            "corporate_name": instance.name,
+            "username": username,
+            "password": password,
+            "billing_url": billing_url,
+        }
+        message = notification_service.createCorporateApprovalEmail(**replace_items)
+
+        notification_service.send_notification(
             [
                 {
                     "message_type": "2",
                     "organisation_id": str(instance.id),
                     "destination": email,
-                    "message": f"""
-                <h3>Your Organisation Has Been Approved!</h3>
-                <p>Congratulations! <b>{instance.name}</b> has been approved on Quidpath ERP.</p>
-                <p>Your login credentials are:</p>
-                <p>Username: <b>{username}</b></p>
-                <p>Password: <b>{password}</b></p>
-                <p>Please change your password after first login.</p>
-                <hr/>
-                <h4>Your 14-Day Free Trial Has Started</h4>
-                <p>You have a <b>14-day free trial</b> to explore all features.</p>
-                <p>To activate your account and start your trial, please enter your billing details:</p>
-                <p><a href="{billing_url}" style="background-color: #000000; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Set Up Billing</a></p>
-                <p>After your trial ends, you will receive an M-Pesa STK push to continue your subscription.</p>
-                <p>Without payment, access to the system will be restricted.</p>
-            """,
+                    "message": message,
                 }
             ]
         )

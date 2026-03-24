@@ -26,6 +26,7 @@ class BillingAccessMiddleware(MiddlewareMixin):
         "/api/auth/plans/",
         "/api/auth/subscription/initiate-payment/",
         "/api/auth/subscription/status/",
+        "/api/orgauth/roles/",
         "/api/billing/",
         "/api/payments/",
         "/api/orgauth/webhooks/",
@@ -68,13 +69,19 @@ class BillingAccessMiddleware(MiddlewareMixin):
             if path.startswith(exempt_path):
                 return None
 
+        # Allow superusers and SUPERADMIN role to bypass all billing checks
         if request.user.is_superuser:
             return None
 
         try:
-            corporate_user = CorporateUser.objects.select_related("corporate").get(
+            corporate_user = CorporateUser.objects.select_related("corporate", "role").get(
                 customuser_ptr_id=request.user.id
             )
+            
+            # Allow SUPERADMIN role to bypass billing checks
+            if corporate_user.role and corporate_user.role.name == "SUPERADMIN":
+                return None
+            
             corporate = corporate_user.corporate
 
             if not corporate.is_active:

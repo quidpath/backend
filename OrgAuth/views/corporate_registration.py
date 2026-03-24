@@ -348,19 +348,19 @@ def update_corporate(request):
             logger.debug(f"Sending notification to {updated_dict.get('email')}")
             try:
                 notification_service = NotificationServiceHandler()
+                replace_items = {
+                    "corporate_name": updated_dict.get('name', 'Customer'),
+                    "fields": ', '.join(changed_fields),
+                }
+                message = notification_service.createCorporateProfileUpdatedEmail(**replace_items)
+                
                 notification_service.send_notification(
                     [
                         {
                             "message_type": "2",
                             "organisation_id": updated_dict.get("id"),
                             "destination": updated_dict.get("email"),
-                            "message": f"""
-                        <h3>Corporate Profile Updated</h3>
-                        <p>Dear {updated_dict.get('name', 'Customer')},</p>
-                        <p>Your corporate profile has been successfully updated.</p>
-                        <p>Fields updated: {', '.join(changed_fields)}</p>
-                        <p>If this was unexpected, please contact support.</p>
-                    """,
+                            "message": message,
                         }
                     ]
                 )
@@ -413,14 +413,17 @@ def delete_corporate(request):
         )
 
         if email:
-            NotificationServiceHandler().send_notification(
+            notification_service = NotificationServiceHandler()
+            replace_items = {"corporate_name": name}
+            message = notification_service.createCorporateDeletedEmail(**replace_items)
+            
+            notification_service.send_notification(
                 [
                     {
                         "organisation_id": corp_id,
                         "destination": email,
                         "message_type": "2",
-                        "message": f"Dear {name}, your organisation account has been deleted from our system. "
-                        f"If this was unexpected, kindly contact support.",
+                        "message": message,
                     }
                 ]
             )
@@ -470,17 +473,17 @@ def approve_corporate(request):
             corporate.is_disapproved = True
             corporate.save()
 
-            NotificationServiceHandler().send_notification(
+            notification_service = NotificationServiceHandler()
+            replace_items = {"corporate_name": corporate.name}
+            message = notification_service.createCorporateDisapprovalEmail(**replace_items)
+            
+            notification_service.send_notification(
                 [
                     {
                         "message_type": "2",
                         "organisation_id": corporate.id,
                         "destination": corporate.email,
-                        "message": f"""
-                    <h3>Application Update</h3>
-                    <p>We regret to inform you that your organisation has not been approved at this time.</p>
-                    <p>Thank you for your interest.</p>
-                """,
+                        "message": message,
                     }
                 ]
             )
@@ -524,18 +527,17 @@ def suspend_corporate(request):
         )
 
         # Send suspension notification
-        NotificationServiceHandler().send_notification(
+        notification_service = NotificationServiceHandler()
+        replace_items = {"corporate_name": corporate.name}
+        message = notification_service.createCorporateSuspendedEmail(**replace_items)
+        
+        notification_service.send_notification(
             [
                 {
                     "message_type": "2",
                     "organisation_id": str(corporate.id),
                     "destination": corporate.email,
-                    "message": f"""
-                <h3>Your account has been suspended</h3>
-                <p>Dear {corporate.name},</p>
-                <p>We regret to inform you that your corporate account has been suspended.</p>
-                <p>If you believe this is a mistake, please contact support.</p>
-            """,
+                    "message": message,
                 }
             ]
         )
