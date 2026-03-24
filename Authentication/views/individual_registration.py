@@ -19,16 +19,17 @@ logger = logging.getLogger(__name__)
 def register_individual_user(request):
     """
     Register an individual user:
-    1. Creates Corporate + CorporateUser (both inactive until OTP verified)
-    2. Sends OTP email
-    3. Does NOT create a billing subscription — that happens after OTP verification
-       when the user initiates payment via /billing/setup/ or /payments/initiate/
+    1. Creates Corporate + CorporateUser (both inactive until email verified)
+    2. Sends activation email with link
+    3. After activation, user is redirected to payment page
+    4. After payment confirmation, user can login
     """
     data, metadata = get_clean_data(request)
     username = data.get("username")
     email = data.get("email")
     password = data.get("password")
     plan_tier = data.get("plan_tier", "starter")
+    frontend_url = data.get("frontend_url", "https://app.quidpath.com")
 
     if not username or not email or not password:
         return JsonResponse(
@@ -68,12 +69,23 @@ def register_individual_user(request):
             password=make_password(password),
             corporate=corporate,
             role=superadmin_role,
-            is_active=False,   # Activated after OTP verification
+            is_active=False,   # Activated after email verification
         )
 
-        otp_code = user.generate_otp()
-        user.last_otp_sent_at = now()
+        # Generate activation token
+        from quidpath_backend.core.utils.token_utils import generate_activation_token
+        activation_token = generate_activation_token(str(user.id), email)
+        
+        if not hasattr(user, "metadata") or user.metadata is None:
+            user.metadata = {}
+        
+        user.metadata["activation_token"] = activation_token
+        user.metadata["activation_token_created"] = now().isoformat()
+        user.metadata["plan_tier"] = plan_tier
         user.save()
+
+        # Create activation link
+        activation_link = f"{frontend_url}/activate-account?token={activation_token}&email={email}"
 
         NotificationServiceHandler().send_notification(
             [
@@ -84,12 +96,13 @@ def register_individual_user(request):
                     "message": f"""
                     <h3>Welcome to Quidpath!</h3>
                     <p>Hello {user.username},</p>
-                    <p>Your account has been created successfully.</p>
-                    <p>Your OTP is <b>{otp_code}</b>. It expires in 24 hours.</p>
-                    <p>After verifying your OTP, you will be prompted to complete your
-                    subscription payment to activate your account.</p>
+                    <p>Thank you for signing up! Please activate your account by clicking the button below:</p>
+                    <p><a href="{activation_link}" style="background-color: #000000; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Activate Account</a></p>
+                    <p>Or copy and paste this link in your browser:</p>
+                    <p>{activation_link}</p>
+                    <p>After activation, you'll be prompted to complete your subscription payment.</p>
+                    <p>This link will expire in 24 hours.</p>
                 """,
-                    "confirmation_code": otp_code,
                 }
             ]
         )
@@ -102,10 +115,9 @@ def register_individual_user(request):
 
         return JsonResponse(
             {
-                "message": "User registered successfully. Please verify your OTP to continue.",
-                "otp_required": True,
+                "message": "Registration successful! Please check your email to activate your account.",
+                "email_sent": True,
                 "corporate_id": str(corporate.id),
-                "subscription_required": True,
             },
             status=201,
         )

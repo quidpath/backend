@@ -230,6 +230,7 @@ def activate_account(request):
 def resend_activation_email(request):
     data, metadata = get_clean_data(request)
     email = data.get("email")
+    frontend_url = data.get("frontend_url", "https://app.quidpath.com")
 
     if not email:
         return JsonResponse({"error": "Email is required"}, status=400)
@@ -237,6 +238,7 @@ def resend_activation_email(request):
     try:
         user = CustomUser.objects.get(email=email, is_active=False)
 
+        # Generate activation token
         activation_token = generate_activation_token(str(user.id), email)
 
         if not hasattr(user, "metadata") or user.metadata is None:
@@ -253,7 +255,6 @@ def resend_activation_email(request):
         except CorporateUser.DoesNotExist:
             pass
 
-        frontend_url = data.get("frontend_url", "https://app.quidpath.com")
         activation_link = f"{frontend_url}/activate-account?token={activation_token}&email={email}"
 
         NotificationServiceHandler().send_notification([
