@@ -28,6 +28,7 @@ urlpatterns = [
     path("", include("Accounting.urls")),
     path("", include("Payments.urls")),
     path("api/billing/", include("quidpath_backend.core.urls_billing")),
+    path("api/support/", include("quidpath_backend.core.urls_support")),
     path(
         "api/internal/", include("quidpath_backend.core.urls_internal")
     ),  # Internal APIs for microservices

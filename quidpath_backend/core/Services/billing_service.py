@@ -253,6 +253,23 @@ class BillingServiceClient:
             logger.error("Error initiating invoice payment: %s", e, exc_info=True)
             return {"success": False, "message": str(e)}
 
+    def get_payment_history(self, corporate_id: str) -> Optional[Dict]:
+        """Get payment history for a corporate from billing service."""
+        try:
+            response = requests.post(
+                f"{self.base_url}/payments/history/",
+                json={"corporate_id": corporate_id},
+                headers=self._get_headers(),
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                return response.json()
+            logger.error("Payment history failed: %s %s", response.status_code, response.text)
+            return None
+        except Exception as e:
+            logger.error("Error getting payment history: %s", e, exc_info=True)
+            return None
+
     def validate_promotion(self, promotion_code: str, amount: float, plan_tier: str) -> Optional[Dict]:
         """Validate a promotion code."""
         try:

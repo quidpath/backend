@@ -1,5 +1,16 @@
 from django.urls import path
 
+from Accounting.views.analytics_views import get_analytics_overview
+from Accounting.views.export_views import (export_expenses,
+                                           export_financial_report,
+                                           export_invoices,
+                                           export_journal_entries,
+                                           export_purchase_orders,
+                                           export_quotations,
+                                           export_vendor_bills)
+from Accounting.views.import_views import (download_import_template,
+                                           import_customers, import_expenses,
+                                           import_products, import_vendors)
 from Accounting.views.aged_invoices import (download_aged_invoices,
                                             get_aged_invoices)
 from Accounting.views.aging_reports import (download_aging_report,
@@ -340,4 +351,20 @@ urlpatterns = [
     path(
         "currency/rates/refresh/", refresh_currency_rates, name="refresh_currency_rates"
     ),
+    # ── Export Endpoints ──────────────────────────────────────────────────────
+    path("export/invoices/", export_invoices, name="export_invoices"),
+    path("export/vendor-bills/", export_vendor_bills, name="export_vendor_bills"),
+    path("export/expenses/", export_expenses, name="export_expenses"),
+    path("export/quotations/", export_quotations, name="export_quotations"),
+    path("export/purchase-orders/", export_purchase_orders, name="export_purchase_orders"),
+    path("export/journal-entries/", export_journal_entries, name="export_journal_entries"),
+    path("export/financial-report/", export_financial_report, name="export_financial_report"),
+    # ── Import Endpoints ──────────────────────────────────────────────────────
+    path("import/customers/", import_customers, name="import_customers"),
+    path("import/vendors/", import_vendors, name="import_vendors"),
+    path("import/expenses/", import_expenses, name="import_expenses"),
+    path("import/products/", import_products, name="import_products"),
+    path("import/template/", download_import_template, name="download_import_template"),
+    # ── Analytics ─────────────────────────────────────────────────────────────
+    path("analytics/overview/", get_analytics_overview, name="analytics_overview"),
 ]

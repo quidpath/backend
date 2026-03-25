@@ -39,7 +39,7 @@ def get_subscription_status(request):
     corporate_id, _, err = _get_authenticated_corporate(request)
     if err:
         return err
-    result = billing_service.check_access(corporate_id)
+    result = billing_service.get_subscription_status(corporate_id)
     if result is None:
         return ResponseProvider.error_response("Billing service unavailable", status=503)
     return ResponseProvider.success_response(data=result)
@@ -92,7 +92,8 @@ def create_subscription(request):
 
 @csrf_exempt
 def initiate_payment(request):
-    corporate_id, _, err = _get_authenticated_corporate(request)
+    """Initiate payment via plan_id (simplified endpoint — creates subscription + invoice internally)."""
+    corporate_id, corporate_name, err = _get_authenticated_corporate(request)
     if err:
         return err
     user, _ = resolve_user_from_token(request)
@@ -100,20 +101,55 @@ def initiate_payment(request):
         data = json.loads(request.body) if request.body else {}
     except json.JSONDecodeError:
         return ResponseProvider.error_response("Invalid JSON", status=400)
-    invoice_id = data.get("invoice_id")
-    invoice_number = data.get("invoice_number")
-    if not invoice_id and not invoice_number:
-        return ResponseProvider.error_response("invoice_id or invoice_number required", status=400)
-    result = billing_service.initiate_invoice_payment(
-        invoice_id=invoice_id,
-        invoice_number=invoice_number,
-        payment_method=data.get("payment_method", "mpesa"),
-        customer_email=user.email if user else "",
-        customer_phone=data.get("customer_phone"),
+
+    plan_id = data.get("plan_id")
+    phone_number = data.get("phone_number")
+    if not plan_id:
+        return ResponseProvider.error_response("plan_id is required", status=400)
+    if not phone_number:
+        return ResponseProvider.error_response("phone_number is required", status=400)
+
+    result = billing_service.initiate_payment(
+        entity_id=corporate_id,
+        entity_name=corporate_name,
+        plan_id=plan_id,
+        phone_number=phone_number,
+        payment_type=data.get("subscription_type", "organization"),
     )
-    if result and result.get("success"):
+    if result and result.get("success") is not False:
         return ResponseProvider.success_response(data=result)
     return ResponseProvider.error_response((result or {}).get("message", "Payment initiation failed"), status=400)
+
+
+@csrf_exempt
+def check_payment_status(request):
+    """Check M-Pesa payment status."""
+    corporate_id, _, err = _get_authenticated_corporate(request)
+    if err:
+        return err
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return ResponseProvider.error_response("Invalid JSON", status=400)
+    payment_id = data.get("payment_id")
+    if not payment_id:
+        return ResponseProvider.error_response("payment_id is required", status=400)
+    result = billing_service.get_payment_status(payment_id=payment_id, corporate_id=corporate_id)
+    if result is None:
+        return ResponseProvider.error_response("Billing service unavailable", status=503)
+    return ResponseProvider.success_response(data=result)
+
+
+@csrf_exempt
+def payment_history(request):
+    """Get payment history for the authenticated corporate."""
+    corporate_id, _, err = _get_authenticated_corporate(request)
+    if err:
+        return err
+    result = billing_service.get_payment_history(corporate_id)
+    if result is None:
+        return ResponseProvider.error_response("Billing service unavailable", status=503)
+    return ResponseProvider.success_response(data=result)
 
 
 @csrf_exempt
@@ -137,7 +173,7 @@ def validate_promotion(request):
 
 @csrf_exempt
 def get_trial_status(request):
-    """Get trial status for the authenticated user's corporate"""
+    """Get trial status for the authenticated user's corporate."""
     corporate_id, _, err = _get_authenticated_corporate(request)
     if err:
         return err
@@ -148,8 +184,28 @@ def get_trial_status(request):
 
 
 @csrf_exempt
+def create_trial(request):
+    """Create a trial for the authenticated user's corporate."""
+    corporate_id, corporate_name, err = _get_authenticated_corporate(request)
+    if err:
+        return err
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return ResponseProvider.error_response("Invalid JSON", status=400)
+    result = billing_service.create_trial(
+        corporate_id=corporate_id,
+        corporate_name=corporate_name,
+        plan_tier=data.get("plan_tier", "starter"),
+    )
+    if result is None:
+        return ResponseProvider.error_response("Billing service unavailable", status=503)
+    return ResponseProvider.success_response(data=result)
+
+
+@csrf_exempt
 def check_access(request):
-    """Check if the authenticated user's corporate has active access (trial or subscription)"""
+    """Check if the authenticated user's corporate has active access (trial or subscription)."""
     corporate_id, _, err = _get_authenticated_corporate(request)
     if err:
         return err
