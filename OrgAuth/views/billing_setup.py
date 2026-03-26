@@ -72,6 +72,7 @@ def setup_org_billing(request):
             corporate_id=str(corporate.id),
             corporate_name=corporate.name,
             plan_tier="starter",
+            phone_number=phone_number,
         )
     except Exception as e:
         logger.warning(f"Billing service trial ensure failed for {corporate.name}: {e}")

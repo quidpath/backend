@@ -117,17 +117,21 @@ class BillingServiceClient:
             return None
 
     def create_trial(
-        self, corporate_id: str, corporate_name: str = "", plan_tier: str = "starter"
+        self, corporate_id: str, corporate_name: str = "", plan_tier: str = "starter",
+        phone_number: str = "",
     ) -> Optional[Dict]:
         """Create a trial subscription in billing service."""
         try:
+            payload = {
+                "corporate_id": corporate_id,
+                "corporate_name": corporate_name,
+                "plan_tier": plan_tier,
+            }
+            if phone_number:
+                payload["phone_number"] = phone_number
             response = requests.post(
                 f"{self.base_url}/trials/create/",
-                json={
-                    "corporate_id": corporate_id,
-                    "corporate_name": corporate_name,
-                    "plan_tier": plan_tier,
-                },
+                json=payload,
                 headers=self._get_headers(),
                 timeout=self.timeout,
             )
@@ -285,6 +289,23 @@ class BillingServiceClient:
             return {"success": False, "message": response.text}
         except Exception as e:
             logger.error("Error validating promotion: %s", e, exc_info=True)
+            return {"success": False, "message": str(e)}
+
+    def admin_get_corporate_summary(self, corporate_id: str) -> Optional[Dict]:
+        """Get comprehensive billing summary for admin panel."""
+        try:
+            response = requests.post(
+                f"{self.base_url}/admin/corporate-summary/",
+                json={"corporate_id": corporate_id},
+                headers=self._get_headers(),
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                return response.json()
+            logger.error("Admin corporate summary failed: %s %s", response.status_code, response.text)
+            return {"success": False, "message": response.text}
+        except Exception as e:
+            logger.error("Error getting admin corporate summary: %s", e, exc_info=True)
             return {"success": False, "message": str(e)}
 
 
