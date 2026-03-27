@@ -1,7 +1,8 @@
 """
 Billing setup view for organisations.
-After approval, the org admin enters their M-Pesa number here to start the 14-day trial.
-After the trial, an STK push is sent automatically via process_trial_expirations command.
+After approval, the org admin enters their M-Pesa number here to start the 30-day trial.
+This is the FIRST step after superadmin logs in for the first time.
+Trial is created when phone number is entered.
 """
 import logging
 
@@ -65,17 +66,27 @@ def setup_org_billing(request):
     corporate.is_active = True
     corporate.save(update_fields=["phone", "is_active"])
 
-    # Ensure billing service has a trial record (idempotent — safe to call again)
+    # Create trial in billing service (this is where trial is created for the first time)
+    trial_created = False
     try:
         from quidpath_backend.core.Services.billing_service import billing_service as bs
-        bs.create_trial(
+        trial_result = bs.create_trial(
             corporate_id=str(corporate.id),
             corporate_name=corporate.name,
             plan_tier="starter",
             phone_number=phone_number,
         )
+        if trial_result:
+            trial_created = True
+            logger.info(f"Trial created successfully for {corporate.name}")
     except Exception as e:
-        logger.warning(f"Billing service trial ensure failed for {corporate.name}: {e}")
+        logger.error(f"Failed to create trial for {corporate.name}: {e}")
+        # Rollback activation if trial creation fails
+        corporate.is_active = False
+        corporate.save(update_fields=["is_active"])
+        return JsonResponse({
+            "error": "Failed to create trial. Please try again or contact support."
+        }, status=500)
 
     # Get trial end date from billing service
     trial_end_date = None
@@ -96,10 +107,11 @@ def setup_org_billing(request):
     )
 
     return JsonResponse({
-        "message": "Billing set up successfully. Your 14-day free trial has started.",
+        "message": "Billing set up successfully. Your 30-day free trial has started.",
         "corporate_id": str(corporate.id),
         "trial_end_date": trial_end_date,
         "phone_number": phone_number,
+        "trial_created": trial_created,
     })
 
 

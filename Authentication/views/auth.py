@@ -150,7 +150,7 @@ def login_user(request):
             if not corporate.is_active:
                 access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
                 TransactionLogBase.log(
-                    "USER_LOGIN", user=user, message="User logged in (payment pending)"
+                    "USER_LOGIN", user=user, message="User logged in (billing setup required)"
                 )
                 response = JsonResponse(
                     {
@@ -160,15 +160,44 @@ def login_user(request):
                         "is_global_user": False,
                         "organisation_id": corporate_id,
                         "role": role,
-                        "payment_required": True,
+                        "billing_setup_required": True,
                         "corporate_id": str(corporate.id),
-                        "message": "Please complete your subscription payment to access the system.",
+                        "message": "Please complete your billing setup to start your 30-day free trial.",
                     }
                 )
                 response["Authorization"] = f"Bearer {access_token}"
                 return _apply_api_security_headers(response)
         except Exception:
             pass
+    
+    # Check if superadmin (corporate user with admin role) needs billing setup
+    if corporate_user and role and role.lower() in ['superadmin', 'admin']:
+        try:
+            corporate = corporate_user.corporate
+            # Check if corporate is approved but not active (needs billing setup)
+            if corporate.is_approved and not corporate.is_active:
+                access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
+                TransactionLogBase.log(
+                    "SUPERADMIN_LOGIN", user=user, message="Superadmin first login - billing setup required"
+                )
+                response = JsonResponse(
+                    {
+                        "access": access_token,
+                        "refresh": refresh_token,
+                        "otp_required": False,
+                        "is_global_user": False,
+                        "organisation_id": corporate_id,
+                        "role": role,
+                        "billing_setup_required": True,
+                        "is_first_login": True,
+                        "corporate_id": str(corporate.id),
+                        "message": "Welcome! Please complete your billing setup to start your 30-day free trial.",
+                    }
+                )
+                response["Authorization"] = f"Bearer {access_token}"
+                return _apply_api_security_headers(response)
+        except Exception as e:
+            logger.warning(f"Error checking superadmin billing status: {e}")
 
     access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
     TransactionLogBase.log(

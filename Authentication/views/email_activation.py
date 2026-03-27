@@ -85,7 +85,7 @@ def register_individual_with_email_activation(request):
         }
         user.save(update_fields=["metadata"])
 
-        frontend_url = data.get("frontend_url", "https://app.quidpath.com")
+        frontend_url = data.get("frontend_url", "https://stage.quidpath.com")
         activation_link = f"{frontend_url}/activate-account?token={activation_token}&email={email}"
 
         notification_service = NotificationServiceHandler()
@@ -224,7 +224,7 @@ def activate_account(request):
 def resend_activation_email(request):
     data, metadata = get_clean_data(request)
     email = data.get("email")
-    frontend_url = data.get("frontend_url", "https://app.quidpath.com")
+    frontend_url = data.get("frontend_url", "https://stage.quidpath.com")
 
     if not email:
         return JsonResponse({"error": "Email is required"}, status=400)

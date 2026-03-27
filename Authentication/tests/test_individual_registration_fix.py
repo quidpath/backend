@@ -56,7 +56,7 @@ class IndividualRegistrationImportFixTest(TestCase):
             "email": "testuser@example.com",
             "password": "SecurePass123!",
             "plan_tier": "starter",
-            "frontend_url": "https://app.quidpath.com"
+            "frontend_url": "https://stage.quidpath.com"
         }
         
         request = self.factory.post(
@@ -287,11 +287,11 @@ class IndividualRegistrationImportFixTest(TestCase):
         # Test activation email
         activation_email = handler.createIndividualActivationEmail(
             username="testuser",
-            activation_link="https://app.quidpath.com/activate?token=abc123"
+            activation_link="https://stage.quidpath.com/activate?token=abc123"
         )
         self.assertIn("<html>", activation_email)
         self.assertIn("testuser", activation_email)
-        self.assertIn("https://app.quidpath.com/activate?token=abc123", activation_email)
+        self.assertIn("https://stage.quidpath.com/activate?token=abc123", activation_email)
         
         # Test activated email
         activated_email = handler.createIndividualActivatedEmail(
@@ -303,11 +303,11 @@ class IndividualRegistrationImportFixTest(TestCase):
         # Test resend email
         resend_email = handler.createIndividualActivationResendEmail(
             username="testuser",
-            activation_link="https://app.quidpath.com/activate?token=xyz789"
+            activation_link="https://stage.quidpath.com/activate?token=xyz789"
         )
         self.assertIn("<html>", resend_email)
         self.assertIn("testuser", resend_email)
-        self.assertIn("https://app.quidpath.com/activate?token=xyz789", resend_email)
+        self.assertIn("https://stage.quidpath.com/activate?token=xyz789", resend_email)
 
 
 class EmailTemplateIntegrationTest(TestCase):

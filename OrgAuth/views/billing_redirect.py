@@ -48,7 +48,7 @@ def billing_redirect_handler(request):
             status=404
         )
     
-    frontend_url = getattr(settings, "FRONTEND_URL", "https://app.quidpath.com")
+    frontend_url = getattr(settings, "FRONTEND_URL", "https://stage.quidpath.com")
     
     # Check if corporate has entered phone number (billing details)
     if not corporate.phone or corporate.phone.strip() == "":
@@ -134,7 +134,7 @@ def check_billing_status(request):
             status=404
         )
     
-    frontend_url = getattr(settings, "FRONTEND_URL", "https://app.quidpath.com")
+    frontend_url = getattr(settings, "FRONTEND_URL", "https://stage.quidpath.com")
     
     # Check if phone number has been entered
     if not corporate.phone or corporate.phone.strip() == "":

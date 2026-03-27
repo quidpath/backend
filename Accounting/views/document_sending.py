@@ -340,7 +340,7 @@ def _generate_invoice_sms(invoice, customer, corporate, custom_message=""):
     if custom_message:
         return custom_message
 
-    message = f"Invoice {invoice.get('number', '')} from {corporate.get('name', '')} - Amount: {invoice.get('total', '0.00')} {invoice.get('currency', 'USD')}. Due: {invoice.get('due_date', '')}. Pay: https://app.quidpath.com/pay/{invoice.get('id', '')}"
+    message = f"Invoice {invoice.get('number', '')} from {corporate.get('name', '')} - Amount: {invoice.get('total', '0.00')} {invoice.get('currency', 'USD')}. Due: {invoice.get('due_date', '')}. Pay: https://stage.quidpath.com/pay/{invoice.get('id', '')}"
     return message
 
 

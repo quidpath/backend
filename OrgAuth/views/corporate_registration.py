@@ -68,17 +68,8 @@ def create_corporate(request):
             corporate_name = corporate.name
             corporate_id = corporate.id
 
-        # Notify billing service that a new corporate was created (non-fatal)
-        try:
-            from quidpath_backend.core.Services.billing_service import billing_service as bs
-            bs.create_trial(
-                corporate_id=str(corporate_id),
-                corporate_name=corporate_name,
-                plan_tier="starter",
-            )
-            logger.info(f"Trial record created in billing service for corporate {corporate_name}")
-        except Exception as e:
-            logger.warning(f"Billing service trial creation skipped for {corporate_name}: {e}")
+        # NOTE: Trial is NOT created here anymore
+        # Trial will be created when superadmin enters billing info after first login
 
         # Log the creation
         TransactionLogBase.log(

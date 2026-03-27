@@ -29,7 +29,7 @@ def register_individual_user(request):
     email = data.get("email")
     password = data.get("password")
     plan_tier = data.get("plan_tier", "starter")
-    frontend_url = data.get("frontend_url", "https://app.quidpath.com")
+    frontend_url = data.get("frontend_url", "https://stage.quidpath.com")
 
     if not username or not email or not password:
         return JsonResponse(
