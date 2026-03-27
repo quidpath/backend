@@ -49,8 +49,17 @@ def create_corporate(request):
                     status=400,
                 )
 
+        # Filter data to only include valid Corporate model fields
+        valid_fields = {
+            'name', 'industry', 'company_size', 'message', 'registration_number',
+            'tax_id', 'description', 'website', 'logo', 'address', 'city', 'state',
+            'country', 'zip_code', 'phone', 'email', 'is_approved', 'is_rejected',
+            'rejection_reason', 'is_active', 'is_seen', 'is_verified'
+        }
+        filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+
         # Create the corporate
-        corporate = ServiceRegistry().database("corporate", "create", data=data)
+        corporate = ServiceRegistry().database("corporate", "create", data=filtered_data)
 
         if isinstance(corporate, dict):
             corporate_name = corporate.get("name")
