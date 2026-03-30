@@ -140,64 +140,71 @@ def login_user(request):
         user.is_active = True
         user.save(update_fields=["is_active"])
 
-    # Check if individual user still needs to pay before accessing the system
+    # Check if corporate user needs access
     if not user.is_superuser and corporate_user:
         try:
             corporate = corporate_user.corporate
-            # If corporate is not active, user can only access billing/payment endpoints.
-            # The BillingAccessMiddleware handles blocking other endpoints with 402.
-            # We still issue tokens so the user can reach the billing setup page.
-            if not corporate.is_active:
+            
+            # If corporate is approved and active, grant access immediately
+            # No billing setup needed - payment was done at registration
+            if corporate.is_approved and corporate.is_active:
+                # Create trial if not exists (for approved corporates)
+                try:
+                    from quidpath_backend.core.Services.billing_service import billing_service
+                    trial_status = billing_service.get_trial_status(str(corporate.id))
+                    
+                    if not trial_status or not trial_status.get("success"):
+                        # Create trial for approved corporate
+                        billing_service.create_trial(
+                            corporate_id=str(corporate.id),
+                            corporate_name=corporate.name,
+                            plan_tier="starter",
+                            phone_number=corporate.phone or ""
+                        )
+                except Exception as e:
+                    logger.warning(f"Could not ensure trial for {corporate.name}: {e}")
+            
+            # If corporate is not approved yet
+            elif not corporate.is_approved:
                 access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
                 TransactionLogBase.log(
-                    "USER_LOGIN", user=user, message="User logged in (billing setup required)"
+                    "USER_LOGIN", user=user, message="User logged in (pending approval)"
                 )
-                response = JsonResponse(
-                    {
-                        "access": access_token,
-                        "refresh": refresh_token,
-                        "otp_required": False,
-                        "is_global_user": False,
-                        "organisation_id": corporate_id,
-                        "role": role,
-                        "billing_setup_required": True,
-                        "corporate_id": str(corporate.id),
-                        "message": "Please complete your billing setup to start your 30-day free trial.",
-                    }
-                )
+                response = JsonResponse({
+                    "access": access_token,
+                    "refresh": refresh_token,
+                    "otp_required": False,
+                    "is_global_user": False,
+                    "organisation_id": corporate_id,
+                    "role": role,
+                    "pending_approval": True,
+                    "corporate_id": str(corporate.id),
+                    "message": "Your organization is pending approval. You will receive an email once approved.",
+                })
                 response["Authorization"] = f"Bearer {access_token}"
                 return _apply_api_security_headers(response)
-        except Exception:
-            pass
-    
-    # Check if superadmin (corporate user with admin role) needs billing setup
-    if corporate_user and role and role.lower() in ['superadmin', 'admin']:
-        try:
-            corporate = corporate_user.corporate
-            # Check if corporate is approved but not active (needs billing setup)
-            if corporate.is_approved and not corporate.is_active:
+            
+            # If corporate is not active (shouldn't happen with new flow)
+            elif not corporate.is_active:
                 access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
                 TransactionLogBase.log(
-                    "SUPERADMIN_LOGIN", user=user, message="Superadmin first login - billing setup required"
+                    "USER_LOGIN", user=user, message="User logged in (inactive corporate)"
                 )
-                response = JsonResponse(
-                    {
-                        "access": access_token,
-                        "refresh": refresh_token,
-                        "otp_required": False,
-                        "is_global_user": False,
-                        "organisation_id": corporate_id,
-                        "role": role,
-                        "billing_setup_required": True,
-                        "is_first_login": True,
-                        "corporate_id": str(corporate.id),
-                        "message": "Welcome! Please complete your billing setup to start your 30-day free trial.",
-                    }
-                )
+                response = JsonResponse({
+                    "access": access_token,
+                    "refresh": refresh_token,
+                    "otp_required": False,
+                    "is_global_user": False,
+                    "organisation_id": corporate_id,
+                    "role": role,
+                    "corporate_inactive": True,
+                    "corporate_id": str(corporate.id),
+                    "message": "Your organization is not active. Please contact support.",
+                })
                 response["Authorization"] = f"Bearer {access_token}"
                 return _apply_api_security_headers(response)
         except Exception as e:
-            logger.warning(f"Error checking superadmin billing status: {e}")
+            logger.warning(f"Error checking corporate status: {e}")
 
     access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
     TransactionLogBase.log(

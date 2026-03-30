@@ -5,6 +5,11 @@ from OrgAuth.views import (corporate_registration, corporate_users,
 from OrgAuth.views.billing_setup import setup_org_billing, initiate_org_payment
 from OrgAuth.views.billing_redirect import billing_redirect_handler, check_billing_status
 from OrgAuth.views.corporate_users import get_corporate_user, get_available_roles
+from OrgAuth.views.corporate_payment import (
+    initiate_corporate_payment,
+    verify_corporate_payment,
+    check_payment_status
+)
 from OrgAuth.views.corporate_user_approval import (
     approve_corporate_user,
     ban_corporate_user,
@@ -17,7 +22,12 @@ from OrgAuth.views.corporate_management import (
 )
 
 urlpatterns = [
-    # Corporate
+    # Corporate registration with Paystack payment
+    path("corporate/payment/initiate", initiate_corporate_payment, name="initiate-corporate-payment"),
+    path("corporate/payment/verify", verify_corporate_payment, name="verify-corporate-payment"),
+    path("corporate/payment/status", check_payment_status, name="check-payment-status"),
+    
+    # Legacy corporate endpoints (keep for backward compatibility)
     path("corporate/create", corporate_registration.create_corporate),
     path("corporate/list", corporate_registration.list_corporates),
     path("corporate/update", corporate_registration.update_corporate),

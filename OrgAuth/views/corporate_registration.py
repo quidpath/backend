@@ -458,16 +458,58 @@ def approve_corporate(request):
         if decision:
             corporate.is_approved = True
             corporate.is_disapproved = False
+            corporate.is_active = True  # Activate immediately on approval
             corporate.save()
 
-            # Manually trigger signal (if you use post_save signal normally)
+            # Manually trigger signal to create superadmin
             from OrgAuth.core.signals import create_superadmin_on_approval
 
             create_superadmin_on_approval(
                 sender=Corporate, instance=corporate, created=False
             )
+            
+            # Send approval email with login credentials
+            # The signal above creates the superadmin user
+            notification_service = NotificationServiceHandler()
+            
+            frontend_url = os.environ.get('FRONTEND_URL', 'https://stage.quidpath.com')
+            
+            # Create approval email with login instructions
+            email_message = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #27ae60;">Application Approved!</h2>
+                    <p>Dear {corporate.name},</p>
+                    <p>Congratulations! Your Quidpath application has been approved.</p>
+                    <p><strong>Your Account Details:</strong></p>
+                    <ul>
+                        <li><strong>Login URL:</strong> <a href="{frontend_url}/login">{frontend_url}/login</a></li>
+                        <li><strong>Email:</strong> {corporate.email}</li>
+                        <li><strong>Trial Period:</strong> 30 days free access</li>
+                    </ul>
+                    <p>Your superadmin credentials have been sent to your email. Please check your inbox for login instructions.</p>
+                    <p><strong>Next Steps:</strong></p>
+                    <ol>
+                        <li>Log in to your account</li>
+                        <li>Complete your profile setup</li>
+                        <li>Start exploring Quidpath features</li>
+                    </ol>
+                    <p>Welcome to Quidpath!</p>
+                    <p>Best regards,<br>The Quidpath Team</p>
+                </div>
+            </body>
+            </html>
+            """
+            
+            notification_service.send_notification([{
+                "message_type": "2",
+                "organisation_id": corporate.id,
+                "destination": corporate.email,
+                "message": email_message,
+            }])
 
-            message = "Corporate approved successfully."
+            message = "Corporate approved successfully. Login credentials sent to email."
         else:
             corporate.is_approved = False
             corporate.is_disapproved = True
