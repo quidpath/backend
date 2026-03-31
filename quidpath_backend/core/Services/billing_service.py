@@ -274,6 +274,20 @@ class BillingServiceClient:
             logger.error("Error getting payment history: %s", e, exc_info=True)
             return None
 
+    def verify_payment(self, reference: str) -> Optional[Dict]:
+        """Verify a payment with Paystack via billing service."""
+        try:
+            # Use Paystack service directly from billing
+            from billing_service.billing.services.paystack_service import PaystackService
+            
+            paystack = PaystackService()
+            result = paystack.verify_transaction(reference)
+            
+            return result
+        except Exception as e:
+            logger.error("Error verifying payment: %s", e, exc_info=True)
+            return {"success": False, "message": str(e)}
+
     def validate_promotion(self, promotion_code: str, amount: float, plan_tier: str) -> Optional[Dict]:
         """Validate a promotion code."""
         try:

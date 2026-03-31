@@ -10,6 +10,10 @@ from OrgAuth.views.corporate_payment import (
     verify_corporate_payment,
     check_payment_status
 )
+from OrgAuth.views.corporate_payment_v2 import (
+    initiate_corporate_registration,
+    verify_corporate_payment_v2,
+)
 from OrgAuth.views.corporate_user_approval import (
     approve_corporate_user,
     ban_corporate_user,
@@ -22,7 +26,11 @@ from OrgAuth.views.corporate_management import (
 )
 
 urlpatterns = [
-    # Corporate registration with Paystack payment
+    # Corporate registration with custom payment page (V2)
+    path("corporate/register/initiate", initiate_corporate_registration, name="initiate-corporate-registration"),
+    path("corporate/register/verify", verify_corporate_payment_v2, name="verify-corporate-payment-v2"),
+    
+    # Corporate registration with Paystack payment (Legacy)
     path("corporate/payment/initiate", initiate_corporate_payment, name="initiate-corporate-payment"),
     path("corporate/payment/verify", verify_corporate_payment, name="verify-corporate-payment"),
     path("corporate/payment/status", check_payment_status, name="check-payment-status"),

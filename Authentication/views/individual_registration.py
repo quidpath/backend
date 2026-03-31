@@ -69,41 +69,15 @@ def register_individual_user(request):
             password=make_password(password),
             corporate=corporate,
             role=superadmin_role,
-            is_active=False,   # Activated after email verification
+            is_active=False,  # Inactive until payment verified
         )
 
-        # Generate activation token
-        from Authentication.views.email_activation import generate_activation_token
-        activation_token = generate_activation_token(str(user.id), email)
-        
-        if not hasattr(user, "metadata") or user.metadata is None:
-            user.metadata = {}
-        
-        user.metadata["activation_token"] = activation_token
-        user.metadata["activation_token_created"] = now().isoformat()
-        user.metadata["plan_tier"] = plan_tier
-        user.save()
-
-        # Create activation link
-        activation_link = f"{frontend_url}/activate-account?token={activation_token}&email={email}"
-
-        notification_service = NotificationServiceHandler()
-        replace_items = {
-            "username": user.username,
-            "activation_link": activation_link,
+        # Store plan tier in metadata for payment verification
+        user.metadata = {
+            "plan_tier": plan_tier,
+            "payment_required": True,
         }
-        message = notification_service.createIndividualActivationEmail(**replace_items)
-        
-        notification_service.send_notification(
-            [
-                {
-                    "message_type": "2",
-                    "organisation_id": str(corporate.id),
-                    "destination": user.email,
-                    "message": message,
-                }
-            ]
-        )
+        user.save(update_fields=["metadata"])
 
         TransactionLogBase.log(
             "INDIVIDUAL_USER_REGISTERED",
@@ -113,9 +87,10 @@ def register_individual_user(request):
 
         return JsonResponse(
             {
-                "message": "Registration successful! Please check your email to activate your account.",
-                "email_sent": True,
+                "message": "Registration successful! Please complete payment to activate your account.",
                 "corporate_id": str(corporate.id),
+                "email": email,
+                "username": username,
             },
             status=201,
         )
