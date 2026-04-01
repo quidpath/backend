@@ -26,10 +26,10 @@ def initiate_corporate_registration(request):
     Step 1: Store corporate data and return registration ID
     No payment initiated yet - that happens on custom payment page
     """
-    data, metadata = get_clean_data(request)
+    from quidpath_backend.core.utils.request_parser import get_data
+    data, metadata = get_data(request)
     
     try:
-        # Validate required fields
         required_fields = ['name', 'email', 'phone', 'address', 'city', 'country']
         missing_fields = [f for f in required_fields if not data.get(f)]
         
@@ -41,7 +41,6 @@ def initiate_corporate_registration(request):
         corporate_name = data.get("name")
         email = data.get("email")
         
-        # Check if corporate already exists
         if Corporate.objects.filter(name=corporate_name).exists():
             return JsonResponse({
                 "error": f"An organization with the name '{corporate_name}' already exists."
@@ -52,10 +51,7 @@ def initiate_corporate_registration(request):
                 "error": f"An organization with the email '{email}' already exists."
             }, status=400)
         
-        # Generate unique registration ID
         registration_id = str(uuid.uuid4())
-        
-        # Store corporate data in cache (expires in 2 hours)
         cache_key = f"corporate_reg_{registration_id}"
         cache.set(cache_key, data, timeout=7200)
         
@@ -85,7 +81,8 @@ def verify_corporate_payment_v2(request):
     Step 2: Verify payment and CREATE corporate record
     Called after successful payment on custom payment page
     """
-    data, metadata = get_clean_data(request)
+    from quidpath_backend.core.utils.request_parser import get_data
+    data, metadata = get_data(request)
     
     try:
         registration_id = data.get("registration_id")

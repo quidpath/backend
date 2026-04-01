@@ -22,7 +22,8 @@ def verify_individual_payment(request):
     Verify individual payment and activate account
     Called after successful payment on custom payment page
     """
-    data, metadata = get_clean_data(request)
+    from quidpath_backend.core.utils.request_parser import get_data
+    data, metadata = get_data(request)
     
     try:
         reference = data.get("reference")
@@ -74,26 +75,8 @@ def verify_individual_payment(request):
             
             billing_client = BillingServiceClient()
             
-            # If plan_id provided, use it; otherwise fallback to plan_tier from metadata
-            if plan_id:
-                # Get plan details from billing service to get tier
-                import requests
-                billing_url = os.environ.get("BILLING_SERVICE_URL", "http://localhost:8002")
-                plans_response = requests.get(
-                    f"{billing_url}/api/billing/plans/",
-                    params={"type": "individual"},
-                    timeout=10
-                )
-                
-                if plans_response.status_code == 200:
-                    plans_data = plans_response.json()
-                    plans = plans_data.get("data", {}).get("plans", [])
-                    selected_plan = next((p for p in plans if p.get("id") == plan_id), None)
-                    plan_tier = selected_plan.get("tier", "starter") if selected_plan else "starter"
-                else:
-                    plan_tier = "starter"
-            else:
-                plan_tier = user.metadata.get("plan_tier", "starter") if hasattr(user, "metadata") and user.metadata else "starter"
+            # Use plan_tier from user metadata or default to starter
+            plan_tier = user.metadata.get("plan_tier", "starter") if hasattr(user, "metadata") and user.metadata else "starter"
             
             billing_client.create_subscription(
                 corporate_id=str(corporate_id),

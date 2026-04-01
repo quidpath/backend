@@ -23,12 +23,14 @@ def register_individual_user(request):
     2. Returns corporate_id for payment page
     3. After payment confirmation, user can login
     """
-    data, metadata = get_clean_data(request)
+    from quidpath_backend.core.utils.request_parser import get_data
+    data, metadata = get_data(request)
+    
     username = data.get("username")
     email = data.get("email")
     password = data.get("password")
     plan_tier = data.get("plan_tier", "starter")
-    plan_id = data.get("plan_id")  # Get plan_id from frontend
+    plan_id = data.get("plan_id")
     frontend_url = data.get("frontend_url", "https://stage.quidpath.com")
 
     if not username or not email or not password:
@@ -57,7 +59,7 @@ def register_individual_user(request):
             zip_code=data.get("zip_code", ""),
             description=f"Individual account for {username}",
             is_approved=True,
-            is_active=False,   # Activated after payment confirmed
+            is_active=False,
             is_verified=False,
         )
 
@@ -69,10 +71,9 @@ def register_individual_user(request):
             password=make_password(password),
             corporate=corporate,
             role=superadmin_role,
-            is_active=False,  # Inactive until payment verified
+            is_active=False,
         )
 
-        # Store plan info in metadata for payment verification
         user.metadata = {
             "plan_tier": plan_tier,
             "plan_id": plan_id,
