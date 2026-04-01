@@ -19,6 +19,10 @@ ALLOWED_HOSTS = os.environ.get(
     "ALLOWED_HOSTS", "stage-api.quidpath.com,stage.quidpath.com,localhost,127.0.0.1,0.0.0.0"
 ).split(",")
 
+# Add backend container name for internal service communication
+if "quidpath-backend-stage" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("quidpath-backend-stage")
+
 # ====================================
 # CSRF & CORS CONFIGURATION (stage frontend: https://stage.quidpath.com)
 # ====================================

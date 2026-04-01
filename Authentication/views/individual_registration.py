@@ -19,16 +19,16 @@ logger = logging.getLogger(__name__)
 def register_individual_user(request):
     """
     Register an individual user:
-    1. Creates Corporate + CorporateUser (both inactive until email verified)
-    2. Sends activation email with link
-    3. After activation, user is redirected to payment page
-    4. After payment confirmation, user can login
+    1. Creates Corporate + CorporateUser (both inactive until payment verified)
+    2. Returns corporate_id for payment page
+    3. After payment confirmation, user can login
     """
     data, metadata = get_clean_data(request)
     username = data.get("username")
     email = data.get("email")
     password = data.get("password")
     plan_tier = data.get("plan_tier", "starter")
+    plan_id = data.get("plan_id")  # Get plan_id from frontend
     frontend_url = data.get("frontend_url", "https://stage.quidpath.com")
 
     if not username or not email or not password:
@@ -72,9 +72,10 @@ def register_individual_user(request):
             is_active=False,  # Inactive until payment verified
         )
 
-        # Store plan tier in metadata for payment verification
+        # Store plan info in metadata for payment verification
         user.metadata = {
             "plan_tier": plan_tier,
+            "plan_id": plan_id,
             "payment_required": True,
         }
         user.save(update_fields=["metadata"])

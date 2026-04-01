@@ -19,6 +19,10 @@ ALLOWED_HOSTS = os.environ.get(
     "ALLOWED_HOSTS", "api.quidpath.com,quidpath.com,www.quidpath.com"
 ).split(",")
 
+# Add backend container name for internal service communication
+if "quidpath-backend-prod" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("quidpath-backend-prod")
+
 # ====================================
 # CSRF & CORS CONFIGURATION
 # ====================================

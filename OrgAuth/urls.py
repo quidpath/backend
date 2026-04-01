@@ -27,13 +27,13 @@ from OrgAuth.views.corporate_management import (
 
 urlpatterns = [
     # Corporate registration with custom payment page (V2)
-    path("corporate/register/initiate", initiate_corporate_registration, name="initiate-corporate-registration"),
-    path("corporate/register/verify", verify_corporate_payment_v2, name="verify-corporate-payment-v2"),
+    path("corporate/register/initiate/", initiate_corporate_registration, name="initiate-corporate-registration"),
+    path("corporate/register/verify/", verify_corporate_payment_v2, name="verify-corporate-payment-v2"),
     
     # Corporate registration with Paystack payment (Legacy)
-    path("corporate/payment/initiate", initiate_corporate_payment, name="initiate-corporate-payment"),
-    path("corporate/payment/verify", verify_corporate_payment, name="verify-corporate-payment"),
-    path("corporate/payment/status", check_payment_status, name="check-payment-status"),
+    path("corporate/payment/initiate/", initiate_corporate_payment, name="initiate-corporate-payment"),
+    path("corporate/payment/verify/", verify_corporate_payment, name="verify-corporate-payment"),
+    path("corporate/payment/status/", check_payment_status, name="check-payment-status"),
     
     # Legacy corporate endpoints (keep for backward compatibility)
     path("corporate/create", corporate_registration.create_corporate),

@@ -67,7 +67,9 @@ services:
       BILLING_SERVICE_SECRET: ${BILLING_SERVICE_SECRET}
       BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET}
       FRONTEND_URL: ${FRONTEND_URL:-https://www.quidpath.com}
-      FRONTEND_URL: ${FRONTEND_URL:-https://www.quidpath.com}
+      PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY_PROD}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY_PROD}
+      PAYSTACK_TEST_MODE: ${PAYSTACK_TEST_MODE:-false}
     volumes:
       - /mnt/quidpath-data/media:/app/media
       - /mnt/quidpath-data/staticfiles:/app/staticfiles
