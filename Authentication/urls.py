@@ -49,6 +49,7 @@ from Authentication.views.settings import (
     check_user_permissions,
 )
 from Authentication.views.individual_payment import verify_individual_payment
+from Authentication.views.payment_initialize import initialize_payment
 
 urlpatterns = [
     path("health/", health_check, name="health-check"),
@@ -59,6 +60,7 @@ urlpatterns = [
     path("activate-account/", activate_account, name="activate-account"),
     path("resend-activation/", resend_activation_email, name="resend-activation"),
     path("payment/verify-individual/", verify_individual_payment, name="verify-individual-payment"),
+    path("payment/initialize/", initialize_payment, name="payment-initialize"),
     path("get_profile/", get_profile, name="profile"),
     path("menu/", get_menu, name="menu"),
     path("token/refresh/", refresh_token, name="token_refresh"),
