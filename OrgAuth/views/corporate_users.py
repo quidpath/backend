@@ -23,6 +23,10 @@ def get_available_roles(request):
     Get list of roles available for assignment (excludes SUPERADMIN and SUPERUSER)
     """
     try:
+        # Accept GET requests only
+        if request.method != 'GET':
+            return JsonResponse({"error": "Method not allowed"}, status=405)
+        
         # Get all roles except SUPERADMIN and SUPERUSER
         roles = Role.objects.exclude(name__in=["SUPERADMIN", "SUPERUSER"]).values('id', 'name', 'description')
         
@@ -31,6 +35,9 @@ def get_available_roles(request):
         }, status=200)
     
     except Exception as e:
+        print(f"Error in get_available_roles: {e}")
+        import traceback
+        traceback.print_exc()
         return JsonResponse({"error": str(e)}, status=400)
 
 

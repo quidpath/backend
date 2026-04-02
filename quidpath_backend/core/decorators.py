@@ -36,8 +36,7 @@ def require_superuser(view_func):
 def require_module_permission(module_slug):
     """
     Decorator that requires the authenticated user's role to have access to the given module_slug.
-    Superusers bypass all permission checks.
-    Use after get_clean_data so metadata is available, or resolve user from token inside.
+    Only Django superusers bypass permission checks. All roles (including SUPERADMIN) must have explicit permissions.
     Returns 403 if user has no role or role lacks permission for the module.
     """
     def decorator(view_func):
@@ -49,8 +48,8 @@ def require_module_permission(module_slug):
                 return ResponseProvider(
                     {"error": "Authentication required"}, "Forbidden", 403
                 )._response(403)
-            # Superuser bypass - check FIRST before corporate_user check
-            # Handle both dict (from JWT) and model objects
+            
+            # Only Django superuser bypasses - handle both dict (from JWT) and model objects
             if isinstance(user, dict):
                 is_superuser = user.get("is_superuser", False)
             else:
@@ -58,10 +57,13 @@ def require_module_permission(module_slug):
             
             if is_superuser:
                 return view_func(request, *args, **kwargs)
+            
+            # All other users (including SUPERADMIN role) must have explicit module permission
             if not corporate_user or not corporate_user.role_id:
                 return ResponseProvider(
                     {"error": "You do not have access to this module"}, "Forbidden", 403
                 )._response(403)
+            
             has_access = corporate_user.role.module_permissions.filter(
                 module_slug=module_slug
             ).exists()

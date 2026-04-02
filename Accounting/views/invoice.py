@@ -590,7 +590,7 @@ def create_and_post_invoice(request):
 
 
 @csrf_exempt
-@require_module_permission("accounting")
+@require_module_permission("finance")
 def list_invoices(request):
     """
     List all invoices for the user's corporate, categorized by status.

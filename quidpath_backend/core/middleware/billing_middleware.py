@@ -34,6 +34,7 @@ class BillingAccessMiddleware(MiddlewareMixin):
         "/api/auth/permissions/",
         "/api/auth/logo/",
         "/api/auth/subscription/",
+        "/api/auth/roles/",            # all role management endpoints
         "/api/orgauth/roles/",
         "/api/orgauth/corporate/register/",
         "/api/orgauth/corporate/create",
@@ -70,7 +71,7 @@ class BillingAccessMiddleware(MiddlewareMixin):
             if path.startswith(exempt_path):
                 return None
 
-        # Allow superusers and SUPERADMIN role to bypass all billing checks
+        # Only Django superusers bypass billing checks
         if request.user.is_superuser:
             return None
 
@@ -78,10 +79,6 @@ class BillingAccessMiddleware(MiddlewareMixin):
             corporate_user = CorporateUser.objects.select_related("corporate", "role").get(
                 customuser_ptr_id=request.user.id
             )
-            
-            # Allow SUPERADMIN role to bypass billing checks
-            if corporate_user.role and corporate_user.role.name in ("SUPERADMIN", "SUPERUSER"):
-                return None
             
             corporate = corporate_user.corporate
 

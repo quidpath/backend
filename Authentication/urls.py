@@ -48,6 +48,15 @@ from Authentication.views.settings import (
     update_system_settings,
     check_user_permissions,
 )
+from Authentication.views.role_management import (
+    list_all_roles,
+    list_all_permissions,
+    create_role,
+    update_role,
+    delete_role,
+    add_permission_to_role,
+    remove_permission_from_role,
+)
 from Authentication.views.individual_payment import verify_individual_payment
 from Authentication.views.payment_initialize import initialize_payment
 
@@ -118,4 +127,12 @@ urlpatterns = [
     path("plans/", get_subscription_plans, name="get-subscription-plans"),
     path("payments/initiate/", initiate_subscription_payment, name="initiate-subscription-payment"),
     path("subscription/status/", check_subscription_status, name="check-subscription-status"),
+    # Role management (superuser only)
+    path("roles/list-all/", list_all_roles, name="list-all-roles"),
+    path("roles/permissions/", list_all_permissions, name="list-all-permissions"),
+    path("roles/create/", create_role, name="create-role"),
+    path("roles/update/", update_role, name="update-role"),
+    path("roles/delete/", delete_role, name="delete-role"),
+    path("roles/add-permission/", add_permission_to_role, name="add-permission-to-role"),
+    path("roles/remove-permission/", remove_permission_from_role, name="remove-permission-to-role"),
 ]

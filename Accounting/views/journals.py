@@ -204,7 +204,7 @@ def create_journal_entry(request):
 
 
 @csrf_exempt
-@require_module_permission("accounting")
+@require_module_permission("finance")
 def list_journal_entries(request):
     """
     List all journal entries for the user's corporate.
