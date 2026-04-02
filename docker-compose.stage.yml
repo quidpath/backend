@@ -65,6 +65,11 @@ services:
       BILLING_SERVICE_SECRET: ${BILLING_SERVICE_SECRET}
       BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET}
       FRONTEND_URL: "https://stage.quidpath.com"
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY_STAGING}
+      PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY_STAGING}
+      PAYSTACK_TEST_MODE: "true"
+      PAYSTACK_WEBHOOK_URL: "https://stage-billing.quidpath.com/api/billing/webhooks/paystack/"
+      PAYSTACK_CALLBACK_URL: "https://stage.quidpath.com/payment/callback"
 
     volumes:
       - /mnt/quidpath-stage-data/media:/app/media

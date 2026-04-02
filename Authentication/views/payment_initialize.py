@@ -50,6 +50,10 @@ def initialize_payment(request):
 
     secret_key = os.environ.get("PAYSTACK_SECRET_KEY", "")
     if not secret_key:
+        # Fallback to Django settings
+        from django.conf import settings
+        secret_key = getattr(settings, "PAYSTACK_SECRET_KEY", "")
+    if not secret_key:
         logger.error("PAYSTACK_SECRET_KEY not configured")
         return JsonResponse({"error": "Payment system not configured"}, status=500)
 

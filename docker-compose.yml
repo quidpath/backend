@@ -69,7 +69,9 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-https://www.quidpath.com}
       PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY_PROD}
       PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY_PROD}
-      PAYSTACK_TEST_MODE: ${PAYSTACK_TEST_MODE:-false}
+      PAYSTACK_TEST_MODE: "false"
+      PAYSTACK_WEBHOOK_URL: "https://billing.quidpath.com/api/billing/webhooks/paystack/"
+      PAYSTACK_CALLBACK_URL: "https://www.quidpath.com/payment/callback"
     volumes:
       - /mnt/quidpath-data/media:/app/media
       - /mnt/quidpath-data/staticfiles:/app/staticfiles

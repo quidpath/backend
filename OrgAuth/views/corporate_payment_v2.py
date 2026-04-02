@@ -93,8 +93,9 @@ def verify_corporate_payment_v2(request):
         
         # Verify with Paystack directly
         import requests
+        from django.conf import settings as django_settings
         
-        secret_key = os.environ.get("PAYSTACK_SECRET_KEY", "")
+        secret_key = os.environ.get("PAYSTACK_SECRET_KEY", "") or getattr(django_settings, "PAYSTACK_SECRET_KEY", "")
         headers = {
             "Authorization": f"Bearer {secret_key}",
             "Content-Type": "application/json",
