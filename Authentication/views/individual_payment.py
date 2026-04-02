@@ -66,9 +66,11 @@ def verify_individual_payment(request):
 
     # ── 3. Activate ───────────────────────────────────────────────────────────
     user.is_active = True
-    user.save(update_fields=["is_active"])
+    user.is_approved = True
+    user.save(update_fields=["is_active", "is_approved"])
     corporate.is_active = True
-    corporate.save(update_fields=["is_active"])
+    corporate.is_approved = True
+    corporate.save(update_fields=["is_active", "is_approved"])
 
     # ── 4. Create subscription in billing service ─────────────────────────────
     try:

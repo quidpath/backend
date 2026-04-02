@@ -49,6 +49,12 @@ python manage.py bootstrap_data || {
     echo "Bootstrap failed, continuing anyway..."
 }
 
+# Seed module permissions and role assignments
+echo "Seeding module permissions..."
+python manage.py seed_permissions || {
+    echo "Permission seeding failed, continuing anyway..."
+}
+
 # Collect static files
 echo "Collecting static files..."
 python manage.py collectstatic --noinput --clear || {

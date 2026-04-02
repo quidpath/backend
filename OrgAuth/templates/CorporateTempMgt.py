@@ -5,14 +5,6 @@ from OrgAuth.templates.EmailTemplates import EmailTemplates
 
 class TemplateManagementEngine:
     def replace_tags(self, template_string, **kwargs):
-        """
-        Replaces all the occurrences of replace tags with the passed in arguments.
-        @param template_string: The template string we are supposed to replace tags.
-        @type template_string: str
-        @param kwargs: The key->word arguments representing the tags in the string without []
-        @return: The template string replaced accordingly.
-        @rtype: str
-        """
         try:
             for k, v in kwargs.items():
                 template_string = template_string.replace("[%s]" % str(k), str(v))
@@ -20,6 +12,10 @@ class TemplateManagementEngine:
         except Exception as e:
             print("replace_tags Exception: %s", e)
         return template_string
+
+    def createOtpEmail(self, **kwargs):
+        """OTP verification email"""
+        return EmailTemplates.otp(**kwargs)
 
     def createCorporateEmail(self, **kwargs):
         """Corporate creation email - delegates to EmailTemplates"""

@@ -1,549 +1,267 @@
 """
-Centralized email templates for all notification emails.
-All email HTML should be defined here to maintain consistency and ease of maintenance.
+Centralized email templates for all Quidpath notifications.
+- Dynamic year in footer (never hard-coded)
+- Consistent brand colours and layout across every template
+- OTP template included
 """
+from datetime import datetime
+
+
+def _year() -> str:
+    return str(datetime.now().year)
 
 
 class EmailTemplates:
-    """Base class for email template management with tag replacement"""
-    
+
+    # ── Shared helpers ────────────────────────────────────────────────────────
+
     @staticmethod
-    def replace_tags(template_string, **kwargs):
-        """
-        Replaces all occurrences of [tag_name] with provided values.
-        """
+    def replace_tags(template: str, **kwargs) -> str:
         try:
             for key, value in kwargs.items():
-                template_string = template_string.replace(f"[{key}]", str(value))
-            return template_string
+                template = template.replace(f"[{key}]", str(value))
+            return template
         except Exception as e:
-            print(f"replace_tags Exception: {e}")
-            return template_string
+            print(f"replace_tags error: {e}")
+            return template
 
     @staticmethod
-    def get_base_style():
-        """Common CSS styles for all emails"""
-        return """
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background-color: #f1fdf3;
-                margin: 0;
-                padding: 0;
-            }
-            .container {
-                max-width: 600px;
-                margin: 40px auto;
-                padding: 0;
-                background-color: #ffffff;
-                border-radius: 8px;
-                overflow: hidden;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-            }
-            .header {
-                background-color: #a7c0ba;
-                padding: 20px;
-                text-align: center;
-            }
-            .content {
-                padding: 30px;
-                background-color: #ffffff;
-            }
-            .content h1 {
-                color: #064e3b;
-                margin-bottom: 10px;
-            }
-            .content h3 {
-                color: #065f46;
-                margin-top: 20px;
-                margin-bottom: 10px;
-            }
-            .content p {
-                color: #333333;
-                line-height: 1.6;
-                font-size: 16px;
-            }
-            .credentials {
-                background-color: #f0fdf4;
-                padding: 15px;
-                border-radius: 6px;
-                margin: 15px 0;
-            }
-            .cta-button {
-                display: inline-block;
-                background-color: #000000;
-                color: white !important;
-                padding: 12px 24px;
-                text-decoration: none;
-                border-radius: 8px;
-                margin: 15px 0;
-            }
-            .footer {
-                background-color: #d1fae5;
-                padding: 15px;
-                text-align: center;
-                font-size: 13px;
-                color: #065f46;
-            }
-            ul {
-                list-style-type: none;
-                padding-left: 0;
-            }
-            ul li {
-                margin: 8px 0;
-            }
-        </style>
-        """
+    def _style() -> str:
+        return """<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f0fdf4;color:#1a1a1a}
+  .wrap{max-width:600px;margin:40px auto;background:#fff;border-radius:10px;
+        overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+  .hdr{background:linear-gradient(135deg,#1b5e20 0%,#2e7d32 60%,#43a047 100%);
+       padding:32px 40px;text-align:center}
+  .hdr img{height:36px;margin-bottom:12px}
+  .hdr h1{color:#fff;font-size:22px;font-weight:700;letter-spacing:.3px}
+  .body{padding:36px 40px}
+  .body p{font-size:15px;line-height:1.7;color:#374151;margin-bottom:14px}
+  .body h2{font-size:18px;color:#1b5e20;margin-bottom:16px;font-weight:700}
+  .creds{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+         padding:20px 24px;margin:20px 0}
+  .creds p{margin-bottom:8px;font-size:15px}
+  .creds strong{color:#1b5e20}
+  .otp-box{background:#f0fdf4;border:2px solid #4ade80;border-radius:10px;
+           padding:24px;text-align:center;margin:24px 0}
+  .otp-code{font-size:40px;font-weight:800;letter-spacing:10px;color:#1b5e20;
+            font-family:'Courier New',monospace}
+  .otp-note{font-size:13px;color:#6b7280;margin-top:10px}
+  .btn{display:inline-block;background:#1b5e20;color:#fff!important;
+       padding:13px 28px;border-radius:8px;text-decoration:none;
+       font-weight:700;font-size:15px;margin:8px 0}
+  .divider{border:none;border-top:1px solid #e5e7eb;margin:24px 0}
+  .note{font-size:13px;color:#6b7280;font-style:italic}
+  .ftr{background:#f0fdf4;border-top:1px solid #d1fae5;padding:18px 40px;
+       text-align:center;font-size:13px;color:#4b7a52}
+  ul{padding-left:20px;margin-bottom:14px}
+  ul li{font-size:15px;line-height:1.7;color:#374151;margin-bottom:4px}
+</style>"""
 
     @classmethod
-    def corporate_created(cls, **kwargs):
-        """Template for corporate creation confirmation"""
-        template = """<html>
+    def _wrap(cls, header_title: str, body_html: str) -> str:
+        """Wraps content in the standard Quidpath email shell."""
+        return f"""<!DOCTYPE html>
+<html lang="en">
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-[base_style]
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  {cls._style()}
 </head>
 <body>
-<div class="container">
-<div class="header">
-<h1>Welcome</h1>
-</div>
-<div class="content">
-<h1>Organization Created</h1>
-<p>Dear <strong>[corporate_name]</strong>,</p>
-<p>Your application has been successfully submitted. We are currently reviewing your request.</p>
-<p>You will receive a confirmation email once your organization is approved.</p>
-<p>Thank you for choosing our platform!</p>
-</div>
-<div class="footer">
-&copy; 2025 Quidpath. All rights reserved.
-</div>
+<div class="wrap">
+  <div class="hdr">
+    <h1>{header_title}</h1>
+  </div>
+  <div class="body">
+    {body_html}
+  </div>
+  <div class="ftr">
+    &copy; {_year()} Quidpath. All rights reserved.
+  </div>
 </div>
 </body>
 </html>"""
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+
+    # ── OTP ───────────────────────────────────────────────────────────────────
+
+    @classmethod
+    def otp(cls, **kwargs):
+        """One-Time Password email — used for login verification."""
+        body = """
+<h2>Your One-Time Password</h2>
+<p>Hello <strong>[username]</strong>,</p>
+<p>Use the code below to complete your sign-in to Quidpath. This code is valid for <strong>24 hours</strong>.</p>
+<div class="otp-box">
+  <div class="otp-code">[otp_code]</div>
+  <p class="otp-note">Do not share this code with anyone.</p>
+</div>
+<p>If you did not attempt to sign in, please ignore this email — your account remains secure.</p>
+<p class="note">For security, this code expires after 24 hours.</p>"""
+        return cls.replace_tags(cls._wrap("Sign-In Verification", body), **kwargs)
+
+    # ── Corporate ─────────────────────────────────────────────────────────────
+
+    @classmethod
+    def corporate_created(cls, **kwargs):
+        body = """
+<h2>Application Received</h2>
+<p>Dear <strong>[corporate_name]</strong>,</p>
+<p>Thank you for registering with Quidpath. Your application has been successfully submitted and is currently under review.</p>
+<p>You will receive a confirmation email once your organisation is approved — usually within 24–48 hours.</p>
+<p>Thank you for choosing Quidpath!</p>"""
+        return cls.replace_tags(cls._wrap("Welcome to Quidpath", body), **kwargs)
 
     @classmethod
     def corporate_approval(cls, **kwargs):
-        """Template for corporate approval with trial and billing"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Welcome to Quidpath ERP</h1>
-                </div>
-                <div class="content">
-                    <h1>Your Organisation Has Been Approved!</h1>
-                    <p>Congratulations! <strong>[corporate_name]</strong> has been approved on Quidpath ERP.</p>
-                    
-                    <div class="credentials">
-                        <p><strong>Your login credentials:</strong></p>
-                        <p>Username: <strong>[username]</strong></p>
-                        <p>Password: <strong>[password]</strong></p>
-                        <p style="font-size: 14px; color: #666;">Please change your password after first login.</p>
-                    </div>
-                    
-                    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-                    
-                    <h3>Your 30-Day Free Trial Awaits!</h3>
-                    <p>You have a <strong>30-day free trial</strong> to explore all features.</p>
-                    <p>To activate your account and start your trial, please enter your billing details:</p>
-                    <p style="text-align: center;">
-                        <a href="[billing_url]" class="cta-button">Set Up Billing</a>
-                    </p>
-                    <p>After your trial ends, you will receive an M-Pesa STK push to continue your subscription.</p>
-                    <p style="color: #dc2626;"><strong>Without entering your billing details, you cannot access the system.</strong></p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Your Organisation Has Been Approved!</h2>
+<p>Congratulations, <strong>[corporate_name]</strong>! Your Quidpath account is now active.</p>
+<div class="creds">
+  <p><strong>Your login credentials</strong></p>
+  <p>Username: <strong>[username]</strong></p>
+  <p>Password: <strong>[password]</strong></p>
+  <p class="note">Please change your password after your first login.</p>
+</div>
+<hr class="divider"/>
+<p><strong>Your 30-day free trial starts now.</strong> Explore all features at no cost.</p>
+<p style="text-align:center;margin-top:20px">
+  <a href="[billing_url]" class="btn">Set Up Billing &amp; Start Trial</a>
+</p>
+<p class="note">After your trial ends, a subscription payment will be required to continue.</p>"""
+        return cls.replace_tags(cls._wrap("Organisation Approved!", body), **kwargs)
 
     @classmethod
     def corporate_disapproval(cls, **kwargs):
-        """Template for corporate disapproval"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Application Update</h1>
-                </div>
-                <div class="content">
-                    <h1>Application Status</h1>
-                    <p>Dear <strong>[corporate_name]</strong>,</p>
-                    <p>We regret to inform you that your organisation has not been approved at this time.</p>
-                    <p>Thank you for your interest in Quidpath ERP.</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Application Status Update</h2>
+<p>Dear <strong>[corporate_name]</strong>,</p>
+<p>We regret to inform you that your organisation application has not been approved at this time.</p>
+<p>If you believe this is an error or would like more information, please contact our support team.</p>
+<p>Thank you for your interest in Quidpath.</p>"""
+        return cls.replace_tags(cls._wrap("Application Update", body), **kwargs)
 
     @classmethod
     def corporate_suspended(cls, **kwargs):
-        """Template for corporate suspension"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Account Suspended</h1>
-                </div>
-                <div class="content">
-                    <h1>Your Account Has Been Suspended</h1>
-                    <p>Dear <strong>[corporate_name]</strong>,</p>
-                    <p>We regret to inform you that your corporate account has been suspended.</p>
-                    <p>If you believe this is a mistake, please contact support.</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Account Suspended</h2>
+<p>Dear <strong>[corporate_name]</strong>,</p>
+<p>Your Quidpath corporate account has been suspended.</p>
+<p>If you believe this is a mistake, please contact our support team immediately.</p>"""
+        return cls.replace_tags(cls._wrap("Account Suspended", body), **kwargs)
 
     @classmethod
     def corporate_profile_updated(cls, **kwargs):
-        """Template for corporate profile update"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Profile Updated</h1>
-                </div>
-                <div class="content">
-                    <h1>Corporate Profile Updated</h1>
-                    <p>Dear <strong>[corporate_name]</strong>,</p>
-                    <p>Your corporate profile has been successfully updated.</p>
-                    <p>Fields updated: [fields]</p>
-                    <p>If this was unexpected, please contact support.</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Profile Updated</h2>
+<p>Dear <strong>[corporate_name]</strong>,</p>
+<p>Your corporate profile has been successfully updated.</p>
+<p>Fields changed: <strong>[fields]</strong></p>
+<p>If you did not authorise this change, please contact support immediately.</p>"""
+        return cls.replace_tags(cls._wrap("Profile Updated", body), **kwargs)
 
     @classmethod
     def corporate_deleted(cls, **kwargs):
-        """Template for corporate deletion"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Account Deleted</h1>
-                </div>
-                <div class="content">
-                    <h1>Account Deletion Confirmation</h1>
-                    <p>Dear <strong>[corporate_name]</strong>,</p>
-                    <p>Your organisation account has been deleted from our system.</p>
-                    <p>If this was unexpected, kindly contact support.</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Account Deleted</h2>
+<p>Dear <strong>[corporate_name]</strong>,</p>
+<p>Your Quidpath organisation account has been permanently deleted.</p>
+<p>If this was unexpected, please contact our support team.</p>"""
+        return cls.replace_tags(cls._wrap("Account Deleted", body), **kwargs)
+
+    # ── Users ─────────────────────────────────────────────────────────────────
 
     @classmethod
     def user_welcome(cls, **kwargs):
-        """Template for new user welcome with credentials"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Welcome to Quidpath!</h1>
-                </div>
-                <div class="content">
-                    <h1>Welcome to the Team!</h1>
-                    <p>Hello <strong>[username]</strong>,</p>
-                    <p>You have been added to the corporate account: <strong>[corporate_name]</strong>.</p>
-                    
-                    <div class="credentials">
-                        <p><strong>Your login credentials:</strong></p>
-                        <ul>
-                            <li><strong>Username:</strong> [username]</li>
-                            <li><strong>Password:</strong> [password]</li>
-                        </ul>
-                    </div>
-                    
-                    <p style="text-align: center;">
-                        <a href="[login_url]" class="cta-button">Login to Quidpath</a>
-                    </p>
-                    <p><strong>Important:</strong> Please change your password after your first login for security.</p>
-                    <p>Regards,<br/>Quidpath Team</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Welcome to the Team!</h2>
+<p>Hello <strong>[username]</strong>,</p>
+<p>You have been added to <strong>[corporate_name]</strong> on Quidpath.</p>
+<div class="creds">
+  <p><strong>Your login credentials</strong></p>
+  <p>Username: <strong>[username]</strong></p>
+  <p>Password: <strong>[password]</strong></p>
+  <p class="note">Please change your password after your first login for security.</p>
+</div>
+<p style="text-align:center;margin-top:20px">
+  <a href="[login_url]" class="btn">Log In to Quidpath</a>
+</p>
+<p>If you have any questions, reach out to your organisation administrator.</p>"""
+        return cls.replace_tags(cls._wrap("Welcome to Quidpath!", body), **kwargs)
 
     @classmethod
     def user_deleted(cls, **kwargs):
-        """Template for user deletion notification"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Account Deleted</h1>
-                </div>
-                <div class="content">
-                    <h1>Account Deletion</h1>
-                    <p>Hello <strong>[username]</strong>,</p>
-                    <p>Your account has been permanently deleted from our corporate platform.</p>
-                    <p>We're sorry to see you go. If this was a mistake or you'd like to rejoin, please reach out to your administrator.</p>
-                    <p>Best regards,<br/>Quidpath Team</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Account Removed</h2>
+<p>Hello <strong>[username]</strong>,</p>
+<p>Your account has been permanently removed from the Quidpath platform.</p>
+<p>If you believe this was done in error, please contact your organisation administrator.</p>"""
+        return cls.replace_tags(cls._wrap("Account Removed", body), **kwargs)
 
     @classmethod
     def user_updated(cls, **kwargs):
-        """Template for user profile update"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Profile Updated</h1>
-                </div>
-                <div class="content">
-                    <h1>Account Updated</h1>
-                    <p>Hello <strong>[username]</strong>,</p>
-                    <p>Your account details have been updated successfully.</p>
-                    <p>If you did not request this change, please contact your administrator.</p>
-                    <p>Regards,<br/>Quidpath Team</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Account Updated</h2>
+<p>Hello <strong>[username]</strong>,</p>
+<p>Your account details have been updated successfully.</p>
+<p>If you did not request this change, please contact your administrator immediately.</p>"""
+        return cls.replace_tags(cls._wrap("Account Updated", body), **kwargs)
 
     @classmethod
     def user_suspended(cls, **kwargs):
-        """Template for user suspension"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Account Suspended</h1>
-                </div>
-                <div class="content">
-                    <h1>Account Suspension</h1>
-                    <p>Hello <strong>[username]</strong>,</p>
-                    <p>Your account has been suspended by your administrator.</p>
-                    <p>If you believe this is an error, please contact your system administrator.</p>
-                    <p>Regards,<br/>Quidpath Team</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Account Suspended</h2>
+<p>Hello <strong>[username]</strong>,</p>
+<p>Your Quidpath account has been suspended by your organisation administrator.</p>
+<p>If you believe this is an error, please contact your administrator.</p>"""
+        return cls.replace_tags(cls._wrap("Account Suspended", body), **kwargs)
 
     @classmethod
     def user_unsuspended(cls, **kwargs):
-        """Template for user reactivation"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Account Reactivated</h1>
-                </div>
-                <div class="content">
-                    <h1>Welcome Back!</h1>
-                    <p>Hello <strong>[username]</strong>,</p>
-                    <p>Your account has been reactivated. You can now log in and continue using the platform.</p>
-                    <p>If you experience any issues, please contact your administrator.</p>
-                    <p>Regards,<br/>Quidpath Team</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Account Reactivated</h2>
+<p>Hello <strong>[username]</strong>,</p>
+<p>Your Quidpath account has been reactivated. You can now log in and continue using the platform.</p>
+<p>If you experience any issues, please contact your administrator.</p>"""
+        return cls.replace_tags(cls._wrap("Welcome Back!", body), **kwargs)
+
+    # ── Individual account ────────────────────────────────────────────────────
 
     @classmethod
     def individual_activation(cls, **kwargs):
-        """Template for individual user activation email"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Welcome to Quidpath!</h1>
-                </div>
-                <div class="content">
-                    <h1>Activate Your Account</h1>
-                    <p>Hello <strong>[username]</strong>,</p>
-                    <p>Thank you for registering with Quidpath ERP.</p>
-                    <p>Please click the button below to activate your account:</p>
-                    <p style="text-align: center;">
-                        <a href="[activation_link]" class="cta-button">Activate Account</a>
-                    </p>
-                    <p>Or copy and paste this link in your browser:</p>
-                    <p style="word-break: break-all;">[activation_link]</p>
-                    <p>This link will expire in 24 hours.</p>
-                    <p>After activation, you will be prompted to complete your subscription payment before accessing the system.</p>
-                    <p>If you didn't create this account, please ignore this email.</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Activate Your Account</h2>
+<p>Hello <strong>[username]</strong>,</p>
+<p>Thank you for registering with Quidpath. Click the button below to activate your account.</p>
+<p style="text-align:center;margin-top:20px">
+  <a href="[activation_link]" class="btn">Activate Account</a>
+</p>
+<p>Or copy and paste this link into your browser:</p>
+<p style="word-break:break-all;font-size:13px;color:#6b7280">[activation_link]</p>
+<p class="note">This link expires in 24 hours. If you did not create this account, you can safely ignore this email.</p>"""
+        return cls.replace_tags(cls._wrap("Activate Your Account", body), **kwargs)
 
     @classmethod
     def individual_activation_resend(cls, **kwargs):
-        """Template for resending activation link"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Activation Link Resent</h1>
-                </div>
-                <div class="content">
-                    <h1>New Activation Link</h1>
-                    <p>Hello <strong>[username]</strong>,</p>
-                    <p>Here is your new activation link:</p>
-                    <p style="text-align: center;">
-                        <a href="[activation_link]" class="cta-button">Activate Account</a>
-                    </p>
-                    <p>Or copy and paste this link in your browser:</p>
-                    <p style="word-break: break-all;">[activation_link]</p>
-                    <p>This link will expire in 24 hours.</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>New Activation Link</h2>
+<p>Hello <strong>[username]</strong>,</p>
+<p>Here is your new account activation link:</p>
+<p style="text-align:center;margin-top:20px">
+  <a href="[activation_link]" class="btn">Activate Account</a>
+</p>
+<p>Or copy and paste this link into your browser:</p>
+<p style="word-break:break-all;font-size:13px;color:#6b7280">[activation_link]</p>
+<p class="note">This link expires in 24 hours.</p>"""
+        return cls.replace_tags(cls._wrap("New Activation Link", body), **kwargs)
 
     @classmethod
     def individual_activated(cls, **kwargs):
-        """Template for account activation confirmation"""
-        template = """
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-            [base_style]
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Account Activated!</h1>
-                </div>
-                <div class="content">
-                    <h1>Welcome Aboard!</h1>
-                    <p>Hello <strong>[username]</strong>,</p>
-                    <p>Your account has been successfully activated.</p>
-                    <p>Please complete your subscription payment to start using Quidpath.</p>
-                    <p>Thank you for choosing Quidpath!</p>
-                </div>
-                <div class="footer">
-                    &copy; 2025 Quidpath. All rights reserved.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return cls.replace_tags(template, base_style=cls.get_base_style(), **kwargs)
+        body = """
+<h2>Account Activated!</h2>
+<p>Hello <strong>[username]</strong>,</p>
+<p>Your Quidpath account has been successfully activated.</p>
+<p>You can now log in and start using the platform.</p>
+<p>Thank you for choosing Quidpath!</p>"""
+        return cls.replace_tags(cls._wrap("Account Activated!", body), **kwargs)

@@ -42,7 +42,9 @@ def get_subscription_status(request):
     result = billing_service.get_subscription_status(corporate_id)
     if result is None:
         return ResponseProvider.error_response("Billing service unavailable", status=503)
-    return ResponseProvider.success_response(data=result)
+    # Pass through the billing service response directly — it already has the right shape
+    from django.http import JsonResponse
+    return JsonResponse(result, status=200)
 
 
 @csrf_exempt
@@ -53,7 +55,8 @@ def list_invoices(request):
     result = billing_service.list_invoices(corporate_id)
     if result is None:
         return ResponseProvider.error_response("Billing service unavailable", status=503)
-    return ResponseProvider.success_response(data=result)
+    from django.http import JsonResponse
+    return JsonResponse(result, status=200)
 
 
 @csrf_exempt
@@ -62,7 +65,8 @@ def list_plans(request):
     plans = billing_service.get_plans(plan_type=plan_type)
     if plans is None:
         return ResponseProvider.error_response("Billing service unavailable", status=503)
-    return ResponseProvider.success_response(data={"plans": plans, "count": len(plans)})
+    from django.http import JsonResponse
+    return JsonResponse({"success": True, "data": {"plans": plans, "count": len(plans)}}, status=200)
 
 
 @csrf_exempt
@@ -142,14 +146,14 @@ def check_payment_status(request):
 
 @csrf_exempt
 def payment_history(request):
-    """Get payment history for the authenticated corporate."""
     corporate_id, _, err = _get_authenticated_corporate(request)
     if err:
         return err
     result = billing_service.get_payment_history(corporate_id)
     if result is None:
         return ResponseProvider.error_response("Billing service unavailable", status=503)
-    return ResponseProvider.success_response(data=result)
+    from django.http import JsonResponse
+    return JsonResponse(result, status=200)
 
 
 @csrf_exempt
@@ -173,14 +177,14 @@ def validate_promotion(request):
 
 @csrf_exempt
 def get_trial_status(request):
-    """Get trial status for the authenticated user's corporate."""
     corporate_id, _, err = _get_authenticated_corporate(request)
     if err:
         return err
     result = billing_service.get_trial_status(corporate_id)
     if result is None:
         return ResponseProvider.error_response("Billing service unavailable", status=503)
-    return ResponseProvider.success_response(data=result)
+    from django.http import JsonResponse
+    return JsonResponse(result, status=200)
 
 
 @csrf_exempt
@@ -200,16 +204,17 @@ def create_trial(request):
     )
     if result is None:
         return ResponseProvider.error_response("Billing service unavailable", status=503)
-    return ResponseProvider.success_response(data=result)
+    from django.http import JsonResponse
+    return JsonResponse(result, status=200)
 
 
 @csrf_exempt
 def check_access(request):
-    """Check if the authenticated user's corporate has active access (trial or subscription)."""
     corporate_id, _, err = _get_authenticated_corporate(request)
     if err:
         return err
     result = billing_service.check_access(corporate_id)
     if result is None:
         return ResponseProvider.error_response("Billing service unavailable", status=503)
-    return ResponseProvider.success_response(data=result)
+    from django.http import JsonResponse
+    return JsonResponse(result, status=200)

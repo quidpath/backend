@@ -18,46 +18,47 @@ class BillingAccessMiddleware(MiddlewareMixin):
         "/api/auth/activate-account/",
         "/api/auth/resend-activation/",
         "/api/auth/verify-otp/",
-        "/api/auth/refresh/",
+        "/api/auth/token/refresh/",   # correct path
+        "/api/auth/refresh/",          # legacy fallback
         "/api/auth/password-forgot/",
         "/api/auth/verify-pass-otp/",
         "/api/auth/reset-password/",
         "/api/auth/health/",
         "/api/auth/plans/",
-        "/api/auth/subscription/initiate-payment/",
-        "/api/auth/subscription/status/",
+        "/api/auth/payment/",          # payment init + verify
+        "/api/auth/get_profile/",
+        "/api/auth/menu/",
+        "/api/auth/notifications/",
+        "/api/auth/activity/",
+        "/api/auth/settings/",
+        "/api/auth/permissions/",
+        "/api/auth/logo/",
+        "/api/auth/subscription/",
         "/api/orgauth/roles/",
+        "/api/orgauth/corporate/register/",
+        "/api/orgauth/corporate/create",
+        "/api/orgauth/webhooks/",
+        "/api/orgauth/billing/",
         "/api/billing/",
         "/api/payments/",
-        "/api/orgauth/webhooks/",
+        "/api/support/",
+        "/api/internal/",
         "/admin/",
         "/static/",
         "/media/",
-        # Direct paths (no prefix)
+        "/health/",
+        # Legacy bare paths (Banking/Accounting mount at root)
+        "/get_profile/",
+        "/menu/",
+        "/notifications/",
+        "/token/refresh/",
         "/login/",
         "/register/",
-        "/register-individual/",
-        "/register-individual-email/",
-        "/activate-account/",
-        "/resend-activation/",
-        "/verify-otp/",
-        "/token/refresh/",
-        "/password-forgot/",
-        "/verify-pass-otp/",
-        "/reset-password/",
         "/health/",
         "/plans/",
-        "/payments/initiate/",
-        "/subscription/status/",
-        "/corporate/create",
         "/webhooks/",
         "/billing/setup/",
         "/billing/pay/",
-        # Profile endpoint — must be accessible so AuthGuard can load user data
-        "/get_profile/",
-        "/menu/",
-        # Notifications — must not block authenticated users
-        "/notifications/",
     ]
 
     def process_request(self, request):
@@ -79,30 +80,17 @@ class BillingAccessMiddleware(MiddlewareMixin):
             )
             
             # Allow SUPERADMIN role to bypass billing checks
-            if corporate_user.role and corporate_user.role.name == "SUPERADMIN":
+            if corporate_user.role and corporate_user.role.name in ("SUPERADMIN", "SUPERUSER"):
                 return None
             
             corporate = corporate_user.corporate
 
-            # Check if phone number has been entered (billing details)
-            if not corporate.phone or corporate.phone.strip() == "":
-                return JsonResponse(
-                    {
-                        "error": "Billing setup required",
-                        "message": "Please enter your billing details to start your 30-day trial.",
-                        "requires_payment": False,
-                        "requires_phone": True,
-                        "corporate_id": str(corporate.id),
-                    },
-                    status=402,
-                )
-
-            # Phone entered - check if corporate is active
+            # Corporate must be active
             if not corporate.is_active:
                 return JsonResponse(
                     {
                         "error": "Account not activated",
-                        "message": "Please complete your billing setup to activate your account.",
+                        "message": "Your account is not yet active. Please contact support.",
                         "requires_payment": False,
                         "requires_phone": False,
                         "corporate_id": str(corporate.id),

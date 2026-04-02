@@ -111,13 +111,18 @@ def login_user(request):
             user.save(update_fields=["is_active"])
             otp_code = user.generate_otp()
 
+            otp_message = NotificationServiceHandler().createOtpEmail(
+                username=user.username,
+                otp_code=otp_code,
+            )
+
             NotificationServiceHandler().send_notification(
                 [
                     {
                         "message_type": "EMAIL",
                         "organisation_id": corporate_id,
                         "destination": user.email,
-                        "message": f"<p>Hello {user.username},</p><p>Your OTP is <b>{otp_code}</b>.</p>",
+                        "message": otp_message,
                         "confirmation_code": otp_code,
                     }
                 ]
@@ -144,67 +149,56 @@ def login_user(request):
     if not user.is_superuser and corporate_user:
         try:
             corporate = corporate_user.corporate
-            
-            # If corporate is approved and active, grant access immediately
-            # No billing setup needed - payment was done at registration
-            if corporate.is_approved and corporate.is_active:
-                # Create trial if not exists (for approved corporates)
-                try:
-                    from quidpath_backend.core.Services.billing_service import billing_service
-                    trial_status = billing_service.get_trial_status(str(corporate.id))
-                    
-                    if not trial_status or not trial_status.get("success"):
-                        # Create trial for approved corporate
-                        billing_service.create_trial(
-                            corporate_id=str(corporate.id),
-                            corporate_name=corporate.name,
-                            plan_tier="starter",
-                            phone_number=corporate.phone or ""
-                        )
-                except Exception as e:
-                    logger.warning(f"Could not ensure trial for {corporate.name}: {e}")
-            
-            # If corporate is not approved yet
-            elif not corporate.is_approved:
+            role_name = corporate_user.role.name if corporate_user.role else ""
+
+            # Corporate must be active and approved
+            if not corporate.is_active or not corporate.is_approved:
                 access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
-                TransactionLogBase.log(
-                    "USER_LOGIN", user=user, message="User logged in (pending approval)"
-                )
+                TransactionLogBase.log("USER_LOGIN", user=user, message="Login: corporate inactive/unapproved")
                 response = JsonResponse({
-                    "access": access_token,
-                    "refresh": refresh_token,
-                    "otp_required": False,
-                    "is_global_user": False,
-                    "organisation_id": corporate_id,
-                    "role": role,
+                    "access": access_token, "refresh": refresh_token,
+                    "otp_required": False, "role": role,
                     "pending_approval": True,
                     "corporate_id": str(corporate.id),
-                    "message": "Your organization is pending approval. You will receive an email once approved.",
+                    "message": "Your organisation is pending approval.",
                 })
                 response["Authorization"] = f"Bearer {access_token}"
                 return _apply_api_security_headers(response)
-            
-            # If corporate is not active (shouldn't happen with new flow)
-            elif not corporate.is_active:
+
+            # Check billing access
+            try:
+                from quidpath_backend.core.Services.billing_service import billing_service as bs
+                access_check = bs.check_access(str(corporate.id))
+                has_access = (access_check or {}).get("has_access", True)
+            except Exception:
+                has_access = True  # fail open if billing unreachable
+
+            if not has_access:
                 access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
-                TransactionLogBase.log(
-                    "USER_LOGIN", user=user, message="User logged in (inactive corporate)"
-                )
-                response = JsonResponse({
-                    "access": access_token,
-                    "refresh": refresh_token,
-                    "otp_required": False,
-                    "is_global_user": False,
-                    "organisation_id": corporate_id,
-                    "role": role,
-                    "corporate_inactive": True,
-                    "corporate_id": str(corporate.id),
-                    "message": "Your organization is not active. Please contact support.",
-                })
-                response["Authorization"] = f"Bearer {access_token}"
-                return _apply_api_security_headers(response)
+                TransactionLogBase.log("USER_LOGIN", user=user, message="Login: no billing access")
+                # SUPERADMIN can log in but gets routed to account page
+                # Other roles are blocked entirely
+                if role_name == "SUPERADMIN":
+                    response = JsonResponse({
+                        "access": access_token, "refresh": refresh_token,
+                        "otp_required": False, "role": role,
+                        "subscription_expired": True,
+                        "corporate_id": str(corporate.id),
+                        "message": "Your subscription has expired. Please renew to continue.",
+                    })
+                    response["Authorization"] = f"Bearer {access_token}"
+                    return _apply_api_security_headers(response)
+                else:
+                    return _apply_api_security_headers(JsonResponse({
+                        "error": "Subscription expired",
+                        "message": "Your organisation's subscription has expired. Please contact your administrator.",
+                        "subscription_expired": True,
+                        "corporate_id": str(corporate.id),
+                    }, status=402))
+
         except Exception as e:
-            logger.warning(f"Error checking corporate status: {e}")
+            import logging as _log
+            _log.getLogger(__name__).warning(f"Login billing check error: {e}")
 
     access_token, refresh_token = issue_tokens_for_user(user, role, corporate_id)
     TransactionLogBase.log(

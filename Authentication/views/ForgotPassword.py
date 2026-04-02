@@ -102,7 +102,10 @@ def forgot_password(request):
         # Send OTP Email
         try:
             notification_handler = NotificationServiceHandler()
-            message = f"<p>Hello {username},</p><p>Your OTP for password reset is <b>{otp}</b>. This OTP will expire in 2 minutes.</p>"
+            message = notification_handler.createOtpEmail(
+                username=username,
+                otp_code=otp,
+            )
 
             notification_handler.send_notification(
                 notifications=[
