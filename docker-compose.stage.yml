@@ -79,5 +79,5 @@ services:
 
 networks:
   quidpath_network:
+    external: true
     name: stage_quidpath_network
-    driver: bridge
