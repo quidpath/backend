@@ -84,7 +84,7 @@ class Migration(migrations.Migration):
                 ('notes', models.TextField(blank=True, default='')),
                 ('reviewed_at', models.DateTimeField(blank=True, null=True)),
                 ('corporate', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='bank_reconciliations', to='OrgAuth.corporate')),
-                ('bank_account', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reconciliations', to='Banking.bankaccount')),
+                ('bank_account', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='accounting_reconciliations', to='Banking.bankaccount')),
                 ('reconciled_by', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='reconciliations_performed', to='OrgAuth.corporateuser')),
                 ('reviewed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='reconciliations_reviewed', to='OrgAuth.corporateuser')),
             ],

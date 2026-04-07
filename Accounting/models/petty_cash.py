@@ -27,7 +27,7 @@ class PettyCashFund(BaseModel):
     )
     initial_amount = models.DecimalField(max_digits=15, decimal_places=2)
     current_balance = models.DecimalField(
-        max_digits=15, decimal_places=2, default=Decimal("0.00")
+        max_digits=15, decimal_places=2, null=True, blank=True
     )
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
@@ -44,7 +44,7 @@ class PettyCashFund(BaseModel):
         return f"{self.name} - {self.custodian.username}"
 
     def save(self, *args, **kwargs):
-        if not self.pk:  # New fund
+        if self.current_balance is None:  # Set initial balance if not set
             self.current_balance = self.initial_amount
         super().save(*args, **kwargs)
 
@@ -116,10 +116,6 @@ class PettyCashTransaction(BaseModel):
         if self.status != "PENDING":
             raise ValidationError("Only pending transactions can be approved")
         
-        self.status = "APPROVED"
-        self.approved_by = approved_by_user
-        self.approved_at = timezone.now()
-        
         # Update fund balance
         if self.transaction_type == "DISBURSEMENT":
             if self.fund.current_balance < self.amount:
@@ -131,6 +127,10 @@ class PettyCashTransaction(BaseModel):
             self.fund.current_balance = self.amount
         
         self.fund.save()
+        
+        self.status = "APPROVED"
+        self.approved_by = approved_by_user
+        self.approved_at = timezone.now()
         self.save()
 
     def reject(self, rejected_by_user):

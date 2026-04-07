@@ -27,7 +27,7 @@ class BankReconciliation(BaseModel):
     bank_account = models.ForeignKey(
         "Banking.BankAccount",
         on_delete=models.CASCADE,
-        related_name="reconciliations",
+        related_name="accounting_reconciliations",
     )
     period_start = models.DateField()
     period_end = models.DateField()
