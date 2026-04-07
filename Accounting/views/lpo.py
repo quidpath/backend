@@ -827,13 +827,16 @@ def create_and_post_purchase_order(request):
             "date",
             "number",
             "expected_delivery",
-            "created_by",
         ]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(
                     message=f"{field.replace('_', ' ').title()} is required", code=400
                 ).bad_request()
+
+        # Auto-inject created_by from authenticated user if not provided
+        if "created_by" not in data:
+            data["created_by"] = corporate_users[0]["id"]
 
         # Validate vendor
         vendors = registry.database(
@@ -967,17 +970,8 @@ def create_and_post_purchase_order(request):
             )
 
             for line_data in lines:
-                taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
-                tax_rate_value = Decimal("0")
-                if taxable_id:
-                    tax_rates = registry.database(
-                        model_name="TaxRate",
-                        operation="filter",
-                        data={"id": taxable_id},
-                    )
-                    tax_rate_value = (
-                        get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal("0")
-                    )
+                raw_taxable = line_data.get("taxable_id") or line_data.get("taxable")
+                taxable_id, tax_rate_value = resolve_tax_rate(raw_taxable, registry)
 
                 qty = to_decimal(line_data["quantity"])
                 unit_price = to_decimal(line_data["unit_price"])

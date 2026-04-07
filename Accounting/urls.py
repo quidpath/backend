@@ -116,6 +116,29 @@ from Accounting.views.vendor_bill import (
 from Accounting.views.vendor_view import (create_vendor, delete_vendor,
                                           get_vendor, list_vendors,
                                           search_vendors, update_vendor)
+from Accounting.views.petty_cash import (
+    create_petty_cash_fund,
+    list_petty_cash_funds,
+    create_petty_cash_transaction,
+    list_petty_cash_transactions,
+    approve_petty_cash_transaction,
+    delete_petty_cash_transaction,
+)
+from Accounting.views.bank_reconciliation import (
+    create_bank_reconciliation,
+    list_bank_reconciliations,
+    get_bank_reconciliation,
+    add_reconciliation_item,
+    complete_bank_reconciliation,
+    delete_bank_reconciliation,
+)
+from Accounting.views.tax_rate import (
+    create_tax_rate,
+    list_tax_rates,
+    get_tax_rate_detail,
+    update_tax_rate,
+    delete_tax_rate,
+)
 
 urlpatterns = [
     # Customer Endpoints
@@ -403,4 +426,24 @@ urlpatterns = [
     path("import/template/", download_import_template, name="download_import_template"),
     # ── Analytics ─────────────────────────────────────────────────────────────
     path("analytics/overview/", get_analytics_overview, name="analytics_overview"),
+    # ── Petty Cash ────────────────────────────────────────────────────────────
+    path("petty-cash/funds/create/", create_petty_cash_fund, name="create_petty_cash_fund"),
+    path("petty-cash/funds/list/", list_petty_cash_funds, name="list_petty_cash_funds"),
+    path("petty-cash/transactions/create/", create_petty_cash_transaction, name="create_petty_cash_transaction"),
+    path("petty-cash/transactions/list/", list_petty_cash_transactions, name="list_petty_cash_transactions"),
+    path("petty-cash/transactions/approve/", approve_petty_cash_transaction, name="approve_petty_cash_transaction"),
+    path("petty-cash/transactions/delete/", delete_petty_cash_transaction, name="delete_petty_cash_transaction"),
+    # ── Bank Reconciliation ───────────────────────────────────────────────────
+    path("bank-reconciliation/create/", create_bank_reconciliation, name="create_bank_reconciliation"),
+    path("bank-reconciliation/list/", list_bank_reconciliations, name="list_bank_reconciliations"),
+    path("bank-reconciliation/get/", get_bank_reconciliation, name="get_bank_reconciliation"),
+    path("bank-reconciliation/add-item/", add_reconciliation_item, name="add_reconciliation_item"),
+    path("bank-reconciliation/complete/", complete_bank_reconciliation, name="complete_bank_reconciliation"),
+    path("bank-reconciliation/delete/", delete_bank_reconciliation, name="delete_bank_reconciliation"),
+    # ── Tax Rate Management ───────────────────────────────────────────────────
+    path("tax-rates/create/", create_tax_rate, name="create_tax_rate"),
+    path("tax-rates/list/", list_tax_rates, name="list_tax_rates"),
+    path("tax-rates/get/", get_tax_rate_detail, name="get_tax_rate_detail"),
+    path("tax-rates/update/", update_tax_rate, name="update_tax_rate"),
+    path("tax-rates/delete/", delete_tax_rate, name="delete_tax_rate"),
 ]

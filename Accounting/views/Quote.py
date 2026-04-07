@@ -400,17 +400,26 @@ def create_and_post_quotation(request):
             "date",
             "number",
             "valid_until",
-            "ship_date",
-            "ship_via",
-            "terms",
-            "fob",
-            "salesperson",
         ]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(
                     message=f"{field.replace('_', ' ').title()} is required", code=400
                 ).bad_request()
+
+        # Default optional fields
+        if "ship_date" not in data:
+            data["ship_date"] = data["valid_until"]
+        if "ship_via" not in data:
+            data["ship_via"] = ""
+        if "terms" not in data:
+            data["terms"] = ""
+        if "fob" not in data:
+            data["fob"] = ""
+        
+        # Auto-inject salesperson from authenticated user if not provided
+        if "salesperson" not in data:
+            data["salesperson"] = corporate_users[0]["id"]
 
         # Validate customer
         customers = registry.database(
@@ -471,7 +480,6 @@ def create_and_post_quotation(request):
                 "quantity",
                 "unit_price",
                 "discount",
-                "taxable",
             ]
             for field in required_line_fields:
                 if field not in line_data:
@@ -480,18 +488,7 @@ def create_and_post_quotation(request):
                         code=400,
                     ).bad_request()
 
-            taxable_id = normalize_taxable_id(line_data.get("taxable"))
-            if taxable_id:
-                tax_rates = registry.database(
-                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
-                )
-                if not tax_rates:
-                    return ResponseProvider(
-                        message=f"Tax rate {taxable_id} not found", code=404
-                    ).bad_request()
-                tax_rate_value = get_tax_rate_value(tax_rates[0])
-            else:
-                tax_rate_value = Decimal("0")
+            taxable_id, tax_rate_value = resolve_tax_rate(line_data.get("taxable"), registry)
 
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
@@ -528,17 +525,7 @@ def create_and_post_quotation(request):
             )
 
             for line_data in lines:
-                taxable_id = normalize_taxable_id(line_data.get("taxable"))
-                tax_rate_value = Decimal("0")
-                if taxable_id:
-                    tax_rates = registry.database(
-                        model_name="TaxRate",
-                        operation="filter",
-                        data={"id": taxable_id},
-                    )
-                    tax_rate_value = (
-                        get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal("0")
-                    )
+                taxable_id, tax_rate_value = resolve_tax_rate(line_data.get("taxable"), registry)
 
                 qty = to_decimal(line_data["quantity"])
                 unit_price = to_decimal(line_data["unit_price"])

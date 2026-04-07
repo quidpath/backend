@@ -271,7 +271,7 @@ def list_bank_accounts(request):
         return ResponseProvider(
             message="Bank accounts retrieved successfully",
             data={
-                "accounts": accounts,
+                "results": accounts,  # Changed from "accounts" to "results" for frontend compatibility
                 "count": len(accounts),
                 "corporate_id": corporate_id,
             },

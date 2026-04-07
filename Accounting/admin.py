@@ -352,3 +352,38 @@ class RecurringTransactionAdmin(admin.ModelAdmin):
     search_fields = ("name", "description")
     list_filter = ("transaction_type", "frequency", "status", "corporate", "created_at")
     readonly_fields = ("created_at", "updated_at", "last_run_at")
+
+
+# === Petty Cash Admin ===
+from Accounting.models.petty_cash import PettyCashFund, PettyCashTransaction
+
+@admin.register(PettyCashFund)
+class PettyCashFundAdmin(admin.ModelAdmin):
+    list_display = ("name", "custodian", "current_balance", "is_active", "created_at")
+    list_filter = ("is_active", "created_at")
+    search_fields = ("name", "custodian__username")
+    readonly_fields = ("current_balance", "created_at", "updated_at")
+
+@admin.register(PettyCashTransaction)
+class PettyCashTransactionAdmin(admin.ModelAdmin):
+    list_display = ("reference", "fund", "transaction_type", "amount", "status", "date")
+    list_filter = ("transaction_type", "status", "date")
+    search_fields = ("reference", "description", "recipient")
+    readonly_fields = ("created_at", "updated_at", "approved_at")
+
+# === Bank Reconciliation Admin ===
+from Accounting.models.bank_reconciliation import BankReconciliation, ReconciliationItem
+
+@admin.register(BankReconciliation)
+class BankReconciliationAdmin(admin.ModelAdmin):
+    list_display = ("bank_account", "period_start", "period_end", "status", "difference", "created_at")
+    list_filter = ("status", "period_end")
+    search_fields = ("bank_account__account_name",)
+    readonly_fields = ("difference", "created_at", "updated_at", "reviewed_at")
+
+@admin.register(ReconciliationItem)
+class ReconciliationItemAdmin(admin.ModelAdmin):
+    list_display = ("reconciliation", "item_type", "reference", "amount", "is_cleared", "date")
+    list_filter = ("item_type", "is_cleared", "date")
+    search_fields = ("reference", "description")
+    readonly_fields = ("created_at", "updated_at")

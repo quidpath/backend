@@ -378,20 +378,20 @@ def create_and_post_invoice(request):
             ).bad_request()
         customer = customers[0]
 
+        # Auto-inject salesperson from authenticated user if not provided
+        if "salesperson" not in data or not data.get("salesperson"):
+            data["salesperson"] = corporate_users[0]["id"]
+
         salespersons = registry.database(
             model_name="CorporateUser",
             operation="filter",
-            data=(
-                {
-                    "id": data.get("salesperson"),
-                    "corporate_id": corporate_id,
-                    "is_active": True,
-                }
-                if data.get("salesperson")
-                else {}
-            ),
+            data={
+                "id": data.get("salesperson"),
+                "corporate_id": corporate_id,
+                "is_active": True,
+            },
         )
-        if data.get("salesperson") and not salespersons:
+        if not salespersons:
             return ResponseProvider(
                 message="Salesperson not found or inactive for this corporate", code=404
             ).bad_request()
@@ -500,16 +500,22 @@ def create_and_post_invoice(request):
                     ).bad_request()
 
             taxable = line_data.get("taxable_id") or line_data.get("taxable")
-            taxable_id = normalize_taxable_id(taxable, registry)
+            
+            # Use resolve_tax_rate to handle both UUID and name-based rates
+            from Accounting.views.Quote import resolve_tax_rate
+            taxable_id, _ = resolve_tax_rate(taxable, registry)
 
             # Validate taxable_id
-            tax_rates = registry.database(
-                model_name="TaxRate", operation="filter", data={"id": taxable_id}
-            )
-            if not tax_rates:
-                return ResponseProvider(
-                    message=f"Tax rate {taxable_id} not found", code=404
-                ).bad_request()
+            if not taxable_id:
+                # Default to exempt if no tax rate provided
+                from Accounting.models.sales import TaxRate as TaxRateModel
+                tr = TaxRateModel.objects.filter(name="exempt").first()
+                if tr:
+                    taxable_id = str(tr.id)
+                else:
+                    return ResponseProvider(
+                        message="No valid tax rate found", code=404
+                    ).bad_request()
 
             line_data_for_creation = {
                 "invoice_id": invoice["id"],
