@@ -69,7 +69,7 @@ class Quotation(BaseModel):
     )
     date = models.DateField()
     number = models.CharField(max_length=255)
-    status = models.CharField(max_length=255, choices=STATUS, default="DRAFT")
+    status = models.CharField(max_length=255, choices=STATUS, default="DRAFT", db_index=True)
     valid_until = models.DateField()
     comments = models.CharField(max_length=255)
     T_and_C = models.CharField(max_length=255)
@@ -80,6 +80,15 @@ class Quotation(BaseModel):
     ship_via = models.CharField(max_length=255)
     terms = models.CharField(max_length=255)
     fob = models.CharField(max_length=255)
+    drafted_at = models.DateTimeField(null=True, blank=True)
+    posted_at = models.DateTimeField(null=True, blank=True)
+    posted_by = models.ForeignKey(
+        CorporateUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='posted_quotations'
+    )
 
     def __str__(self):
         return f"{self.number} - {self.customer}"
@@ -140,7 +149,7 @@ class PurchaseOrder(BaseModel):
     quotation = models.CharField(max_length=255, blank=True, null=True)
     date = models.DateField()
     number = models.CharField(max_length=255, unique=True)
-    status = models.CharField(max_length=255, choices=STATUS, default="DRAFT")
+    status = models.CharField(max_length=255, choices=STATUS, default="DRAFT", db_index=True)
     expected_delivery = models.DateField()
     comments = models.CharField(max_length=255, blank=True)
     terms = models.CharField(max_length=255, blank=True)
@@ -150,6 +159,15 @@ class PurchaseOrder(BaseModel):
     ship_date = models.DateField(null=True, blank=True)
     ship_via = models.CharField(max_length=255, blank=True)
     fob = models.CharField(max_length=255, blank=True)
+    drafted_at = models.DateTimeField(null=True, blank=True)
+    posted_at = models.DateTimeField(null=True, blank=True)
+    posted_by = models.ForeignKey(
+        CorporateUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='posted_purchase_orders'
+    )
 
     def __str__(self):
         return f"{self.number} - {self.vendor}"
@@ -207,7 +225,7 @@ class ProformaInvoice(BaseModel):
     )
     date = models.DateField()
     number = models.CharField(max_length=255, unique=True)
-    status = models.CharField(max_length=255, choices=STATUS, default="DRAFT")
+    status = models.CharField(max_length=255, choices=STATUS, default="DRAFT", db_index=True)
     valid_until = models.DateField()
     comments = models.CharField(max_length=255, blank=True)
     terms = models.CharField(max_length=255, blank=True)
@@ -228,6 +246,15 @@ class ProformaInvoice(BaseModel):
     )
     total_discount = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    drafted_at = models.DateTimeField(null=True, blank=True)
+    posted_at = models.DateTimeField(null=True, blank=True)
+    posted_by = models.ForeignKey(
+        CorporateUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='posted_proforma_invoices'
     )
 
     def __str__(self):
@@ -354,12 +381,22 @@ class Invoices(BaseModel):
     paid_at = models.DateTimeField(null=True, blank=True)  # When invoice was fully paid
     receipt_pdf_url = models.URLField(blank=True, null=True)  # S3 URL for receipt PDF
     is_reconciled = models.BooleanField(default=False)
+    drafted_at = models.DateTimeField(null=True, blank=True)
+    posted_at = models.DateTimeField(null=True, blank=True)
+    posted_by = models.ForeignKey(
+        CorporateUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='posted_invoices'
+    )
 
     class Meta:
         indexes = [
             models.Index(fields=["payment_status"]),
             models.Index(fields=["corporate", "date"]),
             models.Index(fields=["payment_reference"]),
+            models.Index(fields=["status"]),
         ]
 
     def __str__(self):
@@ -452,6 +489,15 @@ class VendorBill(BaseModel):
     )
     journal_entry = models.ForeignKey(
         "Accounting.JournalEntry", on_delete=models.SET_NULL, blank=True, null=True
+    )
+    drafted_at = models.DateTimeField(null=True, blank=True)
+    posted_at = models.DateTimeField(null=True, blank=True)
+    posted_by = models.ForeignKey(
+        CorporateUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='posted_vendor_bills'
     )
 
     def __str__(self):

@@ -20,18 +20,27 @@ from quidpath_backend.core.utils.request_parser import get_clean_data
 
 
 def normalize_taxable_id(raw, registry):
-    """Normalize taxable_id and ensure it's a valid TaxRate ID."""
+    """Normalize taxable_id and ensure it's a valid TaxRate ID. Handles name-based rates."""
+    name_rates = {"exempt": True, "zero_rated": True, "general_rated": True}
+    
     if not raw:
-        default_rate = registry.database(
-            model_name="TaxRate", operation="filter", data={"code": "exempt"}
-        )
-        if default_rate:
-            return default_rate[0]["id"]
-        raise ValueError("No default exempt tax rate found")
+        from Accounting.models.sales import TaxRate as TaxRateModel
+        tr = TaxRateModel.objects.filter(name="exempt").first()
+        if tr:
+            return str(tr.id)
+        return None
+    
     if isinstance(raw, dict) and raw.get("id"):
         return raw.get("id")
+    
     if isinstance(raw, str):
-        s = raw.strip().strip("'\"“”‘’")
+        s = raw.strip().strip("'\"\"\"''")
+        if s in name_rates:
+            from Accounting.models.sales import TaxRate as TaxRateModel
+            tr = TaxRateModel.objects.filter(name=s).first()
+            if tr:
+                return str(tr.id)
+            return None
         if s.startswith("{") and s.endswith("}"):
             try:
                 d = json.loads(s.replace("'", '"'))
@@ -45,7 +54,6 @@ def normalize_taxable_id(raw, registry):
             return s
         return s
     return str(raw)
-
 
 @csrf_exempt
 def save_invoice_draft(request):
@@ -155,6 +163,9 @@ def save_invoice_draft(request):
                 "purchase_order", quotation.get("purchase_order", "")
             )
 
+        # Default salesperson to authenticated user if not provided
+        salesperson_id = data.get("salesperson") or corporate_users[0]["id"]
+        
         invoice_data = {
             "customer_id": data["customer"],
             "corporate_id": corporate_id,
@@ -164,9 +175,9 @@ def save_invoice_draft(request):
             "comments": data.get("comments", ""),
             "terms": data.get("terms", ""),
             "ship_date": data.get("ship_date"),
-            "ship_via": data.get("ship_via"),
-            "fob": data.get("fob"),
-            "salesperson_id": data.get("salesperson"),
+            "ship_via": data.get("ship_via") or "",
+            "fob": data.get("fob") or "",
+            "salesperson_id": salesperson_id,
             "quotation_id": data.get("quotation") if "quotation" in data else None,
             "purchase_order": data.get("purchase_order", ""),
             "status": "DRAFT",
@@ -219,14 +230,16 @@ def save_invoice_draft(request):
             taxable = line_data.get("taxable_id") or line_data.get("taxable")
             taxable_id = normalize_taxable_id(taxable, registry)
 
-            # Validate taxable_id
-            tax_rates = registry.database(
-                model_name="TaxRate", operation="filter", data={"id": taxable_id}
-            )
-            if not tax_rates:
-                return ResponseProvider(
-                    message=f"Tax rate {taxable_id} not found", code=404
-                ).bad_request()
+            # Validate taxable_id only if provided
+            if taxable_id:
+                tax_rates = registry.database(
+                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
+                )
+                if not tax_rates:
+                    # Try to find by name as fallback
+                    from Accounting.models.sales import TaxRate as TaxRateModel
+                    tr = TaxRateModel.objects.filter(name="exempt").first()
+                    taxable_id = str(tr.id) if tr else None
 
             line_data_for_creation = {
                 "invoice_id": invoice["id"],

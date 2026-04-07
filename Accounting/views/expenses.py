@@ -72,8 +72,6 @@ def create_expense(request):
             "description",
             "category",
             "amount",
-            "expense_account_id",
-            "payment_account_id",
         ]
         for field in required_fields:
             if field not in data:
@@ -81,23 +79,55 @@ def create_expense(request):
                     message=f"{field.replace('_', ' ').title()} is required", code=400
                 ).bad_request()
 
-        # Validate reference uniqueness
-        existing_expenses = registry.database(
-            model_name="Expense",
-            operation="filter",
-            data={"reference": data["reference"], "corporate_id": corporate_id},
-        )
-        if existing_expenses:
-            return ResponseProvider(
-                message="Expense reference already exists", code=400
-            ).bad_request()
+        # Get or use default accounts
+        expense_account_id = data.get("expense_account_id")
+        payment_account_id = data.get("payment_account_id")
+
+        # If accounts not provided, use defaults based on category
+        if not expense_account_id:
+            # Get default expense account for this corporate
+            default_accounts = registry.database(
+                model_name="Account",
+                operation="filter",
+                data={
+                    "corporate_id": corporate_id,
+                    "code": "5000",  # Default expense account code
+                    "is_active": True,
+                },
+            )
+            if default_accounts:
+                expense_account_id = default_accounts[0]["id"]
+            else:
+                return ResponseProvider(
+                    message="No default expense account found. Please configure accounts or provide expense_account_id",
+                    code=400,
+                ).bad_request()
+
+        if not payment_account_id:
+            # Get default cash/bank account
+            default_payment_accounts = registry.database(
+                model_name="Account",
+                operation="filter",
+                data={
+                    "corporate_id": corporate_id,
+                    "code": "1010",  # Default cash account code
+                    "is_active": True,
+                },
+            )
+            if default_payment_accounts:
+                payment_account_id = default_payment_accounts[0]["id"]
+            else:
+                return ResponseProvider(
+                    message="No default payment account found. Please configure accounts or provide payment_account_id",
+                    code=400,
+                ).bad_request()
 
         # Validate expense account
         expense_accounts = registry.database(
             model_name="Account",
             operation="filter",
             data={
-                "id": data["expense_account_id"],
+                "id": expense_account_id,
                 "corporate_id": corporate_id,
                 "is_active": True,
             },
@@ -112,7 +142,7 @@ def create_expense(request):
             model_name="Account",
             operation="filter",
             data={
-                "id": data["payment_account_id"],
+                "id": payment_account_id,
                 "corporate_id": corporate_id,
                 "is_active": True,
             },
@@ -120,6 +150,17 @@ def create_expense(request):
         if not payment_accounts:
             return ResponseProvider(
                 message="Payment account not found", code=404
+            ).bad_request()
+
+        # Validate reference uniqueness
+        existing_expenses = registry.database(
+            model_name="Expense",
+            operation="filter",
+            data={"reference": data["reference"], "corporate_id": corporate_id},
+        )
+        if existing_expenses:
+            return ResponseProvider(
+                message="Expense reference already exists", code=400
             ).bad_request()
 
         # Validate vendor if provided
@@ -160,8 +201,8 @@ def create_expense(request):
                 "description": data["description"],
                 "category": data["category"],
                 "amount": str(data["amount"]),
-                "expense_account_id": data["expense_account_id"],
-                "payment_account_id": data["payment_account_id"],
+                "expense_account_id": expense_account_id,  # Use validated/default account
+                "payment_account_id": payment_account_id,  # Use validated/default account
                 "vendor_id": data.get("vendor_id"),
                 "tax_amount": str(tax_amount),
                 "tax_rate_id": data.get("tax_rate_id"),

@@ -51,6 +51,7 @@ from Authentication.views.settings import (
 from Authentication.views.role_management import (
     list_all_roles,
     list_all_permissions,
+    list_corporates_for_roles,
     create_role,
     update_role,
     delete_role,
@@ -127,9 +128,10 @@ urlpatterns = [
     path("plans/", get_subscription_plans, name="get-subscription-plans"),
     path("payments/initiate/", initiate_subscription_payment, name="initiate-subscription-payment"),
     path("subscription/status/", check_subscription_status, name="check-subscription-status"),
-    # Role management (superuser only)
+    # Role management (superuser + superadmin)
     path("roles/list-all/", list_all_roles, name="list-all-roles"),
     path("roles/permissions/", list_all_permissions, name="list-all-permissions"),
+    path("roles/corporates/", list_corporates_for_roles, name="list-corporates-for-roles"),
     path("roles/create/", create_role, name="create-role"),
     path("roles/update/", update_role, name="update-role"),
     path("roles/delete/", delete_role, name="delete-role"),

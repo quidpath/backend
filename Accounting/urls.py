@@ -76,6 +76,26 @@ from Accounting.views.Quote import (convert_quotation_to_invoice,
                                     delete_quotation, get_quotation,
                                     list_quotations, save_quotation_draft,
                                     update_quotation)
+from Accounting.views.quotation_draft_post import (
+    post_quotation as post_quotation_new,
+    auto_save_quotation,
+    list_draft_quotations
+)
+from Accounting.views.invoice_draft_post import (
+    post_invoice as post_invoice_new,
+    auto_save_invoice,
+    list_draft_invoices
+)
+from Accounting.views.purchase_order_draft_post import (
+    post_purchase_order as post_purchase_order_new,
+    auto_save_purchase_order,
+    list_draft_purchase_orders
+)
+from Accounting.views.vendor_bill_draft_post import (
+    post_vendor_bill as post_vendor_bill_new,
+    auto_save_vendor_bill,
+    list_draft_vendor_bills
+)
 from Accounting.views.recurring import (list_recurring_transactions,
                                         update_recurring_transaction)
 from Accounting.views.reports import (download_financial_report,
@@ -127,6 +147,14 @@ urlpatterns = [
         name="convert_quote_to_invoice",
     ),
     path("quotation/<uuid:quote_id>/send/", send_quote, name="send_quote"),
+    # New Draft/Post Endpoints
+    path("quotation/<uuid:quotation_id>/post/", post_quotation_new, name="post_quotation"),
+    path("quotation/<uuid:quotation_id>/auto-save/", auto_save_quotation, name="auto_save_quotation"),
+    path("quotation/drafts/", list_draft_quotations, name="list_draft_quotations"),
+    # Invoice Draft/Post Endpoints
+    path("invoice/<uuid:invoice_id>/post/", post_invoice_new, name="post_invoice"),
+    path("invoice/<uuid:invoice_id>/auto-save/", auto_save_invoice, name="auto_save_invoice"),
+    path("invoice/drafts/", list_draft_invoices, name="list_draft_invoices"),
     # Invoice Endpoints
     path("invoice/save-draft/", save_invoice_draft, name="save_invoice_draft"),
     path(
@@ -159,6 +187,10 @@ urlpatterns = [
         "purchase-orders/delete/", delete_purchase_order, name="delete_purchase_order"
     ),
     path("purchase-orders/<uuid:lpo_id>/send/", send_lpo, name="send_lpo"),
+    # Purchase Order Draft/Post Endpoints
+    path("purchase-orders/<uuid:po_id>/post/", post_purchase_order_new, name="post_purchase_order"),
+    path("purchase-orders/<uuid:po_id>/auto-save/", auto_save_purchase_order, name="auto_save_purchase_order"),
+    path("purchase-orders/drafts/", list_draft_purchase_orders, name="list_draft_purchase_orders"),
     # Vendor Bill Endpoints
     path("vendor-bill/create/", create_vendor_bill, name="create_vendor_bill"),
     path("vendor-bill/update/", update_vendor_bill, name="update_vendor_bill"),
@@ -171,6 +203,10 @@ urlpatterns = [
         convert_purchase_order_to_vendor_bill,
         name="convert_purchase_order_to_vendor_bill",
     ),
+    # Vendor Bill Draft/Post Endpoints
+    path("vendor-bill/<uuid:bill_id>/post/", post_vendor_bill_new, name="post_vendor_bill"),
+    path("vendor-bill/<uuid:bill_id>/auto-save/", auto_save_vendor_bill, name="auto_save_vendor_bill"),
+    path("vendor-bill/drafts/", list_draft_vendor_bills, name="list_draft_vendor_bills"),
     # Expense Endpoints
     path("expense/create/", create_expense, name="create_expense"),
     path("expense/list/", list_expenses, name="list_expenses"),

@@ -54,37 +54,42 @@ def normalize_taxable_id(raw):
 def get_tax_rate_value(tax_rate):
     """Extract tax rate percentage from TaxRate label (e.g., 'VAT (16%)' -> 0.16)."""
     if not tax_rate or not tax_rate.get("name"):
-        TransactionLogBase.log(
-            transaction_type="PURCHASE_ORDER_TAX_RATE_WARNING",
-            user=None,
-            message="Tax rate name missing or empty",
-            state_name="Warning",
-            request=None,
-        )
         return Decimal("0")
     label = tax_rate["name"]
+    # Handle name-based rates
+    rate_map = {"exempt": Decimal("0"), "zero_rated": Decimal("0"), "general_rated": Decimal("0.16")}
+    if label in rate_map:
+        return rate_map[label]
     match = re.search(r"\((\d+)%\)", label)
     if match:
         try:
-            rate = Decimal(match.group(1)) / Decimal("100")
-            return rate
+            return Decimal(match.group(1)) / Decimal("100")
         except (InvalidOperation, ValueError):
-            TransactionLogBase.log(
-                transaction_type="PURCHASE_ORDER_TAX_RATE_ERROR",
-                user=None,
-                message=f"Invalid tax rate label format: {label}",
-                state_name="Failed",
-                request=None,
-            )
             return Decimal("0")
-    TransactionLogBase.log(
-        transaction_type="PURCHASE_ORDER_TAX_RATE_WARNING",
-        user=None,
-        message=f"Could not parse tax rate from label: {label}",
-        state_name="Warning",
-        request=None,
-    )
     return Decimal("0")
+
+
+def resolve_tax_rate(raw, registry):
+    """Resolve a tax rate from raw value (UUID, name, or dict). Returns (taxable_id, rate)."""
+    taxable_id = normalize_taxable_id(raw)
+    if not taxable_id:
+        return None, Decimal("0")
+    
+    # Handle well-known name-based rates
+    name_rates = {"exempt": Decimal("0"), "zero_rated": Decimal("0"), "general_rated": Decimal("0.16")}
+    if taxable_id in name_rates:
+        from Accounting.models.sales import TaxRate as TaxRateModel
+        tr = TaxRateModel.objects.filter(name=taxable_id).first()
+        if tr:
+            return str(tr.id), name_rates[taxable_id]
+        return None, name_rates[taxable_id]
+    
+    tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"id": taxable_id})
+    if not tax_rates:
+        tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"name": taxable_id})
+    if not tax_rates:
+        return None, Decimal("0")
+    return tax_rates[0]["id"], get_tax_rate_value(tax_rates[0])
 
 
 @csrf_exempt
@@ -554,7 +559,6 @@ def save_purchase_order_draft(request):
             "date",
             "number",
             "expected_delivery",
-            "created_by",
         ]
         for field in required_fields:
             if field not in data:
@@ -562,12 +566,15 @@ def save_purchase_order_draft(request):
                     message=f"{field.replace('_', ' ').title()} is required", code=400
                 ).bad_request()
 
+        # Use authenticated user as created_by if not provided
+        created_by_id = data.get("created_by") or corporate_users[0]["id"]
+
         # Validate created_by
         buyers = registry.database(
             model_name="CorporateUser",
             operation="filter",
             data={
-                "id": data["created_by"],
+                "id": created_by_id,
                 "corporate_id": corporate_id,
                 "is_active": True,
             },
@@ -594,7 +601,6 @@ def save_purchase_order_draft(request):
                 "quantity",
                 "unit_price",
                 "discount",
-                "taxable_id",
             ]
             for field in required_line_fields:
                 if field not in line_data:
@@ -603,17 +609,9 @@ def save_purchase_order_draft(request):
                         code=400,
                     ).bad_request()
 
-            taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
-            tax_rate_value = Decimal("0")
-            if taxable_id:
-                tax_rates = registry.database(
-                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
-                )
-                if not tax_rates:
-                    return ResponseProvider(
-                        message=f"Tax rate {taxable_id} not found", code=404
-                    ).bad_request()
-                tax_rate_value = get_tax_rate_value(tax_rates[0])
+            # Support both 'taxable_id' and 'taxable' field names
+            raw_taxable = line_data.get("taxable_id") or line_data.get("taxable")
+            taxable_id, tax_rate_value = resolve_tax_rate(raw_taxable, registry)
 
             qty = to_decimal(line_data["quantity"])
             unit_price = to_decimal(line_data["unit_price"])
@@ -642,7 +640,7 @@ def save_purchase_order_draft(request):
                 "ship_date": data.get("ship_date"),
                 "ship_via": data.get("ship_via", ""),
                 "fob": data.get("fob", ""),
-                "created_by_id": data["created_by"],
+                "created_by_id": created_by_id,
                 "status": "DRAFT",
             }
             purchase_order = registry.database(
@@ -650,18 +648,8 @@ def save_purchase_order_draft(request):
             )
 
             for line_data in lines:
-                taxable_id = normalize_taxable_id(line_data.get("taxable_id"))
-                tax_rate_value = Decimal("0")
-                if taxable_id:
-                    tax_rates = registry.database(
-                        model_name="TaxRate",
-                        operation="filter",
-                        data={"id": taxable_id},
-                    )
-                    tax_rate_value = (
-                        get_tax_rate_value(tax_rates[0]) if tax_rates else Decimal("0")
-                    )
-
+                raw_taxable = line_data.get("taxable_id") or line_data.get("taxable")
+                taxable_id, tax_rate_value = resolve_tax_rate(raw_taxable, registry)
                 qty = to_decimal(line_data["quantity"])
                 unit_price = to_decimal(line_data["unit_price"])
                 discount = to_decimal(line_data["discount"])
@@ -723,7 +711,7 @@ def save_purchase_order_draft(request):
             "ship_date": str(data.get("ship_date")) if data.get("ship_date") else None,
             "ship_via": data.get("ship_via", ""),
             "fob": data.get("fob", ""),
-            "created_by": str(data["created_by"]),
+            "created_by": str(created_by_id),
             "sub_total": float(sub_total),
             "tax_total": float(tax_total),
             "total_discount": float(total_discount),

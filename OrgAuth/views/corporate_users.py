@@ -20,22 +20,38 @@ from quidpath_backend.core.utils.request_parser import get_clean_data
 @csrf_exempt
 def get_available_roles(request):
     """
-    Get list of roles available for assignment (excludes SUPERADMIN and SUPERUSER)
+    Get list of roles available for assignment to users.
+    - SUPERADMIN: returns roles scoped to their corporate (excludes SUPERADMIN/SUPERUSER)
+    - SUPERUSER: returns all non-system roles (optionally filtered by ?corporate_id=)
+    - Others: returns all non-system roles (for backward compat)
     """
     try:
-        # Accept GET requests only
         if request.method != 'GET':
             return JsonResponse({"error": "Method not allowed"}, status=405)
-        
-        # Get all roles except SUPERADMIN and SUPERUSER
-        roles = Role.objects.exclude(name__in=["SUPERADMIN", "SUPERUSER"]).values('id', 'name', 'description')
-        
-        return JsonResponse({
-            "roles": list(roles)
-        }, status=200)
-    
+
+        from quidpath_backend.core.utils.request_parser import resolve_user_from_token
+        user, corporate_user = resolve_user_from_token(request)
+
+        is_su = user and (getattr(user, "is_superuser", False) or
+                          (isinstance(user, dict) and user.get("is_superuser", False)))
+
+        qs = Role.objects.exclude(name__in=["SUPERADMIN", "SUPERUSER"])
+
+        if is_su:
+            corp_filter = request.GET.get("corporate_id")
+            if corp_filter:
+                qs = qs.filter(corporate_id=corp_filter)
+        elif corporate_user and corporate_user.role and corporate_user.role.name == "SUPERADMIN":
+            # SUPERADMIN: only their corporate's roles
+            qs = qs.filter(corporate_id=corporate_user.corporate_id)
+        else:
+            # Fallback: all non-system roles
+            pass
+
+        roles = qs.values('id', 'name', 'description')
+        return JsonResponse({"roles": list(roles)}, status=200)
+
     except Exception as e:
-        print(f"Error in get_available_roles: {e}")
         import traceback
         traceback.print_exc()
         return JsonResponse({"error": str(e)}, status=400)

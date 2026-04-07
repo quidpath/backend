@@ -81,6 +81,31 @@ def get_tax_rate_value(tax_rate):
     return rate_map.get(key, Decimal("0"))
 
 
+def resolve_tax_rate(raw, registry):
+    """Resolve a tax rate from raw value (UUID, name, or dict). Returns (taxable_id, rate)."""
+    # Use lpo's normalize_taxable_id which doesn't require registry
+    from Accounting.views.lpo import normalize_taxable_id as _normalize
+    taxable_id = _normalize(raw)
+    if not taxable_id:
+        return None, Decimal("0")
+    
+    # Handle well-known name-based rates
+    name_rates = {"exempt": Decimal("0"), "zero_rated": Decimal("0"), "general_rated": Decimal("0.16")}
+    if taxable_id in name_rates:
+        from Accounting.models.sales import TaxRate as TaxRateModel
+        tr = TaxRateModel.objects.filter(name=taxable_id).first()
+        if tr:
+            return str(tr.id), name_rates[taxable_id]
+        return None, name_rates[taxable_id]
+    
+    tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"id": taxable_id})
+    if not tax_rates:
+        tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"name": taxable_id})
+    if not tax_rates:
+        return None, Decimal("0")
+    return tax_rates[0]["id"], get_tax_rate_value(tax_rates[0])
+
+
 @csrf_exempt
 def create_vendor_bill(request):
     """
@@ -189,7 +214,6 @@ def create_vendor_bill(request):
                 "quantity",
                 "unit_price",
                 "discount",
-                "taxable_id",
             ]
             for field in required_line_fields:
                 if field not in line_data:
@@ -198,18 +222,9 @@ def create_vendor_bill(request):
                         code=400,
                     ).bad_request()
 
-            # Normalize and validate tax rate
-            taxable_id = normalize_taxable_id(line_data.get("taxable_id"), registry)
-            tax_rate_value = Decimal("0")
-            if taxable_id:
-                tax_rates = registry.database(
-                    model_name="TaxRate", operation="filter", data={"id": taxable_id}
-                )
-                if not tax_rates:
-                    return ResponseProvider(
-                        message=f"Tax rate {taxable_id} not found", code=404
-                    ).bad_request()
-                tax_rate_value = get_tax_rate_value(tax_rates[0])
+            # Normalize and validate tax rate (support both taxable_id and taxable field names)
+            raw_taxable = line_data.get("taxable_id") or line_data.get("taxable")
+            taxable_id, tax_rate_value = resolve_tax_rate(raw_taxable, registry)
 
             # Calculate line amounts
             qty = to_decimal(line_data["quantity"])
