@@ -107,7 +107,7 @@ class QuotationLine(BaseModel):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     discount = models.DecimalField(max_digits=10, decimal_places=2)
     taxable = models.ForeignKey(
-        TaxRate, on_delete=models.CASCADE, related_name="quotation_lines"
+        TaxRate, on_delete=models.CASCADE, related_name="quotation_lines", null=True, blank=True
     )
     grand_total = models.DecimalField(max_digits=10, decimal_places=2)
     tax_amount = models.DecimalField(
@@ -188,7 +188,7 @@ class PurchaseOrderLine(BaseModel):
         max_digits=10, decimal_places=2, default=Decimal("0.00")
     )
     taxable = models.ForeignKey(
-        TaxRate, on_delete=models.CASCADE, related_name="purchase_order_lines"
+        TaxRate, on_delete=models.CASCADE, related_name="purchase_order_lines", null=True, blank=True
     )
     tax_amount = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal("0.00")
@@ -283,7 +283,7 @@ class ProformaInvoiceLine(BaseModel):
         max_digits=10, decimal_places=2, default=Decimal("0.00")
     )
     taxable = models.ForeignKey(
-        TaxRate, on_delete=models.CASCADE, related_name="proforma_invoice_lines"
+        TaxRate, on_delete=models.CASCADE, related_name="proforma_invoice_lines", null=True, blank=True
     )
     tax_amount = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal("0.00")
@@ -425,7 +425,7 @@ class InvoiceLine(BaseModel):
         max_digits=10, decimal_places=2, default=Decimal("0.00")
     )
     taxable = models.ForeignKey(
-        TaxRate, on_delete=models.CASCADE, related_name="invoice_lines"
+        TaxRate, on_delete=models.CASCADE, related_name="invoice_lines", null=True, blank=True
     )
     tax_amount = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal("0.00")
@@ -526,7 +526,7 @@ class VendorBillLine(BaseModel):
         max_digits=10, decimal_places=2, default=Decimal("0.00")
     )
     taxable = models.ForeignKey(
-        TaxRate, on_delete=models.CASCADE, related_name="vendor_bill_lines"
+        TaxRate, on_delete=models.CASCADE, related_name="vendor_bill_lines", null=True, blank=True
     )
     tax_amount = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal("0.00")
