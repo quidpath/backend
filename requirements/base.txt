@@ -30,3 +30,6 @@ python-dateutil
 
 # Encoding detection
 chardet
+
+# PDF Generation
+reportlab>=4.0.0
