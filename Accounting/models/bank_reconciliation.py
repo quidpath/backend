@@ -70,6 +70,34 @@ class BankReconciliation(models.Model):
     def __str__(self):
         return f"Reconciliation {self.bank_account} ({self.period_start} to {self.period_end})"
 
+    def calculate_difference(self):
+        """Calculate the difference between statement and book balance"""
+        adjusted_book_balance = (
+            self.book_balance 
+            + self.total_deposits_in_transit 
+            - self.total_outstanding_checks 
+            - self.total_bank_charges 
+            + self.total_adjustments
+        )
+        self.difference = self.statement_balance - adjusted_book_balance
+        return self.difference
+
+    def complete(self):
+        """Mark reconciliation as completed"""
+        from decimal import Decimal
+        from django.core.exceptions import ValidationError
+        
+        self.calculate_difference()
+        
+        if abs(self.difference) > Decimal("0.01"):
+            raise ValidationError(
+                f"Cannot complete reconciliation with difference of {self.difference}. "
+                "Statement and book balances must match within 0.01."
+            )
+        
+        self.status = "COMPLETED"
+        self.save()
+
 
 class ReconciliationItem(models.Model):
     """Model for individual reconciliation items"""

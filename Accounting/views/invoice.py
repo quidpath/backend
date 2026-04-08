@@ -450,7 +450,7 @@ def create_and_post_invoice(request):
             "ship_via": data.get("ship_via"),
             "fob": data.get("fob"),
             "salesperson_id": data.get("salesperson"),
-            "status": "ISSUED",
+            "status": "POSTED",
             "quotation_id": data.get("quotation") if "quotation" in data else None,
             "purchase_order": data.get("purchase_order", ""),
         }

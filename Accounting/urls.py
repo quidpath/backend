@@ -123,6 +123,7 @@ from Accounting.views.petty_cash import (
     list_petty_cash_transactions,
     approve_petty_cash_transaction,
     delete_petty_cash_transaction,
+    reverse_petty_cash_transaction,
 )
 from Accounting.views.bank_reconciliation import (
     create_bank_reconciliation,
@@ -439,6 +440,7 @@ urlpatterns = [
     path("petty-cash/transactions/create/", create_petty_cash_transaction, name="create_petty_cash_transaction"),
     path("petty-cash/transactions/list/", list_petty_cash_transactions, name="list_petty_cash_transactions"),
     path("petty-cash/transactions/approve/", approve_petty_cash_transaction, name="approve_petty_cash_transaction"),
+    path("petty-cash/transactions/reverse/", reverse_petty_cash_transaction, name="reverse_petty_cash_transaction"),
     path("petty-cash/transactions/delete/", delete_petty_cash_transaction, name="delete_petty_cash_transaction"),
     # ── Bank Reconciliation ───────────────────────────────────────────────────
     path("bank-reconciliation/create/", create_bank_reconciliation, name="create_bank_reconciliation"),

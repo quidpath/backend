@@ -95,7 +95,8 @@ def get_analytics_overview(request):
         period_bills = []
         for b in bills:
             d = _safe_date(b.get("date"))
-            if d and start_date <= d <= end_date:
+            # Only include POSTED or PAID bills, exclude DRAFT
+            if d and start_date <= d <= end_date and b.get("status") in ("POSTED", "PAID"):
                 period_bills.append(b)
 
         total_bills = sum(Decimal(str(b.get("total", 0))) for b in period_bills)

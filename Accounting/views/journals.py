@@ -114,10 +114,10 @@ def create_journal_entry(request):
             total_debit += debit
             total_credit += credit
 
-        # Validate balanced entry
-        if total_debit != total_credit:
+        # Validate balanced entry with tolerance for rounding
+        if abs(total_debit - total_credit) > Decimal("0.01"):
             return ResponseProvider(
-                message="Journal entry is unbalanced: total debit must equal total credit",
+                message=f"Journal entry is unbalanced: total debit ({total_debit}) must equal total credit ({total_credit})",
                 code=400,
             ).bad_request()
 
@@ -561,10 +561,10 @@ def update_journal_entry(request):
             total_debit += debit
             total_credit += credit
 
-        # Validate balanced entry
-        if total_debit != total_credit:
+        # Validate balanced entry with tolerance for rounding
+        if abs(total_debit - total_credit) > Decimal("0.01"):
             return ResponseProvider(
-                message="Journal entry is unbalanced: total debit must equal total credit",
+                message=f"Journal entry is unbalanced: total debit ({total_debit}) must equal total credit ({total_credit})",
                 code=400,
             ).bad_request()
 

@@ -63,6 +63,7 @@ class PettyCashTransaction(BaseModel):
         ("PENDING", "Pending Approval"),
         ("APPROVED", "Approved"),
         ("REJECTED", "Rejected"),
+        ("REVERSED", "Reversed"),
         ("COMPLETED", "Completed"),
     ]
 
@@ -135,9 +136,33 @@ class PettyCashTransaction(BaseModel):
 
     def reject(self, rejected_by_user):
         """Reject the transaction"""
+        if self.status == "APPROVED":
+            raise ValidationError("Cannot reject an approved transaction. Use reverse() instead.")
         if self.status != "PENDING":
             raise ValidationError("Only pending transactions can be rejected")
         
         self.status = "REJECTED"
         self.approved_by = rejected_by_user
+        self.save()
+
+    def reverse(self, reversed_by_user):
+        """Reverse an approved transaction and restore fund balance"""
+        from django.utils import timezone
+        
+        if self.status != "APPROVED":
+            raise ValidationError("Only approved transactions can be reversed")
+        
+        # Reverse the balance change
+        if self.transaction_type == "DISBURSEMENT":
+            self.fund.current_balance += self.amount
+        elif self.transaction_type == "REPLENISHMENT":
+            self.fund.current_balance -= self.amount
+        elif self.transaction_type == "ADJUSTMENT":
+            # For adjustments, we can't simply reverse - need manual intervention
+            raise ValidationError("Adjustment transactions cannot be automatically reversed. Create a new adjustment.")
+        
+        self.fund.save()
+        self.status = "REVERSED"
+        self.approved_by = reversed_by_user
+        self.approved_at = timezone.now()
         self.save()

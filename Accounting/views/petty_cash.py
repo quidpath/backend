@@ -414,3 +414,53 @@ def delete_petty_cash_transaction(request):
         return ResponseProvider(
             message="An error occurred while deleting transaction", code=500
         ).exception()
+
+
+@require_http_methods(["POST"])
+def reverse_petty_cash_transaction(request):
+    """Reverse an approved petty cash transaction"""
+    data, metadata = get_clean_data(request)
+    user = metadata.get("user")
+    
+    if not user:
+        return ResponseProvider(
+            message="User not authenticated", code=401
+        ).unauthorized()
+    
+    try:
+        transaction_id = data.get("transaction_id")
+        if not transaction_id:
+            return ResponseProvider(
+                message="Missing transaction_id", code=400
+            ).bad_request()
+        
+        from Accounting.models import PettyCashTransaction
+        txn_obj = PettyCashTransaction.objects.get(id=transaction_id)
+        txn_obj.reverse(user)
+        
+        TransactionLogBase.log(
+            transaction_type="PETTY_CASH_TRANSACTION_REVERSED",
+            user=user,
+            message=f"Reversed petty cash transaction: {txn_obj.reference}",
+            state_name="Success",
+            extra={"transaction_id": str(transaction_id)},
+            request=request,
+        )
+        
+        return ResponseProvider(
+            data={"message": "Transaction reversed successfully"},
+            message="Transaction reversed successfully",
+            code=200,
+        ).success()
+        
+    except Exception as e:
+        TransactionLogBase.log(
+            transaction_type="PETTY_CASH_TRANSACTION_REVERSE_FAILED",
+            user=user,
+            message=str(e),
+            state_name="Failed",
+            request=request,
+        )
+        return ResponseProvider(
+            message=str(e), code=500
+        ).exception()

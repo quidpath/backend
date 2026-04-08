@@ -37,7 +37,7 @@ def post_vendor_bill(request, bill_id):
         if not qs.exists():
             return ResponseProvider(message="Vendor bill not found", code=404).bad_request()
         bill = qs.first()
-        if bill.posted_at:
+        if bill.status == "POSTED":
             return ResponseProvider(message="Already posted", code=400).bad_request()
         errors = []
         if not bill.vendor_id: errors.append("Vendor required.")
@@ -45,10 +45,11 @@ def post_vendor_bill(request, bill_id):
         if errors:
             return ResponseProvider(message="; ".join(errors), code=400).bad_request()
         with transaction.atomic():
+            bill.status = "POSTED"
             bill.posted_at = timezone.now()
             bill.posted_by_id = corp_user_id
             bill.save()
-        result = {"id": str(bill.id), "number": bill.number,
+        result = {"id": str(bill.id), "number": bill.number, "status": bill.status,
                   "posted_at": bill.posted_at.isoformat()}
         return ResponseProvider(message="Vendor bill posted", data=result, code=200).success()
     except Exception as e:
@@ -68,7 +69,7 @@ def auto_save_vendor_bill(request, bill_id):
         if not qs.exists():
             return ResponseProvider(message="Bill not found", code=404).bad_request()
         bill = qs.first()
-        if bill.posted_at:
+        if bill.status == "POSTED":
             return ResponseProvider(message="Cannot edit posted bill", code=403).bad_request()
         changed = []
         for f in ["comments","terms"]:
@@ -91,8 +92,8 @@ def list_draft_vendor_bills(request):
     if not uid:
         return ResponseProvider(message="User not authenticated", code=401).unauthorized()
     try:
-        drafts = list(VendorBill.objects.filter(corporate_id=corp_id, posted_at__isnull=True)
-                      .values("id","number","date","due_date","drafted_at","vendor_id"))
+        drafts = list(VendorBill.objects.filter(corporate_id=corp_id, status="DRAFT")
+                      .values("id","number","date","due_date","status","drafted_at","vendor_id"))
         return ResponseProvider(message="OK", data={"vendor_bills": drafts, "total": len(drafts)}, code=200).success()
     except Exception as e:
         return ResponseProvider(message=f"Error: {e}", code=500).exception()
