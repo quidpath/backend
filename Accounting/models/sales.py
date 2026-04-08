@@ -77,9 +77,9 @@ class Quotation(BaseModel):
         CorporateUser, on_delete=models.CASCADE, related_name="quotations"
     )
     ship_date = models.DateField()
-    ship_via = models.CharField(max_length=255)
-    terms = models.CharField(max_length=255)
-    fob = models.CharField(max_length=255)
+    ship_via = models.CharField(max_length=255, blank=True, null=True, default="")
+    terms = models.CharField(max_length=255, blank=True, null=True, default="")
+    fob = models.CharField(max_length=255, blank=True, null=True, default="")
     drafted_at = models.DateTimeField(null=True, blank=True)
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
@@ -157,8 +157,8 @@ class PurchaseOrder(BaseModel):
         CorporateUser, on_delete=models.CASCADE, related_name="purchase_orders"
     )
     ship_date = models.DateField(null=True, blank=True)
-    ship_via = models.CharField(max_length=255, blank=True)
-    fob = models.CharField(max_length=255, blank=True)
+    ship_via = models.CharField(max_length=255, blank=True, null=True, default="")
+    fob = models.CharField(max_length=255, blank=True, null=True, default="")
     drafted_at = models.DateTimeField(null=True, blank=True)
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
@@ -233,8 +233,8 @@ class ProformaInvoice(BaseModel):
         CorporateUser, on_delete=models.CASCADE, related_name="proforma_invoices"
     )
     ship_date = models.DateField(null=True, blank=True)
-    ship_via = models.CharField(max_length=255, blank=True)
-    fob = models.CharField(max_length=255, blank=True)
+    ship_via = models.CharField(max_length=255, blank=True, null=True, default="")
+    fob = models.CharField(max_length=255, blank=True, null=True, default="")
     sub_total = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00")
     )
@@ -351,8 +351,8 @@ class Invoices(BaseModel):
         CorporateUser, on_delete=models.CASCADE, related_name="invoices"
     )
     ship_date = models.DateField(null=True, blank=True)
-    ship_via = models.CharField(max_length=255, blank=True)
-    fob = models.CharField(max_length=255, blank=True)
+    ship_via = models.CharField(max_length=255, blank=True, null=True)
+    fob = models.CharField(max_length=255, blank=True, null=True)
     sub_total = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00")
     )

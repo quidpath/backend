@@ -92,7 +92,8 @@ def resolve_tax_rate(raw, registry):
     Returns (taxable_id, rate). Handles name-based lookups gracefully.
     """
     taxable_id = normalize_taxable_id(raw)
-    if not taxable_id:
+    # Handle empty strings and None
+    if not taxable_id or (isinstance(taxable_id, str) and not taxable_id.strip()):
         return None, Decimal("0")
     
     # Handle well-known name-based rates
@@ -106,7 +107,12 @@ def resolve_tax_rate(raw, registry):
         return None, name_rates[taxable_id]
     
     # Try by UUID
-    tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"id": taxable_id})
+    try:
+        tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"id": taxable_id})
+    except Exception:
+        # Invalid UUID format
+        return None, Decimal("0")
+    
     if not tax_rates:
         tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"name": taxable_id})
     if not tax_rates:

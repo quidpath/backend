@@ -86,7 +86,8 @@ def resolve_tax_rate(raw, registry):
     # Use lpo's normalize_taxable_id which doesn't require registry
     from Accounting.views.lpo import normalize_taxable_id as _normalize
     taxable_id = _normalize(raw)
-    if not taxable_id:
+    # Handle empty strings and None
+    if not taxable_id or (isinstance(taxable_id, str) and not taxable_id.strip()):
         return None, Decimal("0")
     
     # Handle well-known name-based rates
@@ -98,7 +99,13 @@ def resolve_tax_rate(raw, registry):
             return str(tr.id), name_rates[taxable_id]
         return None, name_rates[taxable_id]
     
-    tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"id": taxable_id})
+    # Try by UUID
+    try:
+        tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"id": taxable_id})
+    except Exception:
+        # Invalid UUID format
+        return None, Decimal("0")
+    
     if not tax_rates:
         tax_rates = registry.database(model_name="TaxRate", operation="filter", data={"name": taxable_id})
     if not tax_rates:
