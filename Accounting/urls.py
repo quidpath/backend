@@ -139,6 +139,13 @@ from Accounting.views.tax_rate import (
     update_tax_rate,
     delete_tax_rate,
 )
+from Accounting.views.seed_tax_rates import seed_default_tax_rates
+from Accounting.views.document_pdf import (
+    download_invoice_pdf,
+    download_quotation_pdf,
+    download_po_pdf,
+    download_bill_pdf,
+)
 
 urlpatterns = [
     # Customer Endpoints
@@ -446,4 +453,10 @@ urlpatterns = [
     path("tax-rates/get/", get_tax_rate_detail, name="get_tax_rate_detail"),
     path("tax-rates/update/", update_tax_rate, name="update_tax_rate"),
     path("tax-rates/delete/", delete_tax_rate, name="delete_tax_rate"),
+    path("tax-rates/seed-defaults/", seed_default_tax_rates, name="seed_default_tax_rates"),
+    # ── Document PDF Downloads ────────────────────────────────────────────────
+    path("invoice/download-pdf/", download_invoice_pdf, name="download_invoice_pdf"),
+    path("quotation/download-pdf/", download_quotation_pdf, name="download_quotation_pdf"),
+    path("purchase-orders/download-pdf/", download_po_pdf, name="download_po_pdf"),
+    path("vendor-bill/download-pdf/", download_bill_pdf, name="download_bill_pdf"),
 ]

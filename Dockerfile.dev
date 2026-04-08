@@ -25,6 +25,9 @@ RUN pip install --no-cache-dir -r requirements/dev.txt
 # Install OCR dependencies
 RUN pip install --no-cache-dir paddlepaddle paddleocr
 
+# Install PDF generation library
+RUN pip install --no-cache-dir reportlab>=4.0.0
+
 # Copy project
 COPY . /app
 

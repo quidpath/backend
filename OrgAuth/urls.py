@@ -24,6 +24,11 @@ from OrgAuth.views.corporate_management import (
     ban_corporate,
     unban_corporate,
 )
+from OrgAuth.views.document_template import (
+    get_document_templates,
+    save_document_templates,
+    get_template_for_document,
+)
 
 urlpatterns = [
     # Corporate registration with custom payment page (V2)
@@ -90,4 +95,8 @@ urlpatterns = [
         subscription_api.sync_subscription_from_billing,
         name="sync_subscription",
     ),
+    # Document Templates
+    path("document-templates/get/", get_document_templates, name="get_document_templates"),
+    path("document-templates/save/", save_document_templates, name="save_document_templates"),
+    path("document-templates/get-for-document/", get_template_for_document, name="get_template_for_document"),
 ]
