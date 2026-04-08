@@ -2,6 +2,8 @@
 Document PDF Generation Views
 Generates PDF documents for invoices, quotes, POs, and bills
 """
+import base64
+import os
 from django.http import HttpResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
@@ -10,7 +12,7 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
 from io import BytesIO
 from decimal import Decimal
 
@@ -18,6 +20,42 @@ from quidpath_backend.core.utils.request_parser import get_clean_data
 from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from OrgAuth.models.document_template import DocumentTemplate
+
+
+def hex_to_reportlab_color(hex_color):
+    """Convert hex color to reportlab Color object"""
+    try:
+        return colors.HexColor(hex_color)
+    except:
+        return colors.HexColor('#1565C0')
+
+
+def get_logo_image(corporate):
+    """Extract logo from corporate and return Image object"""
+    try:
+        if not corporate.get('logo'):
+            return None
+        
+        logo_path = corporate.get('logo')
+        
+        # If logo is a file path
+        if isinstance(logo_path, str) and os.path.exists(logo_path):
+            return Image(logo_path, width=2*inch, height=0.8*inch, kind='proportional')
+        
+        # If logo is base64 data URL
+        if isinstance(logo_path, str) and logo_path.startswith('data:image'):
+            # Extract base64 data
+            header, data = logo_path.split(',', 1)
+            image_data = base64.b64decode(data)
+            
+            # Create BytesIO object
+            img_buffer = BytesIO(image_data)
+            return Image(img_buffer, width=2*inch, height=0.8*inch, kind='proportional')
+        
+        return None
+    except Exception as e:
+        print(f"Error loading logo: {str(e)}")
+        return None
 
 
 def generate_document_pdf(document_data, document_type, company_info, template=None):
@@ -34,29 +72,52 @@ def generate_document_pdf(document_data, document_type, company_info, template=N
         BytesIO buffer containing the PDF
     """
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter, 
+        topMargin=0.5*inch, 
+        bottomMargin=0.5*inch,
+        leftMargin=0.75*inch,
+        rightMargin=0.75*inch
+    )
     
     # Container for the 'Flowable' objects
     elements = []
     
     # Use template settings or defaults
-    accent_color = colors.HexColor(template.accent_color if template else '#1565C0')
-    font_name = template.font if template else 'Helvetica'
+    accent_color = hex_to_reportlab_color(template.accent_color if template else '#1565C0')
+    font_name = template.font if template and template.font in ['Helvetica', 'Times-Roman', 'Courier'] else 'Helvetica'
+    logo_align = template.logo_align if template else 'left'
     show_logo = template.show_logo if template else True
+    show_tagline = template.show_tagline if template else False
+    tagline = template.tagline if template else ''
     show_bank_details = template.show_bank_details if template else True
     show_signature = template.show_signature_line if template else True
     footer_text = template.footer_text if template else 'Thank you for your business.'
     header_bg = template.header_bg if template else True
+    border_style = template.border_style if template else 'thin'
     
     # Define styles
     styles = getSampleStyleSheet()
+    
+    # Document title style
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
-        fontSize=24,
+        fontSize=20,
         textColor=accent_color,
-        spaceAfter=30,
-        alignment=TA_CENTER,
+        spaceAfter=12,
+        alignment=TA_RIGHT,
+        fontName=f'{font_name}-Bold' if font_name != 'Courier' else font_name,
+    )
+    
+    company_name_style = ParagraphStyle(
+        'CompanyName',
+        parent=styles['Normal'],
+        fontSize=14,
+        textColor=accent_color,
+        fontName=f'{font_name}-Bold' if font_name != 'Courier' else font_name,
+        alignment=TA_LEFT if logo_align == 'left' else TA_CENTER if logo_align == 'center' else TA_RIGHT,
     )
     
     # Document title
@@ -66,47 +127,140 @@ def generate_document_pdf(document_data, document_type, company_info, template=N
         'po': 'PURCHASE ORDER',
         'bill': 'VENDOR BILL',
     }
-    title = Paragraph(doc_titles.get(document_type, 'DOCUMENT'), title_style)
-    elements.append(title)
-    elements.append(Spacer(1, 0.2*inch))
     
-    # Company info and logo header
-    header_data = []
-    if company_info.get('logo_url'):
-        try:
-            # Note: In production, you'd fetch the logo from S3 or local storage
-            # For now, we'll skip the logo if it's not accessible
-            pass
-        except Exception:
-            pass
+    # Header section with logo and company info
+    header_elements = []
     
-    # Company details
-    company_details = [
-        [Paragraph(f"<b>{company_info.get('name', 'Company Name')}</b>", styles['Normal'])],
-        [Paragraph(company_info.get('address', ''), styles['Normal'])],
-        [Paragraph(f"{company_info.get('city', '')}, {company_info.get('country', '')}", styles['Normal'])],
-        [Paragraph(f"Phone: {company_info.get('phone', '')}", styles['Normal'])],
-        [Paragraph(f"Email: {company_info.get('email', '')}", styles['Normal'])],
-    ]
+    # Get logo if available
+    logo_img = None
+    if show_logo:
+        logo_img = get_logo_image(company_info)
     
-    # Document info
-    doc_info = [
-        [Paragraph(f"<b>Document #:</b> {document_data.get('number', 'N/A')}", styles['Normal'])],
-        [Paragraph(f"<b>Date:</b> {document_data.get('date', 'N/A')}", styles['Normal'])],
-    ]
+    # Build header table based on logo alignment
+    if logo_align == 'center':
+        # Centered layout: logo and company name centered, document title on right
+        if logo_img:
+            header_elements.append([logo_img])
+        header_elements.append([Paragraph(f"<b>{company_info.get('name', 'Company Name')}</b>", company_name_style)])
+        if show_tagline and tagline:
+            header_elements.append([Paragraph(tagline, ParagraphStyle('Tagline', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER))])
+        
+        # Add company details
+        company_details = []
+        if company_info.get('address'):
+            company_details.append(company_info['address'])
+        if company_info.get('city') or company_info.get('country'):
+            company_details.append(f"{company_info.get('city', '')}, {company_info.get('country', '')}".strip(', '))
+        if company_info.get('phone'):
+            company_details.append(f"Phone: {company_info['phone']}")
+        if company_info.get('email'):
+            company_details.append(f"Email: {company_info['email']}")
+        
+        for detail in company_details:
+            header_elements.append([Paragraph(detail, ParagraphStyle('Detail', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER))])
+        
+        header_table = Table(header_elements, colWidths=[6.5*inch])
+        header_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(header_table)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Document title and info on the right
+        doc_title = Paragraph(doc_titles.get(document_type, 'DOCUMENT'), title_style)
+        doc_info_lines = [
+            Paragraph(f"<b>{document_data.get('number', 'N/A')}</b>", ParagraphStyle('DocNum', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT)),
+            Paragraph(f"Date: {document_data.get('date', 'N/A')}", ParagraphStyle('DocDate', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)),
+        ]
+        
+        if document_data.get('due_date'):
+            doc_info_lines.append(Paragraph(f"Due: {document_data['due_date']}", ParagraphStyle('DueDate', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+        if document_data.get('valid_until'):
+            doc_info_lines.append(Paragraph(f"Valid Until: {document_data['valid_until']}", ParagraphStyle('ValidUntil', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+        
+        doc_info_table = Table([[doc_title]] + [[line] for line in doc_info_lines], colWidths=[6.5*inch])
+        doc_info_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+        ]))
+        elements.append(doc_info_table)
+        
+    else:
+        # Left or Right alignment
+        left_content = []
+        right_content = []
+        
+        if logo_align == 'left':
+            # Logo and company on left, document title on right
+            if logo_img:
+                left_content.append(logo_img)
+            left_content.append(Paragraph(f"<b>{company_info.get('name', 'Company Name')}</b>", company_name_style))
+            if show_tagline and tagline:
+                left_content.append(Paragraph(tagline, ParagraphStyle('Tagline', parent=styles['Normal'], fontSize=9)))
+            
+            # Company details
+            if company_info.get('address'):
+                left_content.append(Paragraph(company_info['address'], ParagraphStyle('Addr', parent=styles['Normal'], fontSize=9)))
+            if company_info.get('city') or company_info.get('country'):
+                left_content.append(Paragraph(f"{company_info.get('city', '')}, {company_info.get('country', '')}".strip(', '), ParagraphStyle('City', parent=styles['Normal'], fontSize=9)))
+            if company_info.get('phone'):
+                left_content.append(Paragraph(f"Phone: {company_info['phone']}", ParagraphStyle('Phone', parent=styles['Normal'], fontSize=9)))
+            if company_info.get('email'):
+                left_content.append(Paragraph(f"Email: {company_info['email']}", ParagraphStyle('Email', parent=styles['Normal'], fontSize=9)))
+            
+            # Document info on right
+            right_content.append(Paragraph(doc_titles.get(document_type, 'DOCUMENT'), title_style))
+            right_content.append(Paragraph(f"<b>{document_data.get('number', 'N/A')}</b>", ParagraphStyle('DocNum', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT)))
+            right_content.append(Paragraph(f"Date: {document_data.get('date', 'N/A')}", ParagraphStyle('DocDate', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+            
+            if document_data.get('due_date'):
+                right_content.append(Paragraph(f"Due: {document_data['due_date']}", ParagraphStyle('DueDate', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+            if document_data.get('valid_until'):
+                right_content.append(Paragraph(f"Valid Until: {document_data['valid_until']}", ParagraphStyle('ValidUntil', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+        
+        else:  # right alignment
+            # Document title on left, logo and company on right
+            left_content.append(Paragraph(doc_titles.get(document_type, 'DOCUMENT'), ParagraphStyle('TitleLeft', parent=title_style, alignment=TA_LEFT)))
+            left_content.append(Paragraph(f"<b>{document_data.get('number', 'N/A')}</b>", ParagraphStyle('DocNum', parent=styles['Normal'], fontSize=10)))
+            left_content.append(Paragraph(f"Date: {document_data.get('date', 'N/A')}", ParagraphStyle('DocDate', parent=styles['Normal'], fontSize=9)))
+            
+            if document_data.get('due_date'):
+                left_content.append(Paragraph(f"Due: {document_data['due_date']}", ParagraphStyle('DueDate', parent=styles['Normal'], fontSize=9)))
+            if document_data.get('valid_until'):
+                left_content.append(Paragraph(f"Valid Until: {document_data['valid_until']}", ParagraphStyle('ValidUntil', parent=styles['Normal'], fontSize=9)))
+            
+            # Company on right
+            if logo_img:
+                right_content.append(logo_img)
+            right_content.append(Paragraph(f"<b>{company_info.get('name', 'Company Name')}</b>", ParagraphStyle('CompanyRight', parent=company_name_style, alignment=TA_RIGHT)))
+            if show_tagline and tagline:
+                right_content.append(Paragraph(tagline, ParagraphStyle('Tagline', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+            
+            if company_info.get('address'):
+                right_content.append(Paragraph(company_info['address'], ParagraphStyle('Addr', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+            if company_info.get('city') or company_info.get('country'):
+                right_content.append(Paragraph(f"{company_info.get('city', '')}, {company_info.get('country', '')}".strip(', '), ParagraphStyle('City', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+            if company_info.get('phone'):
+                right_content.append(Paragraph(f"Phone: {company_info['phone']}", ParagraphStyle('Phone', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+            if company_info.get('email'):
+                right_content.append(Paragraph(f"Email: {company_info['email']}", ParagraphStyle('Email', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)))
+        
+        # Create two-column header
+        max_rows = max(len(left_content), len(right_content))
+        header_data = []
+        for i in range(max_rows):
+            left_item = left_content[i] if i < len(left_content) else ''
+            right_item = right_content[i] if i < len(right_content) else ''
+            header_data.append([left_item, right_item])
+        
+        header_table = Table(header_data, colWidths=[3.5*inch, 3*inch])
+        header_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ]))
+        elements.append(header_table)
     
-    if document_data.get('due_date'):
-        doc_info.append([Paragraph(f"<b>Due Date:</b> {document_data['due_date']}", styles['Normal'])])
-    if document_data.get('valid_until'):
-        doc_info.append([Paragraph(f"<b>Valid Until:</b> {document_data['valid_until']}", styles['Normal'])])
-    
-    # Create header table
-    header_table = Table([[company_details, doc_info]], colWidths=[4*inch, 2.5*inch])
-    header_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-    ]))
-    elements.append(header_table)
     elements.append(Spacer(1, 0.3*inch))
     
     # Bill To / Vendor section
@@ -117,9 +271,12 @@ def generate_document_pdf(document_data, document_type, company_info, template=N
         bill_to_label = 'VENDOR:'
         party_name = document_data.get('vendor', 'N/A')
     
-    bill_to = Paragraph(f"<b>{bill_to_label}</b><br/>{party_name}", styles['Normal'])
+    bill_to = Paragraph(
+        f"<b><font color='{template.accent_color if template else '#1565C0'}'>{bill_to_label}</font></b><br/>{party_name}", 
+        ParagraphStyle('BillTo', parent=styles['Normal'], fontSize=10, fontName=font_name)
+    )
     elements.append(bill_to)
-    elements.append(Spacer(1, 0.3*inch))
+    elements.append(Spacer(1, 0.25*inch))
     
     # Line items table
     line_items_data = [['Description', 'Quantity', 'Unit Price', 'Amount']]
@@ -127,7 +284,7 @@ def generate_document_pdf(document_data, document_type, company_info, template=N
     for line in document_data.get('lines', []):
         amount = line.get('amount') or (line.get('quantity', 0) * line.get('unit_price', 0))
         line_items_data.append([
-            line.get('description', ''),
+            Paragraph(line.get('description', ''), ParagraphStyle('LineDesc', parent=styles['Normal'], fontSize=9, fontName=font_name)),
             str(line.get('quantity', 0)),
             f"${float(line.get('unit_price', 0)):.2f}",
             f"${float(amount):.2f}",
@@ -138,73 +295,100 @@ def generate_document_pdf(document_data, document_type, company_info, template=N
         ('BACKGROUND', (0, 0), (-1, 0), accent_color),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), f'{font_name}-Bold' if font_name != 'Courier' else font_name),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+        ('TOPPADDING', (0, 0), (-1, 0), 10),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.Color(0.95, 0.95, 0.95)]),
     ]))
     elements.append(line_items_table)
-    elements.append(Spacer(1, 0.3*inch))
+    elements.append(Spacer(1, 0.25*inch))
     
     # Totals section
     totals_data = [
         ['Subtotal:', f"${float(document_data.get('sub_total', 0)):.2f}"],
         ['Tax:', f"${float(document_data.get('tax_total', 0)):.2f}"],
-        ['<b>Total:</b>', f"<b>${float(document_data.get('total', 0)):.2f}</b>"],
     ]
+    
+    # Add total with proper formatting
+    total_para = Paragraph(
+        f"<b>${float(document_data.get('total', 0)):.2f}</b>",
+        ParagraphStyle('TotalAmount', parent=styles['Normal'], fontSize=12, fontName=f'{font_name}-Bold' if font_name != 'Courier' else font_name, textColor=accent_color)
+    )
+    totals_data.append([Paragraph('<b>Total:</b>', ParagraphStyle('TotalLabel', parent=styles['Normal'], fontSize=12, fontName=f'{font_name}-Bold' if font_name != 'Courier' else font_name)), total_para])
     
     totals_table = Table(totals_data, colWidths=[1.5*inch, 1.5*inch], hAlign='RIGHT')
     totals_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 14),
-        ('LINEABOVE', (0, -1), (-1, -1), 2, colors.black),
-        ('TOPPADDING', (0, -1), (-1, -1), 12),
+        ('FONTNAME', (0, 0), (-1, -2), font_name),
+        ('FONTSIZE', (0, 0), (-1, -2), 10),
+        ('LINEABOVE', (0, -1), (-1, -1), 1.5, accent_color),
+        ('TOPPADDING', (0, -1), (-1, -1), 10),
     ]))
     elements.append(totals_table)
     
     # Notes and terms
     if document_data.get('terms') or document_data.get('comments'):
-        elements.append(Spacer(1, 0.4*inch))
+        elements.append(Spacer(1, 0.3*inch))
         if document_data.get('terms'):
-            elements.append(Paragraph(f"<b>Terms & Conditions:</b><br/>{document_data['terms']}", styles['Normal']))
-            elements.append(Spacer(1, 0.2*inch))
+            terms_para = Paragraph(
+                f"<b>Terms & Conditions:</b><br/>{document_data['terms']}", 
+                ParagraphStyle('Terms', parent=styles['Normal'], fontSize=9, fontName=font_name)
+            )
+            elements.append(terms_para)
+            elements.append(Spacer(1, 0.15*inch))
         if document_data.get('comments'):
-            elements.append(Paragraph(f"<b>Notes:</b><br/>{document_data['comments']}", styles['Normal']))
+            comments_para = Paragraph(
+                f"<b>Notes:</b><br/>{document_data['comments']}", 
+                ParagraphStyle('Comments', parent=styles['Normal'], fontSize=9, fontName=font_name)
+            )
+            elements.append(comments_para)
     
     # Bank details and signature (from template)
     if show_bank_details or show_signature:
         elements.append(Spacer(1, 0.3*inch))
         if show_bank_details:
             bank_info = Paragraph(
-                f"<b>Bank Details:</b> {company_info.get('bank_name', 'N/A')} | "
-                f"Account: {company_info.get('bank_account', 'N/A')} | "
-                f"Branch: {company_info.get('bank_branch', 'N/A')}",
-                styles['Normal']
+                f"<b>Bank Details:</b> {company_info.get('bank_name', 'Your Bank')} | "
+                f"Account: {company_info.get('bank_account', '1234567890')} | "
+                f"Branch: {company_info.get('bank_branch', 'Main')}",
+                ParagraphStyle('BankInfo', parent=styles['Normal'], fontSize=8, fontName=font_name, textColor=colors.grey)
             )
             elements.append(bank_info)
         if show_signature:
             elements.append(Spacer(1, 0.3*inch))
-            sig_line = Paragraph("_________________________<br/>Authorised Signature", styles['Normal'])
-            elements.append(sig_line)
+            sig_table = Table([['_' * 40], ['Authorised Signature']], colWidths=[2*inch], hAlign='RIGHT')
+            sig_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTSIZE', (0, 1), (0, 1), 8),
+                ('TEXTCOLOR', (0, 1), (0, 1), colors.grey),
+            ]))
+            elements.append(sig_table)
     
     # Footer text
     elements.append(Spacer(1, 0.2*inch))
-    footer = Paragraph(f"<i>{footer_text}</i>", ParagraphStyle(
-        'Footer',
-        parent=styles['Normal'],
-        alignment=TA_CENTER,
-        fontSize=10,
-        textColor=colors.grey,
-    ))
+    footer = Paragraph(
+        f"<i>{footer_text}</i>", 
+        ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            alignment=TA_CENTER,
+            fontSize=9,
+            textColor=colors.grey,
+            fontName=font_name,
+        )
+    )
     elements.append(footer)
     
     # Build PDF
     doc.build(elements)
     buffer.seek(0)
     return buffer
+
 
 
 @csrf_exempt
