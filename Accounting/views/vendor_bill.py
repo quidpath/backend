@@ -1170,13 +1170,15 @@ def convert_purchase_order_to_vendor_bill(request):
             "date",
             "number",
             "due_date",
-            "created_by",
         ]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(
                     message=f"{field.replace('_', ' ').title()} is required", code=400
                 ).bad_request()
+
+        # Auto-resolve created_by from authenticated user if not provided
+        created_by_id = data.get("created_by") or corporate_users[0]["id"]
 
         purchase_orders = registry.database(
             model_name="PurchaseOrder",
@@ -1207,16 +1209,14 @@ def convert_purchase_order_to_vendor_bill(request):
             model_name="CorporateUser",
             operation="filter",
             data={
-                "id": data["created_by"],
+                "id": created_by_id,
                 "corporate_id": corporate_id,
                 "is_active": True,
             },
         )
         if not created_by_users:
-            return ResponseProvider(
-                message="Created by user not found or inactive for this corporate",
-                code=404,
-            ).bad_request()
+            # Fall back to the authenticated user's corporate user record
+            created_by_id = corporate_users[0]["id"]
 
         purchase_order_lines = registry.database(
             model_name="PurchaseOrderLine",
@@ -1238,7 +1238,7 @@ def convert_purchase_order_to_vendor_bill(request):
                 "due_date": data["due_date"],
                 "comments": data.get("comments", purchase_order["comments"]),
                 "terms": data.get("terms", purchase_order["terms"]),
-                "created_by_id": data["created_by"],
+                "created_by_id": created_by_id,
                 "status": "DRAFT",
                 "sub_total": float(purchase_order.get("sub_total", 0.00)),
                 "tax_total": float(purchase_order.get("tax_total", 0.00)),
