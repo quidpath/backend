@@ -885,23 +885,12 @@ def create_account(request):
                 message="Corporate ID not found", code=400
             ).bad_request()
 
-        required_fields = ["code", "name", "account_type_id"]
+        required_fields = ["name", "account_type_id"]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(
                     message=f"{field.replace('_', ' ').title()} is required", code=400
                 ).bad_request()
-
-        # Validate account code uniqueness within corporate
-        existing_accounts = registry.database(
-            model_name="Account",
-            operation="filter",
-            data={"code": data["code"], "corporate_id": corporate_id},
-        )
-        if existing_accounts:
-            return ResponseProvider(
-                message="Account code already exists for this corporate", code=400
-            ).bad_request()
 
         # Validate account type existence
         account_types = registry.database(
@@ -913,6 +902,43 @@ def create_account(request):
             return ResponseProvider(
                 message="Account type not found", code=404
             ).bad_request()
+
+        # Auto-generate code if not provided
+        code = data.get("code", "").strip()
+        if not code:
+            # Determine prefix from account type name
+            type_name = account_types[0].get("name", "ASSET")
+            prefix_map = {
+                "ASSET": "1", "LIABILITY": "2", "EQUITY": "3",
+                "REVENUE": "4", "EXPENSE": "5",
+            }
+            prefix = prefix_map.get(type_name, "9")
+            # Find the next available code with this prefix
+            existing = registry.database(
+                model_name="Account",
+                operation="filter",
+                data={"corporate_id": corporate_id},
+            )
+            used_codes = {a["code"] for a in existing if str(a.get("code", "")).startswith(prefix)}
+            # Start from prefix + "001" and increment
+            for i in range(1, 9999):
+                candidate = f"{prefix}{i:03d}"
+                if candidate not in used_codes:
+                    code = candidate
+                    break
+            if not code:
+                code = f"{prefix}999"
+        else:
+            # Validate uniqueness only when user provides a code
+            existing_accounts = registry.database(
+                model_name="Account",
+                operation="filter",
+                data={"code": code, "corporate_id": corporate_id},
+            )
+            if existing_accounts:
+                return ResponseProvider(
+                    message=f"Account code '{code}' already exists for this corporate", code=400
+                ).bad_request()
 
         # Validate account sub-type existence if provided
         if "account_sub_type_id" in data and data["account_sub_type_id"]:
@@ -932,7 +958,7 @@ def create_account(request):
 
         account_data = {
             "corporate_id": corporate_id,
-            "code": data["code"],
+            "code": code,
             "name": data["name"],
             "account_type_id": data["account_type_id"],
             "account_sub_type_id": data.get("account_sub_type_id", None),

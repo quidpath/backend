@@ -65,102 +65,59 @@ def create_expense(request):
                 message="Corporate ID not found", code=400
             ).bad_request()
 
-        # Validate required fields
-        required_fields = [
-            "date",
-            "reference",
-            "description",
-            "category",
-            "amount",
-        ]
+        # Validate required fields — reference is now optional (auto-generated)
+        required_fields = ["date", "description", "category", "amount"]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(
                     message=f"{field.replace('_', ' ').title()} is required", code=400
                 ).bad_request()
 
-        # Get or use default accounts
-        expense_account_id = data.get("expense_account_id")
-        payment_account_id = data.get("payment_account_id")
-
-        # If accounts not provided, use defaults based on category
-        if not expense_account_id:
-            # Get default expense account for this corporate
-            default_accounts = registry.database(
-                model_name="Account",
-                operation="filter",
-                data={
-                    "corporate_id": corporate_id,
-                    "code": "5000",  # Default expense account code
-                    "is_active": True,
-                },
-            )
-            if default_accounts:
-                expense_account_id = default_accounts[0]["id"]
-            else:
-                return ResponseProvider(
-                    message="No default expense account found. Please configure accounts or provide expense_account_id",
-                    code=400,
-                ).bad_request()
-
-        if not payment_account_id:
-            # Get default cash/bank account
-            default_payment_accounts = registry.database(
-                model_name="Account",
-                operation="filter",
-                data={
-                    "corporate_id": corporate_id,
-                    "code": "1010",  # Default cash account code
-                    "is_active": True,
-                },
-            )
-            if default_payment_accounts:
-                payment_account_id = default_payment_accounts[0]["id"]
-            else:
-                return ResponseProvider(
-                    message="No default payment account found. Please configure accounts or provide payment_account_id",
-                    code=400,
-                ).bad_request()
-
-        # Validate expense account
-        expense_accounts = registry.database(
-            model_name="Account",
-            operation="filter",
-            data={
-                "id": expense_account_id,
-                "corporate_id": corporate_id,
-                "is_active": True,
-            },
-        )
-        if not expense_accounts:
-            return ResponseProvider(
-                message="Expense account not found", code=404
-            ).bad_request()
-
-        # Validate payment account
-        payment_accounts = registry.database(
-            model_name="Account",
-            operation="filter",
-            data={
-                "id": payment_account_id,
-                "corporate_id": corporate_id,
-                "is_active": True,
-            },
-        )
-        if not payment_accounts:
-            return ResponseProvider(
-                message="Payment account not found", code=404
-            ).bad_request()
+        # Auto-generate reference if not provided
+        import uuid as _uuid
+        reference = data.get("reference", "").strip()
+        if not reference:
+            from datetime import date as _date
+            today = _date.today().strftime("%Y%m%d")
+            short_id = str(_uuid.uuid4())[:6].upper()
+            reference = f"EXP-{today}-{short_id}"
 
         # Validate reference uniqueness
         existing_expenses = registry.database(
             model_name="Expense",
             operation="filter",
-            data={"reference": data["reference"], "corporate_id": corporate_id},
+            data={"reference": reference, "corporate_id": corporate_id},
         )
         if existing_expenses:
+            # Append extra uniqueness if collision
+            reference = f"{reference}-{str(_uuid.uuid4())[:4].upper()}"
+
+        # Always auto-resolve expense and payment accounts via AccountingService
+        # This ensures accounts exist (creates them if needed) and journal entries work
+        default_accounts = accounting_service.get_or_create_default_accounts(
+            corporate_id,
+            required=["operating_expense", "cash", "vat_receivable"],
+        )
+
+        # Map category to the right expense account
+        category = data.get("category", "OPERATING")
+        category_account_map = {
+            "OPERATING": "operating_expense",
+            "ADMINISTRATIVE": "operating_expense",
+            "SELLING": "operating_expense",
+            "FINANCIAL": "operating_expense",
+            "OTHER": "operating_expense",
+        }
+        expense_account_key = category_account_map.get(category, "operating_expense")
+
+        # User can override with explicit account IDs
+        expense_account_id = data.get("expense_account_id") or default_accounts.get(expense_account_key)
+        payment_account_id = data.get("payment_account_id") or default_accounts.get("cash")
+
+        if not expense_account_id or not payment_account_id:
             return ResponseProvider(
-                message="Expense reference already exists", code=400
+                message="Could not resolve expense or payment accounts. Please seed default accounts first.",
+                code=400,
             ).bad_request()
 
         # Validate vendor if provided
@@ -168,16 +125,10 @@ def create_expense(request):
             vendors = registry.database(
                 model_name="Vendor",
                 operation="filter",
-                data={
-                    "id": data["vendor_id"],
-                    "corporate_id": corporate_id,
-                    "is_active": True,
-                },
+                data={"id": data["vendor_id"], "corporate_id": corporate_id},
             )
             if not vendors:
-                return ResponseProvider(
-                    message="Vendor not found", code=404
-                ).bad_request()
+                return ResponseProvider(message="Vendor not found", code=404).bad_request()
 
         # Calculate tax amount if tax rate provided
         tax_amount = Decimal(str(data.get("tax_amount", 0)))
@@ -193,16 +144,15 @@ def create_expense(request):
                     tax_amount = Decimal(str(data["amount"])) * Decimal("0.16")
 
         with transaction.atomic():
-            # Create expense
             expense_data = {
                 "corporate_id": corporate_id,
                 "date": data["date"],
-                "reference": data["reference"],
+                "reference": reference,
                 "description": data["description"],
                 "category": data["category"],
                 "amount": str(data["amount"]),
-                "expense_account_id": expense_account_id,  # Use validated/default account
-                "payment_account_id": payment_account_id,  # Use validated/default account
+                "expense_account_id": expense_account_id,
+                "payment_account_id": payment_account_id,
                 "vendor_id": data.get("vendor_id"),
                 "tax_amount": str(tax_amount),
                 "tax_rate_id": data.get("tax_rate_id"),
@@ -214,18 +164,26 @@ def create_expense(request):
                 model_name="Expense", operation="create", data=expense_data
             )
 
-            # Create journal entry
-            journal_entry = accounting_service.create_expense_journal_entry(
-                expense["id"], user
-            )
-
-            # Update expense with journal entry reference
-            registry.database(
-                model_name="Expense",
-                operation="update",
-                instance_id=expense["id"],
-                data={"journal_entry_id": journal_entry["id"]},
-            )
+            # Create journal entry — accounts are guaranteed to exist
+            journal_entry = None
+            try:
+                journal_entry = accounting_service.create_expense_journal_entry(
+                    expense["id"], user
+                )
+                registry.database(
+                    model_name="Expense",
+                    operation="update",
+                    instance_id=expense["id"],
+                    data={"journal_entry_id": journal_entry["id"]},
+                )
+            except Exception as je_err:
+                TransactionLogBase.log(
+                    transaction_type="EXPENSE_JOURNAL_ENTRY_FAILED",
+                    user=user,
+                    message=str(je_err),
+                    state_name="Warning",
+                    request=request,
+                )
 
         TransactionLogBase.log(
             transaction_type="EXPENSE_CREATED",
@@ -543,17 +501,8 @@ def update_expense(request):
 
         corporate_id = corporate_users[0]["corporate_id"]
 
-        # Validate required fields
-        required_fields = [
-            "id",
-            "date",
-            "reference",
-            "description",
-            "category",
-            "amount",
-            "expense_account_id",
-            "payment_account_id",
-        ]
+        # Validate required fields — account IDs are optional (auto-resolved)
+        required_fields = ["id", "date", "description", "category", "amount"]
         for field in required_fields:
             if field not in data:
                 return ResponseProvider(
@@ -572,12 +521,26 @@ def update_expense(request):
         expense_id = expenses[0]["id"]
         old_expense = expenses[0]
 
+        # Auto-resolve accounts (use provided or fall back to defaults)
+        default_accounts = accounting_service.get_or_create_default_accounts(
+            corporate_id, required=["operating_expense", "cash"],
+        )
+        expense_account_id = data.get("expense_account_id") or old_expense.get("expense_account_id") or default_accounts.get("operating_expense")
+        payment_account_id = data.get("payment_account_id") or old_expense.get("payment_account_id") or default_accounts.get("cash")
+
+        # Auto-generate reference if not provided
+        import uuid as _uuid
+        reference = data.get("reference", "").strip() or old_expense.get("reference", "")
+        if not reference:
+            from datetime import date as _date
+            reference = f"EXP-{_date.today().strftime('%Y%m%d')}-{str(_uuid.uuid4())[:6].upper()}"
+
         # Validate reference uniqueness if changed
-        if data["reference"] != old_expense["reference"]:
+        if reference != old_expense.get("reference", ""):
             existing_expenses = registry.database(
                 model_name="Expense",
                 operation="filter",
-                data={"reference": data["reference"], "corporate_id": corporate_id},
+                data={"reference": reference, "corporate_id": corporate_id},
             )
             if existing_expenses:
                 return ResponseProvider(
@@ -601,12 +564,12 @@ def update_expense(request):
             # Update expense
             expense_data = {
                 "date": data["date"],
-                "reference": data["reference"],
+                "reference": reference,
                 "description": data["description"],
                 "category": data["category"],
                 "amount": str(data["amount"]),
-                "expense_account_id": data["expense_account_id"],
-                "payment_account_id": data["payment_account_id"],
+                "expense_account_id": expense_account_id,
+                "payment_account_id": payment_account_id,
                 "vendor_id": data.get("vendor_id"),
                 "tax_amount": str(tax_amount),
                 "tax_rate_id": data.get("tax_rate_id"),

@@ -89,7 +89,7 @@ def create_transaction(request):
 
         # Create transaction with corrected model name
         transaction = registry.database(
-            model_name="BankTransaction",  # Corrected from "banktransaction"
+            model_name="BankTransaction",
             operation="create",
             data={
                 "bank_account_id": bank_account_id,
@@ -98,7 +98,7 @@ def create_transaction(request):
                 "reference": data.get("reference"),
                 "narration": data.get("narration"),
                 "transaction_date": data.get("transaction_date", timezone.now().date()),
-                "status": data.get("status", "pending"),
+                "status": data.get("status", "confirmed"),  # default to confirmed so balance updates immediately
                 "created_by": metadata.get("user"),
             },
         )

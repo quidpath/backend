@@ -94,7 +94,28 @@ def get_sales_summary(request):
                 message="Start date must be before end date", code=400
             ).bad_request()
 
-        # Get posted invoices
+        # All-time summary stats for stat cards
+        all_invoices = registry.database(
+            model_name="Invoices",
+            operation="filter",
+            data={"corporate_id": corporate_id},
+        )
+        non_draft = [i for i in all_invoices if i.get("status") not in ("DRAFT", "CANCELLED")]
+        paid_invoices_all = [i for i in non_draft if i.get("status") == "PAID"]
+        overdue_invoices_all = [i for i in non_draft if i.get("status") == "OVERDUE"]
+
+        total_invoiced_all = sum(Decimal(str(i.get("total", 0))) for i in non_draft)
+        total_paid_all = sum(Decimal(str(i.get("total", 0))) for i in paid_invoices_all)
+        total_overdue_all = sum(Decimal(str(i.get("total", 0))) for i in overdue_invoices_all)
+
+        quotes_pending_list = registry.database(
+            model_name="Quotation",
+            operation="filter",
+            data={"corporate_id": corporate_id, "status": "POSTED"},
+        )
+        quotes_pending_count = len(quotes_pending_list)
+
+        # Get posted invoices for date-range grouping
         invoices = registry.database(
             model_name="Invoices",
             operation="filter",
@@ -223,6 +244,11 @@ def get_sales_summary(request):
                 "tax_total": str(total_tax),
                 "total": str(total_amount),
             },
+            # Stat card fields
+            "total_invoiced": float(total_invoiced_all),
+            "total_paid": float(total_paid_all),
+            "total_overdue": float(total_overdue_all),
+            "quotes_pending": quotes_pending_count,
         }
 
         TransactionLogBase.log(
@@ -320,7 +346,28 @@ def get_purchases_summary(request):
                 message="Start date must be before end date", code=400
             ).bad_request()
 
-        # Get posted vendor bills
+        # All-time summary stats for stat cards
+        all_bills = registry.database(
+            model_name="VendorBill",
+            operation="filter",
+            data={"corporate_id": corporate_id},
+        )
+        non_draft_bills = [b for b in all_bills if b.get("status") not in ("DRAFT", "CANCELLED")]
+        paid_bills_all = [b for b in non_draft_bills if b.get("status") == "PAID"]
+        unpaid_bills_all = [b for b in non_draft_bills if b.get("status") in ("POSTED", "PARTIALLY_PAID", "OVERDUE")]
+
+        total_bills_all = sum(Decimal(str(b.get("total", 0))) for b in non_draft_bills)
+        total_paid_bills_all = sum(Decimal(str(b.get("total", 0))) for b in paid_bills_all)
+        total_unpaid_bills_all = sum(Decimal(str(b.get("total", 0))) for b in unpaid_bills_all)
+
+        open_pos = registry.database(
+            model_name="PurchaseOrder",
+            operation="filter",
+            data={"corporate_id": corporate_id, "status": "POSTED"},
+        )
+        open_pos_count = len(open_pos)
+
+        # Get posted vendor bills for date-range grouping
         vendor_bills = registry.database(
             model_name="VendorBill",
             operation="filter",
@@ -447,6 +494,11 @@ def get_purchases_summary(request):
                 "tax_total": str(total_tax),
                 "total": str(total_amount),
             },
+            # Stat card fields
+            "total_bills": float(total_bills_all),
+            "total_paid": float(total_paid_bills_all),
+            "total_unpaid": float(total_unpaid_bills_all),
+            "purchase_orders_open": open_pos_count,
         }
 
         TransactionLogBase.log(

@@ -101,7 +101,7 @@ def add_bank_account(request):
             model_name="BankAccount",
             operation="create",
             data={
-                "corporate_id": corporate_id,  # Use corporate_id instead of corporate
+                "corporate_id": corporate_id,
                 "bank_name": data.get("bank_name"),
                 "account_name": data.get("account_name"),
                 "account_number": data.get("account_number"),
@@ -110,6 +110,29 @@ def add_bank_account(request):
                 "is_active": True,
             },
         )
+
+        # Create opening balance transaction if provided
+        opening_balance = data.get("opening_balance", 0)
+        try:
+            opening_balance = float(opening_balance)
+        except (TypeError, ValueError):
+            opening_balance = 0.0
+
+        if opening_balance > 0:
+            registry.database(
+                model_name="BankTransaction",
+                operation="create",
+                data={
+                    "bank_account_id": new_account["id"],
+                    "transaction_type": "deposit",
+                    "amount": str(opening_balance),
+                    "reference": "OPENING-BALANCE",
+                    "narration": "Opening balance",
+                    "transaction_date": timezone.now().date(),
+                    "status": "confirmed",
+                    "created_by": metadata.get("user"),
+                },
+            )
 
         # Prepare email notification
         destination_email = corporate.get("email")
@@ -258,21 +281,52 @@ def list_bank_accounts(request):
             data={"corporate_id": corporate_id, "is_active": True},
         )
 
+        # Compute balance for each account from its transactions
+        from decimal import Decimal
+        serialized_accounts = []
+        for account in accounts:
+            account_id = account["id"] if isinstance(account, dict) else account.id
+            txns = registry.database(
+                model_name="BankTransaction",
+                operation="filter",
+                data={"bank_account_id": account_id, "status": "confirmed"},
+            )
+            balance = Decimal("0")
+            for txn in txns:
+                amt = Decimal(str(txn.get("amount", 0)))
+                txn_type = txn.get("transaction_type", "")
+                if txn_type in ("deposit", "transfer_in"):
+                    balance += amt
+                elif txn_type in ("withdrawal", "transfer_out", "charge"):
+                    balance -= amt
+                # "transfer" type: handled by transfer_in/transfer_out on each side
+            acc_dict = dict(account) if isinstance(account, dict) else {
+                "id": str(account_id),
+                "bank_name": account.bank_name,
+                "account_name": account.account_name,
+                "account_number": account.account_number,
+                "currency": account.currency,
+                "is_default": account.is_default,
+                "is_active": account.is_active,
+            }
+            acc_dict["balance"] = float(balance)
+            serialized_accounts.append(acc_dict)
+
         # Log success
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_LIST_SUCCESS",
             user=user,
-            message=f"Retrieved {len(accounts)} bank accounts for corporate {corporate_id}",
+            message=f"Retrieved {len(serialized_accounts)} bank accounts for corporate {corporate_id}",
             state_name="Success",
-            extra={"account_count": len(accounts)},
+            extra={"account_count": len(serialized_accounts)},
             request=request,
         )
 
         return ResponseProvider(
             message="Bank accounts retrieved successfully",
             data={
-                "results": accounts,  # Changed from "accounts" to "results" for frontend compatibility
-                "count": len(accounts),
+                "results": serialized_accounts,
+                "count": len(serialized_accounts),
                 "corporate_id": corporate_id,
             },
             code=200,

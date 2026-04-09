@@ -147,6 +147,10 @@ from Accounting.views.document_pdf import (
     download_po_pdf,
     download_bill_pdf,
 )
+from Accounting.views.payment_views import (
+    record_invoice_payment,
+    record_bill_payment,
+)
 
 urlpatterns = [
     # Customer Endpoints
@@ -461,4 +465,7 @@ urlpatterns = [
     path("quotation/download-pdf/", download_quotation_pdf, name="download_quotation_pdf"),
     path("purchase-orders/download-pdf/", download_po_pdf, name="download_po_pdf"),
     path("vendor-bill/download-pdf/", download_bill_pdf, name="download_bill_pdf"),
+    # ── Payment Recording ─────────────────────────────────────────────────────
+    path("invoice/record-payment/", record_invoice_payment, name="record_invoice_payment"),
+    path("vendor-bill/record-payment/", record_bill_payment, name="record_bill_payment"),
 ]

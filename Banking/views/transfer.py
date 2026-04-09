@@ -103,18 +103,54 @@ def create_internal_transfer(request):
                 message="To account not found or inactive", code=404
             ).bad_request()
 
-        # Create Internal Transfer
+        # Create Internal Transfer record
         transfer = registry.database(
             model_name="InternalTransfer",
             operation="create",
             data={
-                "from_account_id": from_account_id,  # Use _id for ForeignKey
-                "to_account_id": to_account_id,  # Use _id for ForeignKey
+                "from_account_id": from_account_id,
+                "to_account_id": to_account_id,
                 "amount": data["amount"],
                 "reference": data.get("reference"),
                 "reason": data.get("reason"),
                 "transfer_date": data.get("transfer_date", timezone.now().date()),
-                "status": data.get("status", "pending"),
+                "status": "completed",
+                "created_by": metadata.get("user"),
+            },
+        )
+
+        # Create BankTransaction records so balance is updated on both sides
+        transfer_ref = data.get("reference") or f"TRF-{str(transfer['id'])[:8].upper()}"
+        transfer_date = data.get("transfer_date", timezone.now().date())
+
+        # Debit the source account (transfer_out)
+        registry.database(
+            model_name="BankTransaction",
+            operation="create",
+            data={
+                "bank_account_id": from_account_id,
+                "transaction_type": "transfer_out",
+                "amount": data["amount"],
+                "reference": transfer_ref,
+                "narration": data.get("reason") or f"Transfer to {to_accounts[0].get('account_name', '')}",
+                "transaction_date": transfer_date,
+                "status": "confirmed",
+                "created_by": metadata.get("user"),
+            },
+        )
+
+        # Credit the destination account (transfer_in)
+        registry.database(
+            model_name="BankTransaction",
+            operation="create",
+            data={
+                "bank_account_id": to_account_id,
+                "transaction_type": "transfer_in",
+                "amount": data["amount"],
+                "reference": transfer_ref,
+                "narration": data.get("reason") or f"Transfer from {from_accounts[0].get('account_name', '')}",
+                "transaction_date": transfer_date,
+                "status": "confirmed",
                 "created_by": metadata.get("user"),
             },
         )

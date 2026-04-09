@@ -22,6 +22,37 @@ from quidpath_backend.core.utils.registry import ServiceRegistry
 from OrgAuth.models.document_template import DocumentTemplate
 
 
+def build_company_info(corporate):
+    """Build company_info dict from a Corporate registry dict, resolving the logo file path."""
+    import os
+    from django.conf import settings as django_settings
+
+    logo = ''
+    raw_logo = corporate.get('logo') or corporate.get('logo_url') or ''
+    if raw_logo:
+        raw_logo = str(raw_logo)
+        if os.path.isabs(raw_logo) and os.path.exists(raw_logo):
+            logo = raw_logo
+        elif raw_logo.startswith('data:image'):
+            logo = raw_logo
+        elif hasattr(django_settings, 'MEDIA_ROOT'):
+            full_path = os.path.join(django_settings.MEDIA_ROOT, raw_logo.lstrip('/'))
+            if os.path.exists(full_path):
+                logo = full_path
+
+    return {
+        'name': corporate.get('name', 'Company Name'),
+        'address': corporate.get('address', ''),
+        'city': corporate.get('city', ''),
+        'country': corporate.get('country', ''),
+        'phone': corporate.get('phone', ''),
+        'email': corporate.get('email', ''),
+        'tax_id': corporate.get('tax_id', ''),
+        'website': corporate.get('website', ''),
+        'logo': logo,
+    }
+
+
 def hex_to_reportlab_color(hex_color):
     """Convert hex color to reportlab Color object"""
     try:
@@ -33,10 +64,10 @@ def hex_to_reportlab_color(hex_color):
 def get_logo_image(corporate):
     """Extract logo from corporate and return Image object"""
     try:
-        if not corporate.get('logo'):
+        # Support both 'logo' and 'logo_url' keys
+        logo_path = corporate.get('logo') or corporate.get('logo_url')
+        if not logo_path:
             return None
-        
-        logo_path = corporate.get('logo')
         
         # If logo is a file path
         if isinstance(logo_path, str) and os.path.exists(logo_path):
@@ -45,12 +76,11 @@ def get_logo_image(corporate):
         # If logo is base64 data URL
         if isinstance(logo_path, str) and logo_path.startswith('data:image'):
             # Extract base64 data
-            header, data = logo_path.split(',', 1)
-            image_data = base64.b64decode(data)
-            
-            # Create BytesIO object
-            img_buffer = BytesIO(image_data)
-            return Image(img_buffer, width=2*inch, height=0.8*inch, kind='proportional')
+            parts = logo_path.split(',', 1)
+            if len(parts) == 2:
+                image_data = base64.b64decode(parts[1])
+                img_buffer = BytesIO(image_data)
+                return Image(img_buffer, width=2*inch, height=0.8*inch, kind='proportional')
         
         return None
     except Exception as e:
@@ -160,10 +190,13 @@ def generate_document_pdf(document_data, document_type, company_info, template=N
             header_elements.append([Paragraph(detail, ParagraphStyle('Detail', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER))])
         
         header_table = Table(header_elements, colWidths=[6.5*inch])
-        header_table.setStyle(TableStyle([
+        header_style = [
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
+        ]
+        if header_bg:
+            header_style.append(('BACKGROUND', (0, 0), (-1, -1), colors.Color(0.92, 0.95, 0.98)))
+        header_table.setStyle(TableStyle(header_style))
         elements.append(header_table)
         elements.append(Spacer(1, 0.2*inch))
         
@@ -254,11 +287,14 @@ def generate_document_pdf(document_data, document_type, company_info, template=N
             header_data.append([left_item, right_item])
         
         header_table = Table(header_data, colWidths=[3.5*inch, 3*inch])
-        header_table.setStyle(TableStyle([
+        header_style = [
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ]))
+        ]
+        if header_bg:
+            header_style.append(('BACKGROUND', (0, 0), (-1, -1), colors.Color(0.92, 0.95, 0.98)))
+        header_table.setStyle(TableStyle(header_style))
         elements.append(header_table)
     
     elements.append(Spacer(1, 0.3*inch))
@@ -352,13 +388,21 @@ def generate_document_pdf(document_data, document_type, company_info, template=N
     if show_bank_details or show_signature:
         elements.append(Spacer(1, 0.3*inch))
         if show_bank_details:
-            bank_info = Paragraph(
-                f"<b>Bank Details:</b> {company_info.get('bank_name', 'Your Bank')} | "
-                f"Account: {company_info.get('bank_account', '1234567890')} | "
-                f"Branch: {company_info.get('bank_branch', 'Main')}",
-                ParagraphStyle('BankInfo', parent=styles['Normal'], fontSize=8, fontName=font_name, textColor=colors.grey)
-            )
-            elements.append(bank_info)
+            contact_parts = []
+            if company_info.get('phone'):
+                contact_parts.append(f"Phone: {company_info['phone']}")
+            if company_info.get('email'):
+                contact_parts.append(f"Email: {company_info['email']}")
+            if company_info.get('tax_id'):
+                contact_parts.append(f"Tax ID: {company_info['tax_id']}")
+            if company_info.get('website'):
+                contact_parts.append(f"Web: {company_info['website']}")
+            if contact_parts:
+                bank_info = Paragraph(
+                    ' | '.join(contact_parts),
+                    ParagraphStyle('BankInfo', parent=styles['Normal'], fontSize=8, fontName=font_name, textColor=colors.grey)
+                )
+                elements.append(bank_info)
         if show_signature:
             elements.append(Spacer(1, 0.3*inch))
             sig_table = Table([['_' * 40], ['Authorised Signature']], colWidths=[2*inch], hAlign='RIGHT')
@@ -432,18 +476,7 @@ def download_invoice_pdf(request):
             data={"id": invoice["corporate_id"]},
         )
         
-        company_info = {
-            'name': corporate.get('name', 'Company Name'),
-            'address': corporate.get('address', ''),
-            'city': corporate.get('city', ''),
-            'country': corporate.get('country', ''),
-            'phone': corporate.get('phone', ''),
-            'email': corporate.get('email', ''),
-            'logo_url': corporate.get('logo_url', ''),
-            'bank_name': corporate.get('bank_name', ''),
-            'bank_account': corporate.get('bank_account', ''),
-            'bank_branch': corporate.get('bank_branch', ''),
-        }
+        company_info = build_company_info(corporate)
         
         # Fetch template for this document type
         try:
@@ -532,18 +565,7 @@ def download_quotation_pdf(request):
             data={"id": quote["corporate_id"]},
         )
         
-        company_info = {
-            'name': corporate.get('name', 'Company Name'),
-            'address': corporate.get('address', ''),
-            'city': corporate.get('city', ''),
-            'country': corporate.get('country', ''),
-            'phone': corporate.get('phone', ''),
-            'email': corporate.get('email', ''),
-            'logo_url': corporate.get('logo_url', ''),
-            'bank_name': corporate.get('bank_name', ''),
-            'bank_account': corporate.get('bank_account', ''),
-            'bank_branch': corporate.get('bank_branch', ''),
-        }
+        company_info = build_company_info(corporate)
         
         # Fetch template for this document type
         try:
@@ -633,18 +655,7 @@ def download_po_pdf(request):
             data={"id": po["corporate_id"]},
         )
         
-        company_info = {
-            'name': corporate.get('name', 'Company Name'),
-            'address': corporate.get('address', ''),
-            'city': corporate.get('city', ''),
-            'country': corporate.get('country', ''),
-            'phone': corporate.get('phone', ''),
-            'email': corporate.get('email', ''),
-            'logo_url': corporate.get('logo_url', ''),
-            'bank_name': corporate.get('bank_name', ''),
-            'bank_account': corporate.get('bank_account', ''),
-            'bank_branch': corporate.get('bank_branch', ''),
-        }
+        company_info = build_company_info(corporate)
         
         # Fetch template for this document type
         try:
@@ -733,18 +744,7 @@ def download_bill_pdf(request):
             data={"id": bill["corporate_id"]},
         )
         
-        company_info = {
-            'name': corporate.get('name', 'Company Name'),
-            'address': corporate.get('address', ''),
-            'city': corporate.get('city', ''),
-            'country': corporate.get('country', ''),
-            'phone': corporate.get('phone', ''),
-            'email': corporate.get('email', ''),
-            'logo_url': corporate.get('logo_url', ''),
-            'bank_name': corporate.get('bank_name', ''),
-            'bank_account': corporate.get('bank_account', ''),
-            'bank_branch': corporate.get('bank_branch', ''),
-        }
+        company_info = build_company_info(corporate)
         
         # Fetch template for this document type
         try:
