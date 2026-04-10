@@ -25,6 +25,9 @@ class BillingServiceClient:
         headers = {"Content-Type": "application/json"}
         if self.service_secret:
             headers["X-Service-Key"] = self.service_secret
+            logger.debug(f"Adding X-Service-Key header (length: {len(self.service_secret)})")
+        else:
+            logger.warning("BILLING_SERVICE_SECRET not configured - service-to-service calls will fail")
         return headers
 
     def get_plans(self, plan_type: str = "individual") -> Optional[List[Dict]]:
