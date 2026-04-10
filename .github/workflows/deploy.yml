@@ -117,7 +117,7 @@ jobs:
             secrets["REDIS_PORT"]="${{ secrets.REDIS_PORT }}"
             secrets["ALLOWED_HOSTS"]="${{ secrets.ALLOWED_HOSTS }}"
             secrets["CSRF_TRUSTED_ORIGINS"]="${{ secrets.CSRF_TRUSTED_ORIGINS }}"
-            secrets["BILLING_SERVICE_URL"]="${{ secrets.BILLING_SERVICE_URL }}"
+            secrets["BILLING_SERVICE_URL"]="http://billing-backend-prod:8000"
             secrets["BILLING_SERVICE_SECRET"]="${{ secrets.BILLING_SERVICE_SECRET }}"
             secrets["FRONTEND_URL"]="https://www.quidpath.com"
             secrets["PAYSTACK_PUBLIC_KEY"]="${{ secrets.PAYSTACK_PUBLIC_KEY_PROD }}"
