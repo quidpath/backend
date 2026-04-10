@@ -84,7 +84,7 @@ class CorporateAdmin(admin.ModelAdmin):
         billing_client = BillingServiceClient()
         result = billing_client.check_access(str(obj.id))
 
-        if not result.get("success"):
+        if not result or not result.get("success"):
             return format_html('<span style="color: gray;">Unknown</span>')
 
         has_access = result.get("has_access", False)
@@ -117,7 +117,7 @@ class CorporateAdmin(admin.ModelAdmin):
         billing_client = BillingServiceClient()
         result = billing_client.admin_get_corporate_summary(str(obj.id))
 
-        if not result.get("success"):
+        if not result or not result.get("success"):
             return format_html(
                 '<div style="color: red; padding: 10px; background: #fff3cd; border-radius: 5px;">'
                 "<strong>Error loading billing data:</strong> {}"
