@@ -10,6 +10,7 @@ from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.pagination import apply_search, paginate_queryset
 
 
 @csrf_exempt
@@ -268,34 +269,48 @@ def list_journal_entries(request):
                 data={"corporate_id": corporate_id},
             )
 
-        # Serialize journal entries with lines
+        # Serialize journal entries (without lines for performance)
         serialized_entries = []
         for entry in journal_entries:
+            serialized_entries.append({
+                "id": str(entry["id"]),
+                "date": str(entry["date"]) if entry.get("date") else "",
+                "reference": entry["reference"],
+                "description": entry.get("description", ""),
+                "is_posted": entry.get("is_posted", False),
+                "lines": [],
+            })
+
+        # Apply search
+        search = request.GET.get("search", "").strip()
+        if search:
+            serialized_entries = apply_search(
+                serialized_entries, search,
+                fields=["reference", "description"]
+            )
+
+        # Paginate
+        page_data = paginate_queryset(serialized_entries, request)
+
+        # Load lines only for current page
+        for entry in page_data["results"]:
             lines = registry.database(
                 model_name="JournalEntryLine",
                 operation="filter",
                 data={"journal_entry_id": entry["id"]},
             )
-            serialized_entry = {
-                "id": str(entry["id"]),
-                "date": entry["date"],
-                "reference": entry["reference"],
-                "description": entry.get("description", ""),
-                "is_posted": entry.get("is_posted", False),
-                "lines": [
-                    {
-                        "id": str(line["id"]),
-                        "account_id": str(line["account_id"]),
-                        "debit": str(line["debit"]),
-                        "credit": str(line["credit"]),
-                        "description": line.get("description", ""),
-                    }
-                    for line in lines
-                ],
-            }
-            serialized_entries.append(serialized_entry)
+            entry["lines"] = [
+                {
+                    "id": str(line["id"]),
+                    "account_id": str(line["account_id"]),
+                    "debit": str(line["debit"]),
+                    "credit": str(line["credit"]),
+                    "description": line.get("description", ""),
+                }
+                for line in lines
+            ]
 
-        total = len(journal_entries)
+        total = page_data["total"]
 
         TransactionLogBase.log(
             transaction_type="JOURNAL_ENTRY_LIST_SUCCESS",
@@ -307,7 +322,13 @@ def list_journal_entries(request):
         )
 
         return ResponseProvider(
-            data={"journal_entries": serialized_entries, "total": total},
+            data={
+                "journal_entries": page_data["results"],
+                "total": page_data["total"],
+                "page": page_data["page"],
+                "page_size": page_data["page_size"],
+                "total_pages": page_data["total_pages"],
+            },
             message="Journal entries retrieved successfully",
             code=200,
         ).success()

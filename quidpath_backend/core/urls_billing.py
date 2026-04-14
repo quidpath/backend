@@ -12,6 +12,9 @@ from quidpath_backend.core.views import billing_integration
 app_name = "billing_integration"
 
 urlpatterns = [
+    # Webhooks — MUST BE FIRST (no auth required)
+    path("webhooks/paystack/", billing_integration.paystack_webhook_proxy, name="paystack_webhook_proxy"),
+
     # Plans — public, no auth required
     path("plans/", billing_integration.list_plans, name="list_plans"),
 
