@@ -165,13 +165,22 @@ SIMPLE_JWT = {
 }
 
 # Email Notification Config
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 587
-SMTP_USER = os.environ.get("SMTP_USER")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
-SMTP_USE_TLS = True
-SMTP_USE_SSL = False
-DEFAULT_FROM_EMAIL = "noreply@quidpath.com"
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False
+EMAIL_HOST_USER = os.environ.get("SMTP_USER")
+EMAIL_HOST_PASSWORD = os.environ.get("SMTP_PASSWORD")
+DEFAULT_FROM_EMAIL = os.environ.get("SMTP_USER", "noreply@quidpath.com")
+
+# Legacy SMTP config (for backward compatibility)
+SMTP_HOST = EMAIL_HOST
+SMTP_PORT = EMAIL_PORT
+SMTP_USER = EMAIL_HOST_USER
+SMTP_PASSWORD = EMAIL_HOST_PASSWORD
+SMTP_USE_TLS = EMAIL_USE_TLS
+SMTP_USE_SSL = EMAIL_USE_SSL
 
 # Cache — use Redis if available, fall back to local memory
 CACHES = {
