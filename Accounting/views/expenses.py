@@ -14,6 +14,7 @@ from quidpath_backend.core.utils.json_response import ResponseProvider
 from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.pagination import apply_search, paginate_queryset
 
 
 @csrf_exempt
@@ -282,34 +283,50 @@ def list_expenses(request):
             data={"corporate_id": corporate_id},
         )
 
-        serialized_expenses = []
-        for expense in expenses:
-            serialized_expenses.append(
-                {
-                    "id": str(expense["id"]),
-                    "reference": expense["reference"],
-                    "description": expense["description"],
-                    "date": expense["date"],
-                    "category": expense["category"],
-                    "amount": float(expense["amount"]),
-                    "tax_amount": float(expense.get("tax_amount", 0)),
-                    "total_amount": float(
-                        Decimal(str(expense["amount"]))
-                        + Decimal(str(expense.get("tax_amount", 0)))
-                    ),
-                    "expense_account_id": str(expense["expense_account_id"]),
-                    "payment_account_id": str(expense["payment_account_id"]),
-                    "vendor_id": (
-                        str(expense["vendor_id"]) if expense.get("vendor_id") else None
-                    ),
-                    "is_posted": expense.get("is_posted", False),
-                }
-            )
+        # Serialize
+        serialized_expenses = [
+            {
+                "id": str(expense["id"]),
+                "reference": expense["reference"],
+                "description": expense["description"],
+                "date": str(expense["date"]) if expense.get("date") else "",
+                "category": expense["category"],
+                "amount": float(expense["amount"]),
+                "tax_amount": float(expense.get("tax_amount", 0)),
+                "total_amount": float(
+                    Decimal(str(expense["amount"]))
+                    + Decimal(str(expense.get("tax_amount", 0)))
+                ),
+                "expense_account_id": str(expense["expense_account_id"]),
+                "payment_account_id": str(expense["payment_account_id"]),
+                "vendor_id": (
+                    str(expense["vendor_id"]) if expense.get("vendor_id") else None
+                ),
+                "is_posted": expense.get("is_posted", False),
+            }
+            for expense in expenses
+        ]
 
-        # Calculate category counts
+        # Category counts on full unfiltered set
         categories = [exp["category"] for exp in expenses]
         category_counts = dict(Counter(categories))
-        total = len(expenses)
+
+        # Apply search
+        search = request.GET.get("search", "").strip()
+        if search:
+            serialized_expenses = apply_search(
+                serialized_expenses, search,
+                fields=["reference", "description", "category"]
+            )
+
+        # Apply category filter
+        category_filter = request.GET.get("category", "").strip().upper()
+        if category_filter and category_filter != "ALL":
+            serialized_expenses = [e for e in serialized_expenses if e["category"] == category_filter]
+
+        # Paginate
+        page_data = paginate_queryset(serialized_expenses, request)
+        total = page_data["total"]
 
         TransactionLogBase.log(
             transaction_type="EXPENSE_LIST_SUCCESS",
@@ -322,8 +339,11 @@ def list_expenses(request):
 
         return ResponseProvider(
             data={
-                "expenses": serialized_expenses,
-                "total": total,
+                "expenses": page_data["results"],
+                "total": page_data["total"],
+                "page": page_data["page"],
+                "page_size": page_data["page_size"],
+                "total_pages": page_data["total_pages"],
                 "category_counts": category_counts,
             },
             message="Expenses retrieved successfully",

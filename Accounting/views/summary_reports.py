@@ -107,6 +107,64 @@ def get_sales_summary(request):
         total_invoiced_all = sum(Decimal(str(i.get("total", 0))) for i in non_draft)
         total_paid_all = sum(Decimal(str(i.get("total", 0))) for i in paid_invoices_all)
         total_overdue_all = sum(Decimal(str(i.get("total", 0))) for i in overdue_invoices_all)
+        
+        # Calculate previous period for comparisons
+        period_days = (end_date - start_date).days + 1
+        prev_start = start_date - timedelta(days=period_days)
+        prev_end = start_date - timedelta(days=1)
+        
+        # Previous period invoices
+        prev_invoices = []
+        for inv in non_draft:
+            inv_date = _safe_parse_date(inv.get("date"))
+            if inv_date and prev_start <= inv_date <= prev_end:
+                prev_invoices.append(inv)
+        
+        prev_total_revenue = sum(Decimal(str(i.get("total", 0))) for i in prev_invoices)
+        
+        # Previous period overdue (invoices that were overdue in previous period)
+        prev_overdue = []
+        for inv in overdue_invoices_all:
+            inv_date = _safe_parse_date(inv.get("date"))
+            if inv_date and inv_date <= prev_end:
+                prev_overdue.append(inv)
+        prev_total_overdue = sum(Decimal(str(i.get("total", 0))) for i in prev_overdue)
+        
+        # This month's paid invoices
+        this_month_start = today.replace(day=1)
+        paid_this_month = []
+        for inv in paid_invoices_all:
+            paid_date = _safe_parse_date(inv.get("date"))
+            if paid_date and paid_date >= this_month_start:
+                paid_this_month.append(inv)
+        total_paid_this_month = sum(Decimal(str(i.get("total", 0))) for i in paid_this_month)
+        
+        # Last month's paid invoices
+        last_month_end = this_month_start - timedelta(days=1)
+        last_month_start = last_month_end.replace(day=1)
+        paid_last_month = []
+        for inv in paid_invoices_all:
+            paid_date = _safe_parse_date(inv.get("date"))
+            if paid_date and last_month_start <= paid_date <= last_month_end:
+                paid_last_month.append(inv)
+        total_paid_last_month = sum(Decimal(str(i.get("total", 0))) for i in paid_last_month)
+        
+        # Calculate percentage changes
+        def calc_change(current, previous):
+            if previous > 0:
+                return float(((current - previous) / previous) * 100)
+            return 0.0
+        
+        def get_trend(change):
+            if change > 0:
+                return "up"
+            elif change < 0:
+                return "down"
+            return "neutral"
+        
+        revenue_change = calc_change(total_amount, prev_total_revenue)
+        overdue_change = calc_change(total_overdue_all, prev_total_overdue)
+        paid_change = calc_change(total_paid_this_month, total_paid_last_month)
 
         quotes_pending_list = registry.database(
             model_name="Quotation",
@@ -244,10 +302,27 @@ def get_sales_summary(request):
                 "tax_total": str(total_tax),
                 "total": str(total_amount),
             },
-            # Stat card fields
+            # Stat card fields with comparisons
+            "total_revenue": float(total_amount),
+            "total_revenue_previous": float(prev_total_revenue),
+            "total_revenue_change": round(revenue_change, 1),
+            "total_revenue_trend": get_trend(revenue_change),
+            
             "total_invoiced": float(total_invoiced_all),
             "total_paid": float(total_paid_all),
+            
+            "total_outstanding": float(total_invoiced_all - total_paid_all),
+            
             "total_overdue": float(total_overdue_all),
+            "total_overdue_previous": float(prev_total_overdue),
+            "total_overdue_change": round(overdue_change, 1),
+            "total_overdue_trend": get_trend(overdue_change),
+            
+            "paid_this_month": float(total_paid_this_month),
+            "paid_this_month_previous": float(total_paid_last_month),
+            "paid_this_month_change": round(paid_change, 1),
+            "paid_this_month_trend": get_trend(paid_change),
+            
             "quotes_pending": quotes_pending_count,
         }
 

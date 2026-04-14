@@ -218,3 +218,48 @@ def check_access(request):
         return ResponseProvider.error_response("Billing service unavailable", status=503)
     from django.http import JsonResponse
     return JsonResponse(result, status=200)
+
+
+@csrf_exempt
+def paystack_webhook_proxy(request):
+    """
+    Proxy Paystack webhooks to the billing service.
+    This endpoint receives webhooks from Paystack and forwards them to the billing microservice.
+    No authentication required - webhook signature verification happens in billing service.
+    """
+    import requests
+    from django.conf import settings
+    from django.http import HttpResponse
+    
+    if request.method != "POST":
+        return HttpResponse("Method not allowed", status=405)
+    
+    try:
+        # Forward the raw webhook to billing service
+        billing_url = getattr(settings, "BILLING_SERVICE_URL", "http://billing-backend-dev:8002")
+        webhook_url = f"{billing_url.rstrip('/')}/api/billing/webhooks/paystack/"
+        
+        # Forward headers (especially x-paystack-signature)
+        headers = {
+            "Content-Type": request.content_type,
+        }
+        
+        # Include Paystack signature header if present
+        paystack_signature = request.META.get("HTTP_X_PAYSTACK_SIGNATURE")
+        if paystack_signature:
+            headers["x-paystack-signature"] = paystack_signature
+        
+        # Forward the raw body
+        response = requests.post(
+            webhook_url,
+            data=request.body,
+            headers=headers,
+            timeout=30,
+        )
+        
+        logger.info(f"Webhook forwarded to billing service: {response.status_code}")
+        return HttpResponse(response.content, status=response.status_code, content_type=response.headers.get("content-type", "application/json"))
+        
+    except Exception as e:
+        logger.error(f"Error forwarding webhook to billing service: {e}", exc_info=True)
+        return HttpResponse("Webhook processing failed", status=500)

@@ -17,6 +17,7 @@ from quidpath_backend.core.utils.Logbase import TransactionLogBase
 from quidpath_backend.core.decorators import require_module_permission
 from quidpath_backend.core.utils.registry import ServiceRegistry
 from quidpath_backend.core.utils.request_parser import get_clean_data
+from quidpath_backend.core.utils.pagination import apply_search, paginate_queryset
 
 
 def normalize_taxable_id(raw, registry):
@@ -675,70 +676,83 @@ def list_invoices(request):
                 data={"corporate_id": corporate_id},
             )
 
-        for inv in invoices:
-            lines = registry.database(
-                model_name="invoiceline",
-                operation="filter",
-                data={"invoice_id": inv["id"]},
-            )
-            inv["lines"] = lines
-
+        # Serialize first (without lines for performance — lines loaded per-page only)
         serialized_invoices = [
             {
                 "id": str(inv["id"]),
                 "number": inv["number"],
                 "customer": str(inv["customer_id"]),
-                "date": inv["date"],
-                "due_date": inv["due_date"],
+                "date": str(inv["date"]) if inv.get("date") else "",
+                "due_date": str(inv["due_date"]) if inv.get("due_date") else "",
                 "status": inv["status"],
                 "salesperson": str(inv.get("salesperson_id", "")),
-                "ship_date": inv.get("ship_date", ""),
-                "ship_via": inv.get("ship_via", ""),
-                "terms": inv.get("terms", ""),
-                "fob": inv.get("fob", ""),
-                "comments": inv.get("comments", ""),
-                "purchase_order": inv.get("purchase_order", ""),
+                "ship_date": str(inv.get("ship_date", "") or ""),
+                "ship_via": inv.get("ship_via", "") or "",
+                "terms": inv.get("terms", "") or "",
+                "fob": inv.get("fob", "") or "",
+                "comments": inv.get("comments", "") or "",
+                "purchase_order": inv.get("purchase_order", "") or "",
                 "sub_total": float(inv.get("sub_total", 0)),
                 "tax_total": float(inv.get("tax_total", 0)),
                 "total": float(inv.get("total", 0)),
                 "total_discount": float(inv.get("total_discount", 0)),
-                "lines": [
-                    {
-                        "id": str(line.get("id", "")),
-                        "description": line.get("description", ""),
-                        "quantity": line.get("quantity", 0),
-                        "unit_price": float(line.get("unit_price", 0)),
-                        "amount": float(line.get("amount", 0)),
-                        "discount": float(line.get("discount", 0)),
-                        "taxable": str(line.get("taxable_id", "")),
-                        "tax_amount": float(line.get("tax_amount", 0)),
-                        "sub_total": float(line.get("sub_total", 0)),
-                        "total": float(line.get("total", 0)),
-                    }
-                    for line in inv.get("lines", [])
-                ],
+                "lines": [],
             }
             for inv in invoices
         ]
 
+        # Status counts on full unfiltered set
         statuses = [inv["status"] for inv in invoices]
         status_counts = dict(Counter(statuses))
-        total = len(invoices)
-
         all_statuses = {
-            "DRAFT": 0,
-            "ISSUED": 0,
-            "PAID": 0,
-            "PARTIALLY_PAID": 0,
-            "OVERDUE": 0,
-            "CANCELLED": 0,
+            "DRAFT": 0, "ISSUED": 0, "PAID": 0,
+            "PARTIALLY_PAID": 0, "OVERDUE": 0, "CANCELLED": 0,
         }
         all_statuses.update(status_counts)
+
+        # Apply search filter
+        search = request.GET.get("search", "").strip()
+        if search:
+            serialized_invoices = apply_search(
+                serialized_invoices, search,
+                fields=["number", "customer", "status", "purchase_order", "comments"]
+            )
+
+        # Apply status filter
+        status_filter = request.GET.get("status", "").strip().upper()
+        if status_filter and status_filter != "ALL":
+            serialized_invoices = [i for i in serialized_invoices if i["status"] == status_filter]
+
+        # Paginate
+        page_data = paginate_queryset(serialized_invoices, request)
+
+        # Load lines only for the current page
+        for inv in page_data["results"]:
+            lines = registry.database(
+                model_name="invoiceline",
+                operation="filter",
+                data={"invoice_id": inv["id"]},
+            )
+            inv["lines"] = [
+                {
+                    "id": str(line.get("id", "")),
+                    "description": line.get("description", ""),
+                    "quantity": line.get("quantity", 0),
+                    "unit_price": float(line.get("unit_price", 0)),
+                    "amount": float(line.get("amount", 0)),
+                    "discount": float(line.get("discount", 0)),
+                    "taxable": str(line.get("taxable_id", "")),
+                    "tax_amount": float(line.get("tax_amount", 0)),
+                    "sub_total": float(line.get("sub_total", 0)),
+                    "total": float(line.get("total", 0)),
+                }
+                for line in lines
+            ]
 
         TransactionLogBase.log(
             transaction_type="INVOICE_LIST_SUCCESS",
             user=user,
-            message=f"Retrieved {total} invoices for corporate {corporate_id}",
+            message=f"Retrieved {page_data['total']} invoices for corporate {corporate_id}",
             state_name="Success",
             extra={"status_counts": all_statuses},
             request=request,
@@ -746,8 +760,11 @@ def list_invoices(request):
 
         return ResponseProvider(
             data={
-                "invoices": serialized_invoices,
-                "total": total,
+                "invoices": page_data["results"],
+                "total": page_data["total"],
+                "page": page_data["page"],
+                "page_size": page_data["page_size"],
+                "total_pages": page_data["total_pages"],
                 "status_counts": all_statuses,
             },
             message="Invoices retrieved successfully",
