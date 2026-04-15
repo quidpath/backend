@@ -151,6 +151,11 @@ from Accounting.views.payment_views import (
     record_invoice_payment,
     record_bill_payment,
 )
+from Accounting.views.invoice_posting import (
+    post_invoice as post_invoice_with_journal,
+    unpost_invoice,
+    record_payment,
+)
 
 urlpatterns = [
     # Customer Endpoints
@@ -468,4 +473,8 @@ urlpatterns = [
     # ── Payment Recording ─────────────────────────────────────────────────────
     path("invoice/record-payment/", record_invoice_payment, name="record_invoice_payment"),
     path("vendor-bill/record-payment/", record_bill_payment, name="record_bill_payment"),
+    # ── Invoice Posting with Journal Entry (POS Integration) ─────────────────
+    path("invoices/<uuid:invoice_id>/post/", post_invoice_with_journal, name="post_invoice_with_journal"),
+    path("invoices/<uuid:invoice_id>/unpost/", unpost_invoice, name="unpost_invoice_with_journal"),
+    path("invoices/<uuid:invoice_id>/record-payment/", record_payment, name="record_payment_with_journal"),
 ]

@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
 from django.conf import settings
 import logging
 
@@ -74,6 +74,57 @@ This email was sent from the QuidPath Help & Support system.
         logger.error(f'Error in contact_support: {str(e)}')
         return Response(
             {'message': 'An error occurred. Please try again.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def send_contact_email(request):
+    """
+    Send contact form email from landing page
+    Accepts: to, subject, html, text
+    """
+    try:
+        to_email = request.data.get('to', '')
+        subject = request.data.get('subject', '')
+        html_content = request.data.get('html', '')
+        text_content = request.data.get('text', '')
+
+        if not all([to_email, subject, html_content]):
+            return Response(
+                {'error': 'Missing required fields: to, subject, html'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create email with both HTML and plain text versions
+        try:
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body=text_content or 'Please view this email in HTML format.',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[to_email],
+            )
+            email.attach_alternative(html_content, "text/html")
+            email.send(fail_silently=False)
+            
+            logger.info(f'Contact form email sent to {to_email} - Subject: {subject}')
+            
+            return Response(
+                {'success': True, 'message': 'Email sent successfully'},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            logger.error(f'Failed to send contact form email: {str(e)}')
+            return Response(
+                {'error': 'Failed to send email. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f'Error in send_contact_email: {str(e)}')
+        return Response(
+            {'error': 'An error occurred. Please try again.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
