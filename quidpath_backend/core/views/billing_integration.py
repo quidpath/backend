@@ -249,7 +249,16 @@ def paystack_webhook_proxy(request):
         if paystack_signature:
             headers["x-paystack-signature"] = paystack_signature
         
+        # Add service-to-service authentication
+        service_secret = getattr(settings, "BILLING_SERVICE_SECRET", "")
+        if service_secret:
+            headers["X-Service-Key"] = service_secret
+            logger.info("Added X-Service-Key for service-to-service authentication")
+        else:
+            logger.warning("BILLING_SERVICE_SECRET not configured - webhook may be rejected")
+        
         # Forward the raw body
+        logger.info(f"Forwarding webhook to {webhook_url}, body length: {len(request.body)}")
         response = requests.post(
             webhook_url,
             data=request.body,
@@ -258,6 +267,8 @@ def paystack_webhook_proxy(request):
         )
         
         logger.info(f"Webhook forwarded to billing service: {response.status_code}")
+        if response.status_code != 200:
+            logger.error(f"Billing service response: {response.text}")
         return HttpResponse(response.content, status=response.status_code, content_type=response.headers.get("content-type", "application/json"))
         
     except Exception as e:
