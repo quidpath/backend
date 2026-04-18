@@ -94,7 +94,7 @@ jobs:
             secrets["REDIS_HOST"]="redis"
             secrets["REDIS_PORT"]="6379"
             secrets["ALLOWED_HOSTS"]="stage-api.quidpath.com,stage.quidpath.com,localhost,127.0.0.1,0.0.0.0"
-            secrets["BILLING_SERVICE_URL"]="http://billing-backend-stage:8000"
+            secrets["BILLING_SERVICE_URL"]="http://51.77.147.233:8012"
             secrets["BILLING_SERVICE_SECRET"]="${{ secrets.BILLING_SERVICE_SECRET }}"
             secrets["BILLING_WEBHOOK_SECRET"]="${{ secrets.BILLING_WEBHOOK_SECRET }}"
             secrets["FRONTEND_URL"]="https://stage.quidpath.com"
@@ -117,7 +117,7 @@ jobs:
             secrets["REDIS_PORT"]="${{ secrets.REDIS_PORT }}"
             secrets["ALLOWED_HOSTS"]="${{ secrets.ALLOWED_HOSTS }}"
             secrets["CSRF_TRUSTED_ORIGINS"]="${{ secrets.CSRF_TRUSTED_ORIGINS }}"
-            secrets["BILLING_SERVICE_URL"]="http://billing-backend-prod:8000"
+            secrets["BILLING_SERVICE_URL"]="http://51.77.147.233:8007"
             secrets["BILLING_SERVICE_SECRET"]="${{ secrets.BILLING_SERVICE_SECRET }}"
             secrets["FRONTEND_URL"]="https://www.quidpath.com"
             secrets["PAYSTACK_PUBLIC_KEY"]="${{ secrets.PAYSTACK_PUBLIC_KEY_PROD }}"
@@ -132,6 +132,13 @@ jobs:
           secrets["SMTP_USER"]="${{ secrets.SMTP_USER }}"
           secrets["SMTP_PASSWORD"]="${{ secrets.SMTP_PASSWORD }}"
           secrets["USE_MEMORY_CHANNEL_LAYER"]="${{ secrets.USE_MEMORY_CHANNEL_LAYER }}"
+          
+          # ERP Microservice Secrets (CRITICAL - These were missing!)
+          secrets["INVENTORY_SERVICE_SECRET"]="${{ secrets.INVENTORY_SERVICE_SECRET }}"
+          secrets["POS_SERVICE_SECRET"]="${{ secrets.POS_SERVICE_SECRET }}"
+          secrets["CRM_SERVICE_SECRET"]="${{ secrets.CRM_SERVICE_SECRET }}"
+          secrets["HRM_SERVICE_SECRET"]="${{ secrets.HRM_SERVICE_SECRET }}"
+          secrets["PROJECTS_SERVICE_SECRET"]="${{ secrets.PROJECTS_SERVICE_SECRET }}"
 
           json="{}"
           for key in "${!secrets[@]}"; do

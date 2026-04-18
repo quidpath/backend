@@ -303,3 +303,12 @@ $RECYCLE.BIN/# Project specific
 ipv4_ranges.txt
 ipv6_ranges.txt
 GitHubActionsSSMPolicy.json
+
+# Deployment scripts (local utility, not part of the service)
+deploy_to_development.ps1
+MICROSERVICE_AUTHENTICATION_FIXES.md
+CORRECTED_SERVICE_URLS.md
+FRONTEND_BACKEND_INTEGRATION_AUDIT.md
+FRONTEND_BACKEND_FIELD_MAPPING_FIXES.md
+SERVICE_AUTHENTICATION_AUDIT_REPORT.md
+api_validation_script.py
