@@ -94,7 +94,7 @@ jobs:
             secrets["REDIS_HOST"]="redis"
             secrets["REDIS_PORT"]="6379"
             secrets["ALLOWED_HOSTS"]="stage-api.quidpath.com,stage.quidpath.com,localhost,127.0.0.1,0.0.0.0"
-            secrets["BILLING_SERVICE_URL"]="http://51.77.147.233:8012"
+            secrets["BILLING_SERVICE_URL"]="http://billing-backend-stage:8000"
             secrets["BILLING_SERVICE_SECRET"]="${{ secrets.BILLING_SERVICE_SECRET }}"
             secrets["BILLING_WEBHOOK_SECRET"]="${{ secrets.BILLING_WEBHOOK_SECRET }}"
             secrets["FRONTEND_URL"]="https://stage.quidpath.com"
