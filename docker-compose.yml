@@ -59,6 +59,8 @@ services:
       REDIS_PORT: ${REDIS_PORT}
       USE_MEMORY_CHANNEL_LAYER: ${USE_MEMORY_CHANNEL_LAYER}
       DJANGO_SETTINGS_MODULE: quidpath_backend.settings.prod
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS}
       CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS}
       SMTP_USER: ${SMTP_USER}
@@ -72,6 +74,11 @@ services:
       PAYSTACK_TEST_MODE: "false"
       PAYSTACK_WEBHOOK_URL: "https://billing.quidpath.com/api/billing/webhooks/paystack/"
       PAYSTACK_CALLBACK_URL: "https://www.quidpath.com/payment/callback"
+      INVENTORY_SERVICE_SECRET: ${INVENTORY_SERVICE_SECRET}
+      POS_SERVICE_SECRET: ${POS_SERVICE_SECRET}
+      CRM_SERVICE_SECRET: ${CRM_SERVICE_SECRET}
+      HRM_SERVICE_SECRET: ${HRM_SERVICE_SECRET}
+      PROJECTS_SERVICE_SECRET: ${PROJECTS_SERVICE_SECRET}
     volumes:
       - /mnt/quidpath-data/media:/app/media
       - /mnt/quidpath-data/staticfiles:/app/staticfiles
