@@ -63,7 +63,7 @@ services:
       CSRF_TRUSTED_ORIGINS: "https://stage.quidpath.com,https://stage-api.quidpath.com"
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
-      BILLING_SERVICE_URL: "http://billing-backend-stage:8000"
+      BILLING_SERVICE_URL: http://billing-backend-stage:8000
       BILLING_SERVICE_SECRET: ${BILLING_SERVICE_SECRET}
       BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET}
       FRONTEND_URL: "https://stage.quidpath.com"
@@ -77,6 +77,11 @@ services:
       CRM_SERVICE_SECRET: ${CRM_SERVICE_SECRET}
       HRM_SERVICE_SECRET: ${HRM_SERVICE_SECRET}
       PROJECTS_SERVICE_SECRET: ${PROJECTS_SERVICE_SECRET}
+      INVENTORY_SERVICE_URL: http://inventory-backend-stage:8000
+      POS_SERVICE_URL: http://pos-backend-stage:8000
+      CRM_SERVICE_URL: http://crm-backend-stage:8000
+      HRM_SERVICE_URL: http://hrm-backend-stage:8000
+      PROJECTS_SERVICE_URL: http://projects-backend-stage:8000
 
     volumes:
       - /mnt/quidpath-stage-data/media:/app/media
