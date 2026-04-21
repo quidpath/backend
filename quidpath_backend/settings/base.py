@@ -245,16 +245,20 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 # JWT Configuration for Microservices
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", SECRET_KEY)
 
+# Shared secret for all ERP microservices (they communicate as a unified system)
+ERP_SERVICE_SECRET = os.environ.get("ERP_SERVICE_SECRET", "")
+
 # Service API Keys for Microservices
+# All ERP microservices use the same shared secret for inter-service communication
 SERVICE_API_KEYS = {
     "billing-service": os.environ.get("BILLING_SERVICE_API_KEY", ""),
     "tazama-service": os.environ.get("TAZAMA_SERVICE_API_KEY", ""),
-    # ERP microservices
-    "inventory-service": os.environ.get("INVENTORY_SERVICE_SECRET", ""),
-    "pos-service": os.environ.get("POS_SERVICE_SECRET", ""),
-    "crm-service": os.environ.get("CRM_SERVICE_SECRET", ""),
-    "hrm-service": os.environ.get("HRM_SERVICE_SECRET", ""),
-    "projects-service": os.environ.get("PROJECTS_SERVICE_SECRET", ""),
+    # ERP microservices - all use shared ERP_SERVICE_SECRET
+    "inventory-service": ERP_SERVICE_SECRET,
+    "pos-service": ERP_SERVICE_SECRET,
+    "crm-service": ERP_SERVICE_SECRET,
+    "hrm-service": ERP_SERVICE_SECRET,
+    "projects-service": ERP_SERVICE_SECRET,
 }
 
 # Webhook Configuration
