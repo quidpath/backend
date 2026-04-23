@@ -32,4 +32,5 @@ urlpatterns = [
     path(
         "api/internal/", include("quidpath_backend.core.urls_internal")
     ),  # Internal APIs for microservices
+    path("api/utils/", include("utils.urls")),  # Utility endpoints (currency, etc.)
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

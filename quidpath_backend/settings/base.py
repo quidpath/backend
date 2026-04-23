@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "Banking",
     "Accounting",
     "Payments",
+    "utils",  # Utility endpoints (currency, etc.)
 ]
 
 MIDDLEWARE = [
