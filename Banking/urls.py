@@ -14,6 +14,8 @@ from Banking.views.transfer import (create_internal_transfer,
                                     delete_internal_transfer,
                                     list_internal_transfers,
                                     update_internal_transfer)
+from Banking.views.data_validation import (validate_data_integrity,
+                                           fix_data_integrity_issues)
 
 urlpatterns = [
     # Bank Account endpoints
@@ -31,6 +33,19 @@ urlpatterns = [
         bankAccount.delete_bank_account,
         name="delete_bank_account",
     ),
+    
+    # Data Validation endpoints
+    path(
+        "data/validate/",
+        validate_data_integrity,
+        name="validate_data_integrity",
+    ),
+    path(
+        "data/fix/",
+        fix_data_integrity_issues,
+        name="fix_data_integrity_issues",
+    ),
+    
     # Internal Transfer endpoints
     path(
         "internal-transfer/create/",

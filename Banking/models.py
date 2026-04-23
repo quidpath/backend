@@ -10,15 +10,46 @@ from quidpath_backend.core.base_models.base import BaseModel
 
 
 class BankAccount(BaseModel):
+    ACCOUNT_TYPES = [
+        ("bank", "Bank Account"),
+        ("sacco", "SACCO Account"),
+        ("mobile_money", "Mobile Money"),
+        ("till", "Till Number"),
+        ("cash", "Cash Account"),
+        ("investment", "Investment Account"),
+        ("other", "Other"),
+    ]
+
     corporate = models.ForeignKey(
         Corporate, on_delete=models.CASCADE, related_name="bank_accounts"
     )
-    bank_name = models.CharField(max_length=255)
+    account_type = models.CharField(
+        max_length=20, choices=ACCOUNT_TYPES, default="bank"
+    )
+    bank_name = models.CharField(max_length=255)  # Can be bank, SACCO, or provider name
     account_name = models.CharField(max_length=255)
     account_number = models.CharField(max_length=50)
     currency = models.CharField(max_length=10)
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    
+    # Enhanced fields for different account types
+    provider_name = models.CharField(max_length=255, blank=True, null=True, 
+                                   help_text="Provider name for mobile money, SACCO, etc.")
+    branch_code = models.CharField(max_length=50, blank=True, null=True,
+                                 help_text="Branch code or location identifier")
+    swift_code = models.CharField(max_length=20, blank=True, null=True,
+                                help_text="SWIFT/BIC code for international transfers")
+    
+    # Starting balance tracking
+    opening_balance = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="Opening balance when account was added to system"
+    )
+    opening_balance_date = models.DateField(
+        default=timezone.now, help_text="Date of opening balance"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     ledger_account = models.OneToOneField(
         "Accounting.Account",
@@ -28,8 +59,45 @@ class BankAccount(BaseModel):
         related_name="bank_account",
     )
 
+    class Meta:
+        unique_together = [['corporate', 'account_number', 'bank_name']]
+        indexes = [
+            models.Index(fields=['corporate', 'is_active']),
+            models.Index(fields=['account_type', 'is_active']),
+        ]
+
     def __str__(self):
-        return f"{self.bank_name} - {self.account_name}"
+        return f"{self.get_account_type_display()} - {self.bank_name} - {self.account_name}"
+
+    def get_current_balance(self):
+        """Calculate current balance from opening balance and transactions"""
+        from decimal import Decimal
+        
+        balance = self.opening_balance
+        transactions = self.transactions.filter(status='confirmed')
+        
+        for txn in transactions:
+            if txn.transaction_type in ('deposit', 'transfer_in'):
+                balance += txn.amount
+            elif txn.transaction_type in ('withdrawal', 'transfer_out', 'charge'):
+                balance -= txn.amount
+                
+        return balance
+
+    def create_opening_balance_transaction(self):
+        """Create opening balance transaction if opening_balance > 0"""
+        if self.opening_balance > 0:
+            BankTransaction.objects.get_or_create(
+                bank_account=self,
+                reference="OPENING-BALANCE",
+                defaults={
+                    'transaction_type': 'deposit',
+                    'amount': self.opening_balance,
+                    'narration': 'Opening balance',
+                    'transaction_date': self.opening_balance_date,
+                    'status': 'confirmed',
+                }
+            )
 
 
 class BankTransaction(BaseModel):

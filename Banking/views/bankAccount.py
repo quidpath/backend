@@ -51,6 +51,7 @@ def add_bank_account(request):
 
         # Validate other required fields
         required_items = [
+            "account_type",
             "bank_name",
             "account_number",
             "account_name",
@@ -62,6 +63,14 @@ def add_bank_account(request):
             print(f"[DEBUG] {error_msg}")
             return ResponseProvider(
                 message=error_msg, code=400
+            ).bad_request()
+
+        # Validate account_type
+        valid_account_types = ['bank', 'sacco', 'mobile_money', 'till', 'cash', 'investment', 'other']
+        if data.get('account_type') not in valid_account_types:
+            return ResponseProvider(
+                message=f"Invalid account_type. Must be one of: {', '.join(valid_account_types)}", 
+                code=400
             ).bad_request()
 
         # Check if corporate exists and is active
@@ -78,7 +87,7 @@ def add_bank_account(request):
 
         corporate = corporates[0]
 
-        # Check for existing bank account with same account number and corporate
+        # Check for existing bank account with same account number, bank name, and corporate
         existing_accounts = registry.database(
             model_name="BankAccount",
             operation="filter",
@@ -86,38 +95,50 @@ def add_bank_account(request):
                 "corporate": corporate_id,
                 "account_number": data.get("account_number"),
                 "bank_name": data.get("bank_name"),
+                "account_type": data.get("account_type"),
                 "is_active": True,
             },
         )
 
         if existing_accounts and len(existing_accounts) > 0:
             return ResponseProvider(
-                message="Bank account with the same account number and bank already exists for this corporate.",
+                message="Account with the same details already exists for this corporate.",
                 code=409,
             ).bad_request()
 
-        # Create bank account - Try corporate_id field name
-        new_account = registry.database(
-            model_name="BankAccount",
-            operation="create",
-            data={
-                "corporate_id": corporate_id,
-                "bank_name": data.get("bank_name"),
-                "account_name": data.get("account_name"),
-                "account_number": data.get("account_number"),
-                "currency": data.get("currency"),
-                "is_default": data.get("is_default", False),
-                "is_active": True,
-            },
-        )
-
-        # Create opening balance transaction if provided
+        # Prepare opening balance
         opening_balance = data.get("opening_balance", 0)
         try:
             opening_balance = float(opening_balance)
         except (TypeError, ValueError):
             opening_balance = 0.0
 
+        opening_balance_date = data.get("opening_balance_date")
+        if not opening_balance_date:
+            opening_balance_date = timezone.now().date()
+
+        # Create bank account with enhanced fields
+        new_account = registry.database(
+            model_name="BankAccount",
+            operation="create",
+            data={
+                "corporate_id": corporate_id,
+                "account_type": data.get("account_type"),
+                "bank_name": data.get("bank_name"),
+                "account_name": data.get("account_name"),
+                "account_number": data.get("account_number"),
+                "currency": data.get("currency"),
+                "provider_name": data.get("provider_name", ""),
+                "branch_code": data.get("branch_code", ""),
+                "swift_code": data.get("swift_code", ""),
+                "opening_balance": str(opening_balance),
+                "opening_balance_date": opening_balance_date,
+                "is_default": data.get("is_default", False),
+                "is_active": True,
+            },
+        )
+
+        # Create opening balance transaction if provided
         if opening_balance > 0:
             registry.database(
                 model_name="BankTransaction",
@@ -127,8 +148,8 @@ def add_bank_account(request):
                     "transaction_type": "deposit",
                     "amount": str(opening_balance),
                     "reference": "OPENING-BALANCE",
-                    "narration": "Opening balance",
-                    "transaction_date": timezone.now().date(),
+                    "narration": f"Opening balance for {data.get('account_type')} account",
+                    "transaction_date": opening_balance_date,
                     "status": "confirmed",
                     "created_by": metadata.get("user"),
                 },
@@ -147,12 +168,14 @@ def add_bank_account(request):
                     "message": f"""
                     Dear {corporate.get("name", "Corporate")},
                     <br/><br/>
-                    A new bank account has been successfully added:
+                    A new {new_account.get("account_type", "bank")} account has been successfully added:
                     <ul>
-                        <li><strong>Bank Name:</strong> {new_account["bank_name"]}</li>
+                        <li><strong>Account Type:</strong> {new_account.get("account_type", "").replace("_", " ").title()}</li>
+                        <li><strong>Bank/Provider:</strong> {new_account["bank_name"]}</li>
                         <li><strong>Account Name:</strong> {new_account["account_name"]}</li>
                         <li><strong>Account Number:</strong> {new_account["account_number"]}</li>
                         <li><strong>Currency:</strong> {new_account["currency"]}</li>
+                        {f'<li><strong>Opening Balance:</strong> {opening_balance} {new_account["currency"]}</li>' if opening_balance > 0 else ''}
                     </ul>
                     <br/>
                     Regards,<br/>ERP Team
@@ -170,9 +193,13 @@ def add_bank_account(request):
         TransactionLogBase.log(
             transaction_type="BANK_ACCOUNT_CREATED",
             user=metadata.get("user"),
-            message=f"Bank account created for corporate {corporate.get('name', corporate_id)}",
+            message=f"{new_account.get('account_type', 'Bank').title()} account created for corporate {corporate.get('name', corporate_id)}",
             state_name="Completed",
-            extra={"bank_account_id": str(new_account["id"])},
+            extra={
+                "bank_account_id": str(new_account["id"]),
+                "account_type": new_account.get("account_type"),
+                "opening_balance": str(opening_balance)
+            },
             notification_resp=notif_response,
             request=request,
         )
@@ -191,10 +218,11 @@ def add_bank_account(request):
             notification_status = "unknown"
 
         return ResponseProvider(
-            message="Bank account created successfully",
+            message="Account created successfully",
             data={
                 "account": new_account,
                 "corporate_id": corporate_id,
+                "opening_balance": opening_balance,
                 "notification_status": notification_status,
             },
             code=201,
@@ -281,17 +309,22 @@ def list_bank_accounts(request):
             data={"corporate_id": corporate_id, "is_active": True},
         )
 
-        # Compute balance for each account from its transactions
+        # Compute balance for each account using the new method
         from decimal import Decimal
         serialized_accounts = []
         for account in accounts:
             account_id = account["id"] if isinstance(account, dict) else account.id
+            
+            # Get opening balance
+            opening_balance = Decimal(str(account.get("opening_balance", 0))) if isinstance(account, dict) else Decimal(str(account.opening_balance))
+            
+            # Calculate current balance from transactions
             txns = registry.database(
                 model_name="BankTransaction",
                 operation="filter",
                 data={"bank_account_id": account_id, "status": "confirmed"},
             )
-            balance = Decimal("0")
+            balance = opening_balance
             for txn in txns:
                 amt = Decimal(str(txn.get("amount", 0)))
                 txn_type = txn.get("transaction_type", "")
@@ -299,17 +332,24 @@ def list_bank_accounts(request):
                     balance += amt
                 elif txn_type in ("withdrawal", "transfer_out", "charge"):
                     balance -= amt
-                # "transfer" type: handled by transfer_in/transfer_out on each side
+                    
             acc_dict = dict(account) if isinstance(account, dict) else {
                 "id": str(account_id),
+                "account_type": account.account_type,
                 "bank_name": account.bank_name,
                 "account_name": account.account_name,
                 "account_number": account.account_number,
                 "currency": account.currency,
+                "provider_name": account.provider_name,
+                "branch_code": account.branch_code,
+                "swift_code": account.swift_code,
+                "opening_balance": float(account.opening_balance),
+                "opening_balance_date": str(account.opening_balance_date),
                 "is_default": account.is_default,
                 "is_active": account.is_active,
             }
             acc_dict["balance"] = float(balance)
+            acc_dict["display_name"] = f"{acc_dict.get('account_type', 'bank').replace('_', ' ').title()} - {acc_dict['bank_name']} - {acc_dict['account_name']}"
             serialized_accounts.append(acc_dict)
 
         # Log success
@@ -323,7 +363,7 @@ def list_bank_accounts(request):
         )
 
         return ResponseProvider(
-            message="Bank accounts retrieved successfully",
+            message="Accounts retrieved successfully",
             data={
                 "results": serialized_accounts,
                 "count": len(serialized_accounts),
@@ -403,10 +443,14 @@ def update_bank_account(request):
 
         # Prepare update fields - only include allowed fields that are present
         allowed_fields = [
+            "account_type",
             "bank_name",
             "account_name",
             "account_number",
             "currency",
+            "provider_name",
+            "branch_code",
+            "swift_code",
             "is_default",
         ]
         update_fields = {
