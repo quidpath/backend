@@ -162,6 +162,18 @@ def get_sales_summary(request):
                 return "down"
             return "neutral"
         
+        # Calculate totals first (moved from below)
+        total_count = len(filtered_invoices)
+        total_sub_total = sum(
+            Decimal(str(inv.get("sub_total", 0))) for inv in filtered_invoices
+        )
+        total_tax = sum(
+            Decimal(str(inv.get("tax_total", 0))) for inv in filtered_invoices
+        )
+        total_amount = sum(
+            Decimal(str(inv.get("total", 0))) for inv in filtered_invoices
+        )
+        
         revenue_change = calc_change(total_amount, prev_total_revenue)
         overdue_change = calc_change(total_overdue_all, prev_total_overdue)
         paid_change = calc_change(total_paid_this_month, total_paid_last_month)

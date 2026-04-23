@@ -107,6 +107,7 @@ from Accounting.views.reports import (download_financial_report,
 from Accounting.views.summary_reports import (get_expenses_summary,
                                               get_purchases_summary,
                                               get_sales_summary)
+from Accounting.views.accounting_summary import get_accounting_summary
 from Accounting.views.trial_balance import (download_trial_balance,
                                             get_trial_balance)
 from Accounting.views.vendor_bill import (
@@ -316,6 +317,7 @@ urlpatterns = [
         name="download_aged_invoices",
     ),
     # Summary Reports URLs
+    path("accounting/summary/", get_accounting_summary, name="get_accounting_summary"),
     path("reports/sales-summary/", get_sales_summary, name="get_sales_summary"),
     path(
         "reports/purchases-summary/",
