@@ -102,6 +102,16 @@ class PettyCashTransaction(BaseModel):
         blank=True,
         null=True,
     )
+    
+    # Bank account link (for tracking which account was used)
+    bank_account = models.ForeignKey(
+        "Banking.BankAccount",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="petty_cash_transactions",
+        help_text="Bank account used for replenishment or linked to this petty cash"
+    )
 
     class Meta:
         db_table = "petty_cash_transaction"
@@ -129,10 +139,49 @@ class PettyCashTransaction(BaseModel):
         
         self.fund.save()
         
+        # Create bank transaction if bank account is linked
+        if self.bank_account:
+            self._create_bank_transaction()
+        
         self.status = "APPROVED"
         self.approved_by = approved_by_user
         self.approved_at = timezone.now()
         self.save()
+    
+    def _create_bank_transaction(self):
+        """Create corresponding bank transaction"""
+        from Banking.models import BankTransaction
+        from django.utils import timezone
+        
+        # Determine transaction type for bank
+        if self.transaction_type == "DISBURSEMENT":
+            # Money leaving bank to petty cash
+            bank_txn_type = "withdrawal"
+            narration = f"Petty Cash Disbursement - {self.description}"
+        elif self.transaction_type == "REPLENISHMENT":
+            # Money coming from bank to replenish petty cash
+            bank_txn_type = "withdrawal"
+            narration = f"Petty Cash Replenishment - {self.description}"
+        else:
+            # Adjustment - no bank transaction
+            return
+        
+        try:
+            BankTransaction.objects.create(
+                bank_account=self.bank_account,
+                transaction_type=bank_txn_type,
+                amount=self.amount,
+                reference=self.reference,
+                narration=narration,
+                transaction_date=self.date,
+                status="confirmed",
+                created_by=self.approved_by,
+            )
+        except Exception as e:
+            # Log error but don't fail the approval
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to create bank transaction for petty cash: {str(e)}")
 
     def reject(self, rejected_by_user):
         """Reject the transaction"""
@@ -162,7 +211,45 @@ class PettyCashTransaction(BaseModel):
             raise ValidationError("Adjustment transactions cannot be automatically reversed. Create a new adjustment.")
         
         self.fund.save()
+        
+        # Create reversing bank transaction if bank account is linked
+        if self.bank_account:
+            self._create_reversing_bank_transaction()
+        
         self.status = "REVERSED"
         self.approved_by = reversed_by_user
         self.approved_at = timezone.now()
         self.save()
+    
+    def _create_reversing_bank_transaction(self):
+        """Create reversing bank transaction"""
+        from Banking.models import BankTransaction
+        from django.utils import timezone
+        
+        # Opposite of original transaction
+        if self.transaction_type == "DISBURSEMENT":
+            # Reversing disbursement means money back to bank
+            bank_txn_type = "deposit"
+            narration = f"REVERSAL: Petty Cash Disbursement - {self.description}"
+        elif self.transaction_type == "REPLENISHMENT":
+            # Reversing replenishment means money back to bank
+            bank_txn_type = "deposit"
+            narration = f"REVERSAL: Petty Cash Replenishment - {self.description}"
+        else:
+            return
+        
+        try:
+            BankTransaction.objects.create(
+                bank_account=self.bank_account,
+                transaction_type=bank_txn_type,
+                amount=self.amount,
+                reference=f"REV-{self.reference}",
+                narration=narration,
+                transaction_date=timezone.now().date(),
+                status="confirmed",
+                created_by=self.approved_by,
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to create reversing bank transaction: {str(e)}")

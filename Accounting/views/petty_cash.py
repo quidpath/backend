@@ -176,6 +176,7 @@ def create_petty_cash_transaction(request):
             "amount": data["amount"],
             "recipient": data.get("recipient", ""),
             "receipt_number": data.get("receipt_number", ""),
+            "bank_account_id": data.get("bank_account_id"),  # Optional bank account link
             "requested_by_id": user_id,
             "status": "PENDING",
         }
