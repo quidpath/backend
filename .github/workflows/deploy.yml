@@ -2,7 +2,7 @@ name: Build Image & Trigger Deployment
 
 on:
   push:
-    branches: ["Development", "master"]
+    branches: ["master"]  # Only deploy to production on master branch
 
 jobs:
   build-and-trigger:
